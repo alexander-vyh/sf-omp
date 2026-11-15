@@ -5,7 +5,7 @@
  * Why this module exists
  * ----------------------
  * The datatable apply path used to push the resolved `SKILL.md` path
- * straight into `settings.skills[]`. That worked for skills that were
+ * straight into `skills.customDirectories`. That worked for skills that were
  * already wired by their exact path, but it produced two ugly outcomes
  * when the wiring was a parent directory (`~/.claude/skills`,
  * `~/.pi/agent/sf-skills/afv-library/skills`, etc.):
@@ -96,10 +96,10 @@ export function planDisable(input: PlanInput): DisablePlan {
       : nativeSkillSettingsPath("global", input.cwd);
   const skillAbs = path.normalize(input.skillPath);
 
-  const skills = readSkills(settingsPath, input.cwd);
+  const skills = readSkills(settingsPath, input.cwd, home);
 
   for (const entry of skills) {
-    const entryAbs = path.normalize(expandSettingsValue(entry, settingsPath, home, input.cwd));
+    const entryAbs = path.normalize(entry);
     if (!entryAbs) continue;
 
     if (entryAbs === skillAbs) {
@@ -163,9 +163,8 @@ export function planEnable(input: PlanInput): {
   ];
 
   for (const { scope, settingsPath } of scopes) {
-    for (const entry of readSkills(settingsPath, input.cwd)) {
-      const entryAbs = path.normalize(expandSettingsValue(entry, settingsPath, home, input.cwd));
-      if (!entryAbs) continue;
+    for (const entry of readSkills(settingsPath, input.cwd, home)) {
+      const entryAbs = path.normalize(entry);
       if (entryAbs === skillAbs) {
         return {
           alreadyCovered: true,
@@ -192,24 +191,8 @@ export function planEnable(input: PlanInput): {
 // Internal helpers
 // -------------------------------------------------------------------------------------------------
 
-function readSkills(settingsPath: string, cwd?: string): string[] {
-  return readSkillSourceSettings(settingsPath, cwd).customDirectories;
-}
-
-function expandSettingsValue(
-  value: string,
-  settingsPath: string,
-  home: string,
-  cwd: string,
-): string {
-  if (!value) return "";
-  if (value.startsWith("~/")) return path.join(home, value.slice(2));
-  if (value === "~") return home;
-  if (path.isAbsolute(value)) return value;
-  // Pi resolves relative entries against the settings file's directory
-  // for project settings, and against $HOME for global settings.
-  const isProject = settingsPath.includes(`${path.sep}.pi${path.sep}settings.json`);
-  return path.resolve(isProject ? cwd : home, value);
+function readSkills(settingsPath: string, cwd?: string, home?: string): string[] {
+  return readSkillSourceSettings(settingsPath, cwd, home).customDirectories;
 }
 
 function isDirectory(p: string): boolean {

@@ -5,7 +5,7 @@
  * Five tabs — Catalog / Sources / Global / Project / Conflicts — rendered over
  * a single SkillCatalog snapshot. The component only stages intent
  * (FunnelAction[]); index.ts compiles each action through the Resolution
- * Policy into native settings.skills[] ops, then reloads. Pure folds + the
+ * Policy into native skills.customDirectories/projection ops, then reloads. Pure folds + the
  * staging reducer live in model.ts.
  *
  * Layout matches the agreed ASCII spec: a narrowing funnel strip, a tab bar,

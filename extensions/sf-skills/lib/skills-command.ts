@@ -233,7 +233,9 @@ function renderStatus(cwd: string, opts: { includeProject: boolean }): string {
             : "user-owned (no sentinel)"
       }`,
     );
-    lines.push(`  wiring:  ${clone.wired ? "in settings.skills[]" : "not in settings.skills[]"}`);
+    lines.push(
+      `  wiring:  ${clone.wired ? "in skills.customDirectories" : "not in skills.customDirectories"}`,
+    );
     lines.push("");
   }
   lines.push("Commands:");

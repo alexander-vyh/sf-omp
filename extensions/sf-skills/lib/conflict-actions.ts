@@ -3,7 +3,7 @@
  * Consented file-level conflict resolution.
  *
  * Compiled Skill Resolution (resolution.ts) clears conflicts by rewiring
- * `settings.skills[]` and never touches files. But a Report-Only Conflict —
+ * `skills.customDirectories` and never touches files. But a Report-Only Conflict —
  * where a colliding copy lives in an auto-discovered default root that always
  * wins — cannot be fixed that way. The only lever is to stop Pi from
  * *discovering* the losing copy, which means a filesystem action.

@@ -13,7 +13,7 @@ export type FunnelTab = "catalog" | "sources" | "global" | "project" | "conflict
 /**
  * A staged decision the user made in the funnel. The component only stages
  * intent; index.ts compiles each action through the Resolution Policy into
- * native settings.skills[] ops, so the component stays free of compile logic.
+ * native skills.customDirectories/projection ops, so the component stays free of compile logic.
  */
 export type FunnelAction =
   | {

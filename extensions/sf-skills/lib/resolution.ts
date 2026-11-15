@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
  * Resolution Policy — compiles Skill Funnel decisions into native
- * `settings.skills[]` operations (Compiled Skill Resolution).
+ * `skills.customDirectories` operations and per-file projections.
  *
  * This is the funnel-facing planner. It reuses the proven coverage math in
  * `settings-coverage.ts` (exact / parent-expand-minus-one / none) for the
@@ -16,7 +16,7 @@
  *   - Resolving a conflict where any copy lives in an auto-default root is a
  *     Report-Only Conflict → `blocked:"report-only-conflict"`.
  *
- * Every successful plan is a set of `settings.skills[]` add/remove ops the
+ * Every successful plan is a set of logical skill-source add/remove operations the
  * caller applies via the shared `updateSkillSources` writer, then reloads.
  * This module never writes; it only plans.
  */
@@ -201,7 +201,7 @@ export interface RescopePlan extends SettingsPlan {
 
 /**
  * Plan a move of skills from global to the CURRENT project: remove their global
- * `settings.skills[]` coverage (expand-minus-one when a parent dir is wired) and
+ * `skills.customDirectories` coverage (expand-minus-one when a parent dir is wired) and
  * add per-file project coverage. The net effect is "everywhere-on → this-project
  * only". Only global-enabled skills are moved; others are skipped.
  *

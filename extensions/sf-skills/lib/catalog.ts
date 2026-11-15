@@ -16,7 +16,7 @@
  *
  * The catalog is a model, not a loader and not a mutator. Turning a tag
  * into a change is the Resolution Policy's job (`resolution.ts`), which
- * compiles to native `settings.skills[]` per Compiled Skill Resolution.
+ * compiles to native `skills.customDirectories` and per-file projections.
  */
 import path from "node:path";
 
@@ -24,7 +24,7 @@ import path from "node:path";
 // Inputs (all pre-resolved by the gatherer)
 // -------------------------------------------------------------------------------------------------
 
-/** A `settings.skills[]` entry, resolved to an absolute path + kind. */
+/** A logical `skills.customDirectories` entry, resolved to an absolute path + kind. */
 export interface ResolvedSettingsEntry {
   /** Verbatim value as it appears in settings (`~/.claude/skills`, `./x`, …). */
   raw: string;

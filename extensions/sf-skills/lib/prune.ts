@@ -4,7 +4,7 @@
  *
  * Two categories of cruft we surface:
  *
- *   stale wired entries — paths in settings.skills[] that no longer
+ *   stale wired entries — paths in skills.customDirectories that no longer
  *                          exist on disk (renamed dir, deleted clone,
  *                          checkout moved, etc.). Already reported by
  *                          detectSkillSources(); this module just
@@ -13,7 +13,7 @@
  *   orphan managed clones — directories under the managed clone root
  *                          (`<globalAgentDir>/sf-skills/` or
  *                          `<cwd>/.pi/sf-skills/`) that are no longer
- *                          referenced from any settings.skills[] entry.
+ *                          referenced from any skills.customDirectories entry.
  *                          We only delete dirs that carry our sentinel
  *                          file — never user-owned trees.
  *
@@ -24,7 +24,6 @@
 import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { readSkillSourceSettings } from "../../../lib/common/skill-sources/skill-settings.ts";
-import { globalAgentPath } from "../../../lib/common/pi-paths.ts";
 import {
   detectSkillSources,
   updateSkillSources,
@@ -166,18 +165,14 @@ function isReferencedInSettings(
   cwd: string,
   options: { includeProject: boolean },
 ): boolean {
-  // detectSkillSources only looks at known external roots (Claude/Codex/Cursor).
-  // For managed clones we want to check the raw settings.skills[] arrays
-  // ourselves so we catch absolute, ~/, and ./-prefixed forms uniformly.
+  // Native YAML reading returns canonical logical roots, including individual-file projections.
   const detection = detectSkillSources({ cwd, includeProject: options.includeProject });
   const normalizedTarget = path.normalize(absolutePath);
   for (const settingsPath of [detection.settingsPath, detection.projectSettingsPath]) {
     if (!settingsPath) continue;
-    const skills = readSkillsArray(settingsPath, cwd);
+    const skills = readSkillSourceSettings(settingsPath, cwd).customDirectories;
     for (const value of skills) {
-      const expanded = expandSkillsValue(value, settingsPath, cwd);
-      if (!expanded) continue;
-      const normalized = path.normalize(expanded);
+      const normalized = path.normalize(value);
       if (normalized === normalizedTarget) return true;
       if (normalized.startsWith(`${normalizedTarget}${path.sep}`)) return true;
       if (normalizedTarget.startsWith(`${normalized}${path.sep}`)) return true;
@@ -185,22 +180,3 @@ function isReferencedInSettings(
   }
   return false;
 }
-
-function readSkillsArray(settingsPath: string, cwd?: string): string[] {
-  return readSkillSourceSettings(settingsPath, cwd).customDirectories;
-}
-
-function expandSkillsValue(value: string, settingsPath: string, cwd: string): string | null {
-  if (!value) return null;
-  if (value.startsWith("~/")) return path.join(process.env.HOME ?? "", value.slice(2));
-  if (value === "~") return process.env.HOME ?? null;
-  if (path.isAbsolute(value)) return value;
-  // Project settings live at <cwd>/.pi/settings.json — relative entries resolve against cwd.
-  // Global settings resolve against $HOME.
-  const isProjectSettings = settingsPath.includes(`${path.sep}.pi${path.sep}settings.json`);
-  return path.resolve(isProjectSettings ? cwd : (process.env.HOME ?? ""), value);
-}
-
-// Touched only to keep `globalAgentPath` import live for future reference;
-// the helper itself is used by callers via state-store / pi-paths.
-void globalAgentPath;

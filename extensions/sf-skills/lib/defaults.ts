@@ -6,7 +6,7 @@
  * ----------------------
  * The Salesforce community publishes a curated skill library at
  * `forcedotcom/sf-skills`. Users who want those skills should not have
- * to clone manually and edit `settings.json` by hand. This module owns
+ * to clone manually and edit native `config.yml` by hand. This module owns
  * that lifecycle:
  *
  *   install : git clone the repo into a managed dir + wire it into settings
@@ -251,10 +251,10 @@ function legacyUnlinkTarget(rootPath: string): string {
 
 export interface InstallOptions {
   /**
-   * Where to WIRE the skills (which `settings.skills[]` gets the entry).
-   * Default is "project" (local-first). The CONTENT is always cloned once into
-   * the global managed dir and shared — we never duplicate the 57-skill clone
-   * per project. So "project" means "global clone, enabled in this project".
+   * Which native `skills.customDirectories` setting gets the entry.
+   * Default is "project" (local-first). Content is cloned once into the
+   * isolated agent's managed directory and shared across projects.
+   * "Project" means "shared clone, enabled in this project".
    */
   scope: SkillSourceScope;
   cwd?: string;
@@ -265,9 +265,9 @@ export interface InstallOptions {
 }
 
 /**
- * Ensure the forcedotcom/sf-skills clone exists (once, globally) and wire it into the
- * chosen scope's `settings.skills[]`. Content lives global + shared; wiring is
- * the scoping lever (local-first by default). Idempotent.
+ * Ensure the forcedotcom/sf-skills clone exists in the isolated agent and wire it
+ * into the chosen scope's `skills.customDirectories`. Content is shared; scope
+ * controls where it is enabled (local-first by default). Idempotent.
  */
 export async function installDefaults(options: InstallOptions): Promise<InstallResult> {
   const wireScope = options.scope;
@@ -458,9 +458,9 @@ export interface LinkOptions {
 }
 
 /**
- * Wire a user-owned checkout into settings.skills[].
+ * Wire a user-owned checkout into native skills.customDirectories.
  *
- * The path is added verbatim — pi resolves it. We do a sanity check
+ * The source is normalized by the shared native settings writer. We check
  * that the path exists and contains a `skills/` subdir before writing.
  */
 export function linkExistingCheckout(options: LinkOptions): { ok: boolean; message: string } {
@@ -482,7 +482,10 @@ export function linkExistingCheckout(options: LinkOptions): { ok: boolean; messa
     scope: options.scope,
     cwd: options.cwd,
   });
-  return { ok: true, message: `Linked ${expanded} into ${options.scope} settings.skills[].` };
+  return {
+    ok: true,
+    message: `Linked ${expanded} into ${options.scope} skills.customDirectories.`,
+  };
 }
 
 export interface UnlinkOptions {

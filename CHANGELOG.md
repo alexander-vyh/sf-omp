@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Added a version-checked local CommonJS loader patch; global OMP is not patched.
 - Added real-runtime offline checks for AgentScript compilation, Apex plans/logs, LWC/Flow diagnostics, SOQL syntax, skill gating/rediscovery, and global configuration/install integrity. Live org operations and unprovisioned language servers remain explicitly unverified/blocked.
 - Replaced upstream release/publishing automation with the selected OMP integration's verification workflow.
+- Corrected native skill-settings labels and removed redundant Pi JSON path expansion; coverage and pruning use the shared YAML reader.
 
 ## [0.354.0](https://github.com/salesforce/sf-pi/compare/v0.353.0...v0.354.0) (2026-11-11)
 
