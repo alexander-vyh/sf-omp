@@ -53,6 +53,10 @@ coverage/
 # Security scan reports
 gitleaks.json
 
+# Repository-local OMP runtime, credentials, caches and verification artifacts
+.runtime/
+.serena/
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db

@@ -2,7 +2,7 @@
 /**
  * Shared filesystem layout for the first-boot LSP installer.
  *
- * All installer artifacts live under `~/.pi/agent/lsp/` so sf-lsp's
+ * All installer artifacts live under the isolated agent's lsp directory so sf-lsp's
  * existing discovery chain picks them up without further wiring. Each
  * component writes a sibling `VERSION` file that pins the exact version
  * currently on disk — that's how `detectComponentStates()` compares

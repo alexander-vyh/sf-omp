@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import {
   createTranscriptRenderer,
+  registerLspTranscriptPresentation,
   emitTranscriptRow,
   shouldEmitTranscriptRow,
   LSP_TRANSCRIPT_CUSTOM_TYPE,
@@ -39,6 +40,29 @@ describe("emitTranscriptRow", () => {
     });
     expect(pi.sendMessage).not.toHaveBeenCalled();
   });
+
+  it("shows the latest check with a native widget without model-visible messages", () => {
+    let start: ((_event: unknown, ctx: never) => void) | undefined;
+    const setWidget = vi.fn();
+    const pi = {
+      on: (event: string, handler: typeof start) => {
+        if (event === "session_start") start = handler;
+      },
+      appendEntry: vi.fn(),
+      sendMessage: vi.fn(),
+    };
+    registerLspTranscriptPresentation(pi as never);
+    start?.({}, { hasUI: true, ui: { setWidget } } as never);
+    emitTranscriptRow(pi as never, {
+      language: "apex",
+      fileName: "Example.cls",
+      status: "error",
+      diagnosticCount: 1,
+      previewLines: ["L1: Unexpected token"],
+    });
+    expect(setWidget).toHaveBeenLastCalledWith(LSP_TRANSCRIPT_CUSTOM_TYPE, expect.any(Function));
+    expect(pi.sendMessage).not.toHaveBeenCalled();
+  });
 });
 
 describe("createTranscriptRenderer", () => {
@@ -52,11 +76,6 @@ describe("createTranscriptRenderer", () => {
     };
     const component = renderer(
       {
-        type: "custom",
-        id: "entry-1",
-        parentId: null,
-        timestamp: new Date(0).toISOString(),
-        customType: LSP_TRANSCRIPT_CUSTOM_TYPE,
         data: {
           content: "Apex · MyClass.cls · 1 error",
           details: {

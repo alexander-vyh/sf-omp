@@ -41,7 +41,13 @@ function togglableCtx() {
     if (stale) throw new Error("stale ctx");
     return value;
   };
-  const ui = { notify: vi.fn(), setStatus: vi.fn(), setWidget: vi.fn(), setFooter: vi.fn() };
+  const ui = {
+    notify: vi.fn(),
+    setStatus: vi.fn(),
+    setWidget: vi.fn(),
+    setFooter: vi.fn(),
+    setWorkingMessage: vi.fn(),
+  };
   const sessionManager = { getSessionId: () => "s1", getBranch: () => [], getLeafId: () => null };
   return {
     goStale: () => {

@@ -8,7 +8,7 @@
   "configurable": true,
   "commands": ["/sf-code-analyzer"],
   "tools": ["code_analyzer"],
-  "events": ["session_start", "tool_result", "agent_before_settle", "session_shutdown"],
+  "events": ["session_start", "tool_result", "session_stop", "session_shutdown"],
   "docs": {
     "intentGroup": "Build agents",
     "agentGuide": "AGENT_GUIDE.md",

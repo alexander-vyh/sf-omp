@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** User-visible transcript rows for automatic Code Analyzer work. */
+/** Human-only Code Analyzer evidence, persisted as entries and presented in an OMP widget. */
 import path from "node:path";
-import type { EntryRenderer, ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import {
   renderSfPiNoticeCardText,
@@ -16,6 +16,8 @@ import {
 } from "../../../lib/common/display/result-card.ts";
 
 export const CODE_ANALYZER_TRANSCRIPT_TYPE = "sf-code-analyzer";
+
+const presentationContexts = new WeakMap<ExtensionAPI, ExtensionContext>();
 
 export interface CodeAnalyzerTranscriptDetails {
   status: "running" | "clean" | "findings" | "skipped" | "timeout" | "error" | "stopped";
@@ -33,14 +35,21 @@ export interface CodeAnalyzerTranscriptEntry {
 }
 
 export function registerCodeAnalyzerTranscriptRenderer(pi: ExtensionAPI): void {
-  pi.registerEntryRenderer<CodeAnalyzerTranscriptEntry>(
-    CODE_ANALYZER_TRANSCRIPT_TYPE,
-    createCodeAnalyzerTranscriptRenderer(),
-  );
+  pi.on("session_start", (_event, ctx) => {
+    presentationContexts.set(pi, ctx);
+    if (ctx.hasUI) ctx.ui.setWidget(CODE_ANALYZER_TRANSCRIPT_TYPE, undefined);
+  });
+  pi.on("session_shutdown", () => {
+    presentationContexts.delete(pi);
+  });
 }
 
-export function createCodeAnalyzerTranscriptRenderer(): EntryRenderer<CodeAnalyzerTranscriptEntry> {
-  return (entry, _options, theme) => {
+export function createCodeAnalyzerTranscriptRenderer() {
+  return (
+    entry: { data?: CodeAnalyzerTranscriptEntry },
+    _options: { expanded: boolean },
+    theme: Theme,
+  ) => {
     const content = entry.data?.content ?? "[sf-code-analyzer]";
     const details = entry.data?.details;
     const notice = transcriptNotice(content, details);
@@ -71,6 +80,16 @@ export function emitCodeAnalyzerTranscript(
   details: CodeAnalyzerTranscriptDetails,
 ): void {
   pi.appendEntry<CodeAnalyzerTranscriptEntry>(CODE_ANALYZER_TRANSCRIPT_TYPE, { content, details });
+  const ctx = presentationContexts.get(pi);
+  if (ctx?.hasUI) {
+    ctx.ui.setWidget(CODE_ANALYZER_TRANSCRIPT_TYPE, (_tui, theme) =>
+      createCodeAnalyzerTranscriptRenderer()(
+        { data: { content, details } },
+        { expanded: true },
+        theme,
+      ),
+    );
+  }
 }
 
 function transcriptNotice(

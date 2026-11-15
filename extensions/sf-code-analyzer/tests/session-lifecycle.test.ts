@@ -42,7 +42,6 @@ function fakePi(lifecycle: ReturnType<typeof eventBus>) {
     events: eventBus(),
     on: lifecycle.on,
     registerCommand: vi.fn(),
-    registerEntryRenderer: vi.fn(),
     registerTool: vi.fn(),
   };
 }
@@ -51,6 +50,7 @@ function sessionContext(cwd: string) {
   let active = true;
   return {
     hasUI: true,
+    ui: { setWidget: vi.fn() },
     get cwd() {
       if (!active) throw new Error("session context is no longer active");
       return cwd;

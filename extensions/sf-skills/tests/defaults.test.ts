@@ -4,12 +4,13 @@
  *
  * We inject a fake spawn impl so install/update can simulate clone/pull
  * outcomes deterministically. Only the ManagedClone state machine and
- * the post-install settings.skills[] wiring are exercised here.
+ * the post-install skills.customDirectories wiring are exercised here.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import * as YAML from "yaml";
+import { nativeTestDir } from "./native-fixture.ts";
 import {
   detectLegacyDefaultLibrary,
   formatLegacyDefaultLibraryWarning,
@@ -24,15 +25,17 @@ import { handleDefaults, parseDefaultsArgs } from "../lib/skills-command.ts";
 
 const tempDirs: string[] = [];
 const originalHome = process.env.HOME;
+const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 
 function makeHome(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "sf-skills-home-"));
+  const dir = nativeTestDir("sf-skills-home-");
   tempDirs.push(dir);
+  process.env.PI_CODING_AGENT_DIR = path.join(dir, "agent");
   return dir;
 }
 
 function makeCwd(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "sf-skills-cwd-"));
+  const dir = nativeTestDir("sf-skills-cwd-");
   tempDirs.push(dir);
   return dir;
 }
@@ -40,6 +43,8 @@ function makeCwd(): string {
 afterEach(() => {
   if (originalHome === undefined) delete process.env.HOME;
   else process.env.HOME = originalHome;
+  if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+  else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -141,7 +146,7 @@ describe("inspectManagedClone", () => {
 });
 
 describe("installDefaults (with fake git)", () => {
-  it("clones into the managed dir and wires settings.skills[]", async () => {
+  it("clones into the managed dir and wires skills.customDirectories", async () => {
     const home = makeHome();
     process.env.HOME = home;
 
@@ -151,12 +156,13 @@ describe("installDefaults (with fake git)", () => {
     expect(result.clone.managed).toBe(true);
     expect(result.clone.wired).toBe(true);
 
-    const settings = JSON.parse(
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require("node:fs").readFileSync(path.join(home, ".pi", "agent", "settings.json"), "utf8"),
+    const settings = YAML.parse(readFileSync(path.join(home, "agent", "config.yml"), "utf8"));
+    expect(settings.skills.customDirectories).toContain(
+      path.join(home, "agent", "sf-skills", "effective", "skills"),
     );
-    expect(settings.skills).toContain("~/.pi/agent/sf-skills/effective/skills");
-    expect(settings.skills).not.toContain("~/.pi/agent/sf-skills/forcedotcom/skills");
+    expect(settings.skills.customDirectories).not.toContain(
+      path.join(home, "agent", "sf-skills", "forcedotcom", "skills"),
+    );
   });
 
   it("is idempotent on second invocation", async () => {
@@ -174,7 +180,6 @@ describe("installDefaults (with fake git)", () => {
     await installDefaults({ scope: "global", spawn: fakeGit });
     const cloneFile = path.join(
       home,
-      ".pi",
       "agent",
       "sf-skills",
       "forcedotcom",
@@ -184,7 +189,6 @@ describe("installDefaults (with fake git)", () => {
     );
     const effectiveFile = path.join(
       home,
-      ".pi",
       "agent",
       "sf-skills",
       "effective",
@@ -205,20 +209,22 @@ describe("installDefaults (with fake git)", () => {
     const result = await installDefaults({ scope: "project", cwd, spawn: fakeGit });
     expect(result.ok).toBe(true);
     // Content is the single global clone — never a per-project clone.
-    expect(result.clone.rootPath).toBe(path.join(home, ".pi", "agent", "sf-skills", "forcedotcom"));
+    expect(result.clone.rootPath).toBe(path.join(home, "agent", "sf-skills", "forcedotcom"));
     expect(result.clone.scope).toBe("project");
     expect(result.clone.wired).toBe(true);
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fs = require("node:fs");
-    // Project settings reference the GLOBAL clone path (local-first enablement).
-    const settings = JSON.parse(fs.readFileSync(path.join(cwd, ".pi", "settings.json"), "utf8"));
-    expect(settings.skills).toContain("~/.pi/agent/sf-skills/effective/skills");
-    expect(settings.skills).not.toContain("~/.pi/agent/sf-skills/forcedotcom/skills");
+    // Project config references the GLOBAL effective tree (local-first enablement).
+    const settings = YAML.parse(readFileSync(path.join(cwd, ".omp", "config.yml"), "utf8"));
+    expect(settings.skills.customDirectories).toContain(
+      path.join(home, "agent", "sf-skills", "effective", "skills"),
+    );
+    expect(settings.skills.customDirectories).not.toContain(
+      path.join(home, "agent", "sf-skills", "forcedotcom", "skills"),
+    );
     // No per-project clone was created.
-    expect(fs.existsSync(path.join(cwd, ".pi", "sf-skills", "forcedotcom"))).toBe(false);
-    // Global settings were not written (only project scope was wired).
-    expect(fs.existsSync(path.join(home, ".pi", "agent", "settings.json"))).toBe(false);
+    expect(existsSync(path.join(cwd, ".pi", "sf-skills", "forcedotcom"))).toBe(false);
+    // Global config was not written (only project scope was wired).
+    expect(existsSync(path.join(home, "agent", "config.yml"))).toBe(false);
   });
 });
 
@@ -227,15 +233,18 @@ describe("rewireCloneToEffective", () => {
     const home = makeHome();
     process.env.HOME = home;
     const cwd = makeCwd();
-    mkdirSync(path.join(cwd, ".pi"), { recursive: true });
+    mkdirSync(path.join(cwd, ".omp"), { recursive: true });
+    const cloneSkills = path.join(home, "agent", "sf-skills", "forcedotcom", "skills");
     writeFileSync(
-      path.join(cwd, ".pi", "settings.json"),
-      `${JSON.stringify({ skills: ["~/.pi/agent/sf-skills/forcedotcom/skills"] })}\n`,
+      path.join(cwd, ".omp", "config.yml"),
+      YAML.stringify({ skills: { customDirectories: [cloneSkills] } }),
     );
     rewireCloneToEffective(cwd);
-    const settings = JSON.parse(readFileSync(path.join(cwd, ".pi", "settings.json"), "utf8"));
-    expect(settings.skills).toContain("~/.pi/agent/sf-skills/effective/skills");
-    expect(settings.skills).not.toContain("~/.pi/agent/sf-skills/forcedotcom/skills");
+    const settings = YAML.parse(readFileSync(path.join(cwd, ".omp", "config.yml"), "utf8"));
+    expect(settings.skills.customDirectories).toContain(
+      path.join(home, "agent", "sf-skills", "effective", "skills"),
+    );
+    expect(settings.skills.customDirectories).not.toContain(cloneSkills);
   });
 });
 
@@ -251,7 +260,7 @@ describe("updateDefaults", () => {
   it("refuses to pull a checkout missing the sentinel", async () => {
     const home = makeHome();
     process.env.HOME = home;
-    const root = path.join(home, ".pi", "agent", "sf-skills", "forcedotcom");
+    const root = path.join(home, "agent", "sf-skills", "forcedotcom");
     mkdirSync(path.join(root, "skills"), { recursive: true });
     // No sentinel file.
     const result = await updateDefaults({ scope: "global", spawn: fakeGit });
@@ -269,40 +278,40 @@ describe("updateDefaults", () => {
 });
 
 describe("unlinkCheckout", () => {
-  it("removes the entry from settings.skills[]", async () => {
+  it("removes the entry from skills.customDirectories", async () => {
     const home = makeHome();
     process.env.HOME = home;
     await installDefaults({ scope: "global", spawn: fakeGit });
 
     const result = unlinkCheckout({
-      target: "~/.pi/agent/sf-skills/effective/skills",
+      target: path.join(home, "agent", "sf-skills", "effective", "skills"),
       scope: "global",
     });
     expect(result.ok).toBe(true);
     expect(result.settingsChanged).toBe(true);
     expect(result.removedEntries).toBe(1);
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fs = require("node:fs");
-    const settings = JSON.parse(
-      fs.readFileSync(path.join(home, ".pi", "agent", "settings.json"), "utf8"),
+    const settings = YAML.parse(readFileSync(path.join(home, "agent", "config.yml"), "utf8"));
+    expect(settings.skills.customDirectories).not.toContain(
+      path.join(home, "agent", "sf-skills", "effective", "skills"),
     );
-    expect(settings.skills).not.toContain("~/.pi/agent/sf-skills/effective/skills");
   });
 
   it("removes descendant per-skill wiring under a checkout root", () => {
     const home = makeHome();
     process.env.HOME = home;
-    const root = path.join(home, ".pi", "agent", "sf-skills", "afv-library");
-    mkdirSync(path.join(home, ".pi", "agent"), { recursive: true });
+    const root = path.join(home, "agent", "sf-skills", "afv-library");
+    mkdirSync(path.join(home, "agent"), { recursive: true });
     writeFileSync(
-      path.join(home, ".pi", "agent", "settings.json"),
-      `${JSON.stringify({
-        skills: [
-          "~/.pi/agent/sf-skills/afv-library/skills/one/SKILL.md",
-          "~/.pi/agent/sf-skills/afv-library/skills/two/SKILL.md",
-        ],
-      })}\n`,
+      path.join(home, "agent", "config.yml"),
+      YAML.stringify({
+        skills: {
+          customDirectories: [
+            path.join(root, "skills", "one", "SKILL.md"),
+            path.join(root, "skills", "two", "SKILL.md"),
+          ],
+        },
+      }),
     );
 
     const result = unlinkCheckout({ target: root, scope: "global" });
@@ -310,10 +319,8 @@ describe("unlinkCheckout", () => {
     expect(result.ok).toBe(true);
     expect(result.settingsChanged).toBe(true);
     expect(result.removedEntries).toBe(2);
-    const settings = JSON.parse(
-      readFileSync(path.join(home, ".pi", "agent", "settings.json"), "utf8"),
-    );
-    expect(settings.skills).toEqual([]);
+    const settings = YAML.parse(readFileSync(path.join(home, "agent", "config.yml"), "utf8"));
+    expect(settings.skills.customDirectories).toEqual([]);
   });
 
   it("treats an already-absent managed directory as an idempotent delete", () => {
@@ -338,10 +345,10 @@ describe("unlinkCheckout", () => {
     process.env.HOME = home;
     const fake = path.join(home, "fake-checkout");
     mkdirSync(path.join(fake, "skills"), { recursive: true });
-    mkdirSync(path.join(home, ".pi", "agent"), { recursive: true });
+    mkdirSync(path.join(home, "agent"), { recursive: true });
     writeFileSync(
-      path.join(home, ".pi", "agent", "settings.json"),
-      `${JSON.stringify({ skills: [path.join(fake, "skills")] })}\n`,
+      path.join(home, "agent", "config.yml"),
+      YAML.stringify({ skills: { customDirectories: [path.join(fake, "skills")] } }),
     );
 
     const result = unlinkCheckout({
@@ -366,10 +373,10 @@ describe("handleDefaults unlink", () => {
     const cwd = makeCwd();
     const fake = path.join(home, "fake-checkout");
     mkdirSync(path.join(fake, "skills"), { recursive: true });
-    mkdirSync(path.join(home, ".pi", "agent"), { recursive: true });
+    mkdirSync(path.join(home, "agent"), { recursive: true });
     writeFileSync(
-      path.join(home, ".pi", "agent", "settings.json"),
-      `${JSON.stringify({ skills: [path.join(fake, "skills")] })}\n`,
+      path.join(home, "agent", "config.yml"),
+      YAML.stringify({ skills: { customDirectories: [path.join(fake, "skills")] } }),
     );
     let reloads = 0;
 
@@ -394,10 +401,14 @@ describe("legacy afv-library detection", () => {
   it("warns with explicit settings scope and does not recommend deleting an absent clone", () => {
     const home = makeHome();
     process.env.HOME = home;
-    mkdirSync(path.join(home, ".pi", "agent"), { recursive: true });
+    mkdirSync(path.join(home, "agent"), { recursive: true });
     writeFileSync(
-      path.join(home, ".pi", "agent", "settings.json"),
-      `${JSON.stringify({ skills: ["~/.pi/agent/sf-skills/afv-library/skills"] })}\n`,
+      path.join(home, "agent", "config.yml"),
+      YAML.stringify({
+        skills: {
+          customDirectories: [path.join(home, "agent", "sf-skills", "afv-library", "skills")],
+        },
+      }),
     );
 
     const detection = detectLegacyDefaultLibrary();
@@ -413,12 +424,16 @@ describe("legacy afv-library detection", () => {
     const home = makeHome();
     process.env.HOME = home;
     const cwd = makeCwd();
-    mkdirSync(path.join(cwd, ".pi"), { recursive: true });
+    mkdirSync(path.join(cwd, ".omp"), { recursive: true });
     writeFileSync(
-      path.join(cwd, ".pi", "settings.json"),
-      `${JSON.stringify({
-        skills: ["~/.pi/agent/sf-skills/afv-library/skills/example/SKILL.md"],
-      })}\n`,
+      path.join(cwd, ".omp", "config.yml"),
+      YAML.stringify({
+        skills: {
+          customDirectories: [
+            path.join(home, "agent", "sf-skills", "afv-library", "skills", "example", "SKILL.md"),
+          ],
+        },
+      }),
     );
 
     const warning = formatLegacyDefaultLibraryWarning(detectLegacyDefaultLibrary(cwd), {
@@ -433,61 +448,71 @@ describe("legacy afv-library detection", () => {
     const home = makeHome();
     process.env.HOME = home;
     const cwd = makeCwd();
-    mkdirSync(path.join(cwd, ".pi"), { recursive: true });
+    mkdirSync(path.join(cwd, ".omp"), { recursive: true });
+    const retiredSkill = path.join(
+      home,
+      "agent",
+      "sf-skills",
+      "afv-library",
+      "skills",
+      "example",
+      "SKILL.md",
+    );
     writeFileSync(
-      path.join(cwd, ".pi", "settings.json"),
-      `${JSON.stringify({
-        skills: ["~/.pi/agent/sf-skills/afv-library/skills/example/SKILL.md"],
-      })}\n`,
+      path.join(cwd, ".omp", "config.yml"),
+      YAML.stringify({ skills: { customDirectories: [retiredSkill] } }),
     );
 
     const result = await installDefaults({ scope: "project", cwd, spawn: fakeGit });
 
     expect(result.ok).toBe(true);
     expect(detectLegacyDefaultLibrary(cwd).wired).toBe(false);
-    const settings = JSON.parse(readFileSync(path.join(cwd, ".pi", "settings.json"), "utf8"));
-    expect(settings.skills).toContain("~/.pi/agent/sf-skills/effective/skills");
-    expect(settings.skills).not.toContain(
-      "~/.pi/agent/sf-skills/afv-library/skills/example/SKILL.md",
+    const settings = YAML.parse(readFileSync(path.join(cwd, ".omp", "config.yml"), "utf8"));
+    expect(settings.skills.customDirectories).toContain(
+      path.join(home, "agent", "sf-skills", "effective", "skills"),
     );
+    expect(settings.skills.customDirectories).not.toContain(retiredSkill);
   });
 
   it("recommends deletion only for a sentinel-managed clone that exists", () => {
     const home = makeHome();
     process.env.HOME = home;
-    const root = path.join(home, ".pi", "agent", "sf-skills", "afv-library");
+    const root = path.join(home, "agent", "sf-skills", "afv-library");
     mkdirSync(path.join(root, "skills"), { recursive: true });
     writeFileSync(path.join(root, ".sf-skills-managed"), "managed\n");
 
     const warning = formatLegacyDefaultLibraryWarning(detectLegacyDefaultLibrary());
 
-    expect(warning).toContain(
-      "/sf-skills defaults unlink ~/.pi/agent/sf-skills/afv-library global --delete",
-    );
+    expect(warning).toContain(`/sf-skills defaults unlink ${root} global --delete`);
   });
 
   it("unwires the retired library when installing the new default", async () => {
     const home = makeHome();
     process.env.HOME = home;
-    mkdirSync(path.join(home, ".pi", "agent", "sf-skills", "afv-library", "skills"), {
+    mkdirSync(path.join(home, "agent", "sf-skills", "afv-library", "skills"), {
       recursive: true,
     });
-    mkdirSync(path.join(home, ".pi", "agent"), { recursive: true });
+    mkdirSync(path.join(home, "agent"), { recursive: true });
     writeFileSync(
-      path.join(home, ".pi", "agent", "settings.json"),
-      `${JSON.stringify({ skills: ["~/.pi/agent/sf-skills/afv-library/skills"] })}\n`,
+      path.join(home, "agent", "config.yml"),
+      YAML.stringify({
+        skills: {
+          customDirectories: [path.join(home, "agent", "sf-skills", "afv-library", "skills")],
+        },
+      }),
     );
 
     const result = await installDefaults({ scope: "global", spawn: fakeGit });
     expect(result.ok).toBe(true);
     expect(result.message).toMatch(/Removed retired forcedotcom\/afv-library/);
 
-    const settings = JSON.parse(
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require("node:fs").readFileSync(path.join(home, ".pi", "agent", "settings.json"), "utf8"),
+    const settings = YAML.parse(readFileSync(path.join(home, "agent", "config.yml"), "utf8"));
+    expect(settings.skills.customDirectories).toContain(
+      path.join(home, "agent", "sf-skills", "effective", "skills"),
     );
-    expect(settings.skills).toContain("~/.pi/agent/sf-skills/effective/skills");
-    expect(settings.skills).not.toContain("~/.pi/agent/sf-skills/afv-library/skills");
+    expect(settings.skills.customDirectories).not.toContain(
+      path.join(home, "agent", "sf-skills", "afv-library", "skills"),
+    );
     expect(result.message).toMatch(/will not be deleted automatically/);
     expect(result.message).not.toContain("defaults unlink");
   });
@@ -495,7 +520,7 @@ describe("legacy afv-library detection", () => {
   it("does not session-warn when the retired clone is only leftover on disk", () => {
     const home = makeHome();
     process.env.HOME = home;
-    mkdirSync(path.join(home, ".pi", "agent", "sf-skills", "afv-library", "skills"), {
+    mkdirSync(path.join(home, "agent", "sf-skills", "afv-library", "skills"), {
       recursive: true,
     });
 

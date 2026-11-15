@@ -56,19 +56,21 @@ describe("sf-code-analyzer auto-scan transcript", () => {
     expect(rendered).toContain(`[muted]${path.normalize("/tmp/report.json")}[/]`);
   });
 
-  it("registers human-only entry rendering instead of message rendering", () => {
+  it("presents human-only evidence through a native OMP widget", () => {
+    let start: ((_event: unknown, ctx: never) => void) | undefined;
+    const setWidget = vi.fn();
     const pi = {
-      registerEntryRenderer: vi.fn(),
-      registerMessageRenderer: vi.fn(),
+      on: (event: string, handler: typeof start) => {
+        if (event === "session_start") start = handler;
+      },
+      appendEntry: vi.fn(),
+      sendMessage: vi.fn(),
     };
-
     registerCodeAnalyzerTranscriptRenderer(pi as never);
-
-    expect(pi.registerEntryRenderer).toHaveBeenCalledWith(
-      CODE_ANALYZER_TRANSCRIPT_TYPE,
-      expect.any(Function),
-    );
-    expect(pi.registerMessageRenderer).not.toHaveBeenCalled();
+    start?.({}, { hasUI: true, ui: { setWidget } } as never);
+    emitCodeAnalyzerTranscript(pi as never, "Clean", { status: "clean" });
+    expect(setWidget).toHaveBeenLastCalledWith(CODE_ANALYZER_TRANSCRIPT_TYPE, expect.any(Function));
+    expect(pi.sendMessage).not.toHaveBeenCalled();
   });
 
   it("emits human-only transcript entries without sendMessage", () => {

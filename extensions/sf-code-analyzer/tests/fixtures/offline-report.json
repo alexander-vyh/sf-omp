@@ -1,0 +1,14 @@
+{
+  "runDir": ".",
+  "versions": { "code-analyzer": "offline-fixture" },
+  "violations": [
+    {
+      "engine": "pmd",
+      "rule": "ApexCRUDViolation",
+      "severity": 2,
+      "primaryLocationIndex": 0,
+      "locations": [{ "file": "classes/Example.cls", "startLine": 1, "startColumn": 1 }],
+      "message": "Offline report fixture: validate CRUD before querying."
+    }
+  ]
+}

@@ -6,6 +6,11 @@ SF Flow is a lean lifecycle extension for Salesforce Flow metadata. It helps age
 
 Normal Pi `read`, `write`, and `edit` tools own source changes. SF Flow owns only the explicit one-Flow lifecycle operations below; it is not a general metadata deployment surface.
 
+In OMP, topology is appended to the last existing text block through the
+awaited `assistant_message` rewrite hook, preserving non-text blocks and block
+positions. `session_stop` clears pending topology; `message_end` is not used to
+mutate persisted messages. Local authoring and analysis operations are unchanged.
+
 ## Core Flow Families
 
 V1 provides authoring blueprints for:

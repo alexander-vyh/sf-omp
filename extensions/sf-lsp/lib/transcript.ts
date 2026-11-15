@@ -1,22 +1,29 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
- * Inline transcript row for sf-lsp checks.
+ * Human-only evidence for sf-lsp checks.
  *
- * Uses `pi.appendEntry("sf-lsp", data)` plus `registerEntryRenderer()` so
- * the row appears in the TUI chat stream while staying OUT of the LLM
- * context. Pi custom messages are model-visible; custom entries are the
- * human-only transcript path.
- *
- * Two responsibilities:
- *   1. Decide whether to emit a row for a given sample (balanced vs verbose)
- *   2. Render the row when Pi calls our message renderer back
+ * Custom entries retain the diagnostic history without model-visible messages.
+ * OMP widgets present the latest check; diagnostic previews are always visible.
+ * The tool-result feedback remains the model-facing diagnostics channel.
  */
-import type { EntryRenderer, ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { Box, Text } from "@earendil-works/pi-tui";
 import { languageLongLabel, statusColor, type LspActivityStatus } from "./activity.ts";
 import type { SupportedLanguage } from "./types.ts";
 
 export const LSP_TRANSCRIPT_CUSTOM_TYPE = "sf-lsp";
+
+const presentationContexts = new WeakMap<ExtensionAPI, ExtensionContext>();
+
+export function registerLspTranscriptPresentation(pi: ExtensionAPI): void {
+  pi.on("session_start", (_event, ctx) => {
+    presentationContexts.set(pi, ctx);
+    if (ctx.hasUI) ctx.ui.setWidget(LSP_TRANSCRIPT_CUSTOM_TYPE, undefined);
+  });
+  pi.on("session_shutdown", () => {
+    presentationContexts.delete(pi);
+  });
+}
 
 export interface LspTranscriptDetails {
   language: SupportedLanguage;
@@ -59,6 +66,16 @@ export function emitTranscriptRow(pi: ExtensionAPI, details: LspTranscriptDetail
     content: buildPlainContent(details),
     details,
   });
+  const ctx = presentationContexts.get(pi);
+  if (ctx?.hasUI) {
+    ctx.ui.setWidget(LSP_TRANSCRIPT_CUSTOM_TYPE, (_tui, theme) =>
+      createTranscriptRenderer()(
+        { data: { content: buildPlainContent(details), details } },
+        { expanded: true },
+        theme,
+      ),
+    );
+  }
 }
 
 function buildPlainContent(details: LspTranscriptDetails): string {
@@ -86,8 +103,8 @@ function buildPlainContent(details: LspTranscriptDetails): string {
  * colors are reapplied via `theme.fg` at render time so theme changes pick
  * up correctly (see tui.md "Invalidation and Theme Changes").
  */
-export function createTranscriptRenderer(): EntryRenderer<LspTranscriptEntry> {
-  return (entry, options, theme) => {
+export function createTranscriptRenderer() {
+  return (entry: { data?: LspTranscriptEntry }, options: { expanded: boolean }, theme: Theme) => {
     const details = entry.data?.details;
     const status = details?.status ?? "idle";
     const color = statusColor(status);

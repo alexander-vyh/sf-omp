@@ -1,14 +1,13 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
- * Resolution Policy tests — funnel decisions compiled to settings.skills[]
+ * Resolution Policy tests — funnel decisions compiled to native skill-source
  * ops, including the ADR-0017 blocked cases and conflict exclusion.
  *
  * These use real temp settings files (settings-coverage reads them) plus
  * synthetic CatalogSkill rows for the funnel flags.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   planConflictWinner,
@@ -17,31 +16,34 @@ import {
   planSkillGate,
 } from "../lib/resolution.ts";
 import type { CatalogConflict, CatalogSkill, SkillCatalog } from "../lib/catalog.ts";
+import * as YAML from "yaml";
+import { nativeSkillSettingsPath } from "../../../lib/common/skill-sources/skill-settings.ts";
+import { nativeTestDir } from "./native-fixture.ts";
 
 const tempDirs: string[] = [];
 const AGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
 const originalAgentDir = process.env[AGENT_DIR_ENV];
 
 function makeHome(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "sf-skills-res-home-"));
+  const dir = nativeTestDir("sf-skills-res-home-");
   tempDirs.push(dir);
   // settings-coverage reads global settings from getAgentDir() (env-backed),
   // not from the `home` param — point it at a throwaway agent dir.
-  process.env[AGENT_DIR_ENV] = path.join(dir, ".pi", "agent");
+  process.env[AGENT_DIR_ENV] = path.join(dir, "agent");
   return dir;
 }
 
-/** Write a global settings.json under the active fake agent dir. */
+/** Write native OMP settings under the active isolated agent directory. */
 function writeGlobalSettings(home: string, skills: string[]): void {
-  const dir = path.join(home, ".pi", "agent");
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, "settings.json"), JSON.stringify({ skills }, null, 2));
+  const file = nativeSkillSettingsPath("global", home);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, YAML.stringify({ skills: { customDirectories: skills } }));
 }
 
 function writeProjectSettings(cwd: string, skills: string[]): void {
-  const dir = path.join(cwd, ".pi");
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, "settings.json"), JSON.stringify({ skills }, null, 2));
+  const file = nativeSkillSettingsPath("project", cwd);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, YAML.stringify({ skills: { customDirectories: skills } }));
 }
 
 function skillRow(over: Partial<CatalogSkill> & { filePath: string }): CatalogSkill {
@@ -63,7 +65,7 @@ function skillRow(over: Partial<CatalogSkill> & { filePath: string }): CatalogSk
 }
 
 function makeProjectDir(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "sf-skills-res-proj-"));
+  const dir = nativeTestDir("sf-skills-res-proj-");
   tempDirs.push(dir);
   return dir;
 }
@@ -113,7 +115,7 @@ describe("planSkillGate disable — ADR-0017 limits", () => {
   it("blocks disabling an auto-default skill", () => {
     const home = makeHome();
     writeGlobalSettings(home, []);
-    const file = path.join(home, ".pi", "agent", "skills", "alpha", "SKILL.md");
+    const file = path.join(home, "agent", "skills", "alpha", "SKILL.md");
     const plan = planSkillGate({
       skill: skillRow({ filePath: file, autoDefault: true, enabledGlobal: false }),
       enable: false,
@@ -186,10 +188,11 @@ describe("planConflictWinner", () => {
   }
 
   it("blocks report-only conflicts", () => {
+    const home = makeHome();
     const plan = planConflictWinner({
       conflict: conflict({ kind: "report-only", copies: [] }),
-      winnerPath: "/whatever",
-      cwd: "/tmp",
+      winnerPath: path.join(home, "dup", "SKILL.md"),
+      cwd: home,
     });
     expect(plan.blocked).toBe("report-only-conflict");
   });

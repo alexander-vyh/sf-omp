@@ -57,7 +57,7 @@ Open its Manager detail or change its package state with:
 - **Commands:** `/sf-flow`
 - **LLM tools:** `sf_flow`
 - **Providers:** _none_
-- **Events/hooks:** `session_start`, `tool_result`, `message_end`, `agent_settled`
+- **Events/hooks:** `session_start`, `tool_result`, `assistant_message`, `session_stop`
 
 </details>
 

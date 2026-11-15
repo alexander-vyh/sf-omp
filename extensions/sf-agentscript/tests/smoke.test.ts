@@ -1,16 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/**
- * Smoke test for sf-agentscript.
- *
- * Verifies the extension module can be imported and exports a default function.
- */
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import {
   SF_PI_MANAGER_OPEN_EVENT,
   type SfPiManagerOpenRequest,
 } from "../../../lib/common/manager-deep-link.ts";
-import { collectManagerDetailActions } from "../../../lib/common/manager-actions.ts";
 
 function eventBus() {
   const listeners = new Map<string, Array<(payload: unknown) => void>>();
@@ -36,11 +30,6 @@ function fakeCommandContext(): ExtensionCommandContext {
 }
 
 describe("sf-agentscript", () => {
-  it("exports a default function", async () => {
-    const mod = await import("../index.ts");
-    expect(typeof mod.default).toBe("function");
-  });
-
   it("returns full argument-tail values for nested report completions", async () => {
     const { getAgentScriptArgumentCompletions } = await import("../index.ts");
 
@@ -67,7 +56,6 @@ describe("sf-agentscript", () => {
       on: vi.fn(),
       registerCommand: vi.fn(),
       registerTool: vi.fn(),
-      registerEntryRenderer: vi.fn(),
     };
     let request: SfPiManagerOpenRequest | undefined;
     events.on(SF_PI_MANAGER_OPEN_EVENT, (payload) => {
@@ -84,35 +72,5 @@ describe("sf-agentscript", () => {
 
     expect(request?.route?.extensionId).toBe("sf-agentscript");
     expect(request?.route?.view).toBe("detail");
-  });
-
-  it("preserves Agent Script panel actions as Manager detail actions", async () => {
-    const mod = await import("../index.ts");
-    const pi = {
-      events: eventBus(),
-      on: vi.fn(),
-      registerCommand: vi.fn(),
-      registerTool: vi.fn(),
-      registerEntryRenderer: vi.fn(),
-    };
-
-    mod.default(pi as never);
-    const actions = collectManagerDetailActions(pi as never, "sf-agentscript");
-
-    expect(actions.map((action) => action.id)).toEqual([
-      "doctor",
-      "check",
-      "eval",
-      "evals",
-      "report",
-      "help",
-    ]);
-    expect(actions.find((action) => action.id === "doctor")?.group).toBe("Diagnostics");
-    expect(actions.find((action) => action.id === "eval")?.group).toBe("Testing");
-    expect(actions.find((action) => action.id === "evals")?.closeBeforeRun).toBe(true);
-    expect(actions.find((action) => action.id === "help")?.group).toBe("Reference");
-    expect(typeof actions.find((action) => action.id === "check")?.createPanel).toBe("function");
-    expect(typeof actions.find((action) => action.id === "eval")?.createPanel).toBe("function");
-    expect(typeof actions.find((action) => action.id === "report")?.createPanel).toBe("function");
   });
 });

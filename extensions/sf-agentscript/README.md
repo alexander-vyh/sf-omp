@@ -104,14 +104,26 @@ intent; SF Guardrail owns the distinct human approval.
 /sf-agentscript help              Show command usage
 ```
 
+For an offline check in this repository, run:
+
+```text
+/sf-agentscript check extensions/sf-agentscript/tests/fixtures/NativeLocal.agent
+```
+
+The equivalent real tool operation is `agentscript_authoring` with
+`{"verb":"compile","mode":"check","agent_file":"extensions/sf-agentscript/tests/fixtures/NativeLocal.agent"}`.
+Both paths use the installed official SDK and require no Salesforce org call.
+
 ## Configuration
 
 Manager settings under `sfPi.agentScript` provide low-risk defaults for preview
 mock mode, eval trace mode, eval concurrency, deferred quality analysis, and the
-global per-rule quality catalog. Deferred analysis runs at Pi's actionable
-pre-settlement boundary; High/Moderate findings persist one hidden repair
-instruction and request one native continuation. Quality controls are global-only
-and read dynamically; explicit tool arguments win for one call.
+global per-rule quality catalog. Deferred analysis runs at OMP's `session_stop`
+boundary; High/Moderate findings request a native continuation with
+`additionalContext`. Unchanged finding signatures stop repair; OMP's continuation
+cap bounds changing findings. Durable scan cards appear in a human-only widget,
+restored on session and branch navigation. Quality controls are global-only and
+read dynamically; explicit tool arguments win for one call.
 
 ## Safety and Data Boundaries
 

@@ -1,193 +1,118 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Exact-Pi proof for the actionable settlement contract used by quality gates. */
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  createAssistantMessageEventStream,
-  createProvider,
-  type AssistantMessage,
-  type AssistantMessageEventStream,
-  type Model,
-} from "@earendil-works/pi-ai";
-import {
-  createAgentSession,
-  DefaultResourceLoader,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
-  type ExtensionAPI,
-} from "@earendil-works/pi-coding-agent";
+/** Offline proof of the native OMP hook boundary; no provider or org requests. */
+import { describe, expect, it, vi } from "vitest";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { registerDeferredCodeAnalyzerAutoScan } from "../lib/auto-scan.ts";
 
-const PROVIDER_ID = "sf-pi-actionable-boundary-test";
-const MODEL: Model<"openai-completions"> = {
-  id: "boundary-model",
-  provider: PROVIDER_ID,
-  api: "openai-completions",
-  name: "Boundary model",
-  baseUrl: "https://boundary.invalid/v1",
-  reasoning: false,
-  input: ["text"],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 8_192,
-  maxTokens: 1_024,
-};
+type Hook = (event: unknown, ctx: ExtensionContext) => unknown | Promise<unknown>;
 
-const tempDirs: string[] = [];
-
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
-
-function successStream(text: string): AssistantMessageEventStream {
-  const stream = createAssistantMessageEventStream();
-  const partial = assistantMessage([]);
-  const done = assistantMessage([{ type: "text", text }]);
-  queueMicrotask(() => {
-    stream.push({ type: "start", partial });
-    stream.push({ type: "text_delta", contentIndex: 0, delta: text, partial: done });
-    stream.push({ type: "done", reason: "stop", message: done });
-    stream.end();
-  });
-  return stream;
-}
-
-function assistantMessage(content: AssistantMessage["content"]): AssistantMessage {
-  return {
-    role: "assistant",
-    content,
-    api: MODEL.api,
-    provider: MODEL.provider,
-    model: MODEL.id,
-    usage: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 0,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-    stopReason: "stop",
-    timestamp: Date.now(),
+function harness() {
+  const hooks = new Map<string, Hook>();
+  const appendEntry = vi.fn();
+  const api = {
+    on: (event: string, hook: Hook) => hooks.set(event, hook),
+    appendEntry,
   };
-}
-
-async function createBoundarySession(factory: (pi: ExtensionAPI) => void) {
-  const cwd = mkdtempSync(path.join(tmpdir(), "sf-pi-actionable-boundary-"));
-  tempDirs.push(cwd);
-  const streams = [successStream("first response"), successStream("repair response")];
-  let calls = 0;
-  const nextStream = () => {
-    const stream = streams[calls++];
-    if (!stream) throw new Error(`Unexpected provider request ${calls}.`);
-    return stream;
-  };
-  const provider = createProvider({
-    id: PROVIDER_ID,
-    name: "SF Pi actionable boundary test",
-    auth: {
-      apiKey: {
-        name: "Test key",
-        async resolve() {
-          return { auth: { apiKey: "test-key" }, source: "test" };
+  const runCodeAnalyzer = vi.fn().mockResolvedValue({
+    kind: "run",
+    ok: true,
+    source: "code-analyzer-cli",
+    command: "sf code-analyzer run",
+    durationMs: 12,
+    reportFile: "/tmp/offline-analyzer.json",
+    exitCode: 0,
+    run: {
+      violations: [
+        {
+          engine: "pmd",
+          rule: "ApexCRUDViolation",
+          severity: 2,
+          primaryLocationIndex: 0,
+          locations: [{ file: "classes/Example.cls", startLine: 1, startColumn: 1 }],
+          message: "Validate CRUD",
         },
-      },
-    },
-    models: [MODEL],
-    api: {
-      "openai-completions": {
-        stream: nextStream,
-        streamSimple: nextStream,
-      },
+      ],
     },
   });
-  const modelRuntime = await ModelRuntime.create({
-    authPath: path.join(cwd, "auth.json"),
-    modelsPath: null,
-    allowModelNetwork: false,
+  // The runtime factory accepts the full API; this harness implements only used hooks.
+  const pi = api as unknown as ExtensionAPI;
+  registerDeferredCodeAnalyzerAutoScan(pi, vi.fn(), {
+    readSettings: () => ({
+      autoScan: true,
+      apexGuruAuto: false,
+      sources: { autoScan: "default", apexGuruAuto: "default" },
+    }),
+    readReadiness: () => ({ status: "ready", summary: "ready" }),
+    isReadyForAutoScan: () => true,
+    runCodeAnalyzer,
+    buildScanRecipeGuidance: () => ({ recipes: [], suggestions: [], herdrHandoffs: [], text: "" }),
   });
-  modelRuntime.registerNativeProvider(provider);
-  const settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
-  const resourceLoader = new DefaultResourceLoader({
-    cwd,
-    agentDir: cwd,
-    settingsManager,
-    extensionFactories: [factory],
-    noSkills: true,
-    noPromptTemplates: true,
-    noThemes: true,
-    noContextFiles: true,
-  });
-  await resourceLoader.reload();
-  const { session } = await createAgentSession({
-    cwd,
-    agentDir: cwd,
-    model: MODEL,
-    noTools: "all",
-    modelRuntime,
-    settingsManager,
-    resourceLoader,
-    sessionManager: SessionManager.inMemory(),
-  });
-  return { session, calls: () => calls };
+  // No UI or session-manager functionality is used by the deferred scan.
+  const ctx = { cwd: "/tmp/offline-diagnostics" } as ExtensionContext;
+  const changedFile = () =>
+    hooks.get("tool_result")?.(
+      {
+        toolName: "write",
+        input: { path: "classes/Example.cls" },
+        content: [],
+        isError: false,
+        details: {},
+      },
+      ctx,
+    );
+  const stop = (signal: AbortSignal) =>
+    hooks.get("session_stop")?.(
+      {
+        type: "session_stop",
+        messages: [],
+        turn_id: 1,
+        session_id: "offline-native-boundary",
+        stop_hook_active: false,
+        signal,
+      },
+      ctx,
+    );
+  return { hooks, appendEntry, runCodeAnalyzer, changedFile, stop };
 }
 
-describe("Pi 0.87 actionable settlement", () => {
-  it("chains prior drafts, persists one repair entry, and continues exactly once", async () => {
-    const order: string[] = [];
-    let priorAdded = false;
-    let repairAdded = false;
-    const { session, calls } = await createBoundarySession((pi) => {
-      pi.on("agent_before_settle", (event) => {
-        order.push(`prior:${event.entries.length}`);
-        if (priorAdded) return;
-        priorAdded = true;
-        return {
-          entries: [
-            ...event.entries,
-            { type: "custom", customType: "prior-boundary", data: { ready: true } },
-          ],
-        };
-      });
-      pi.on("agent_before_settle", (event) => {
-        order.push(`repair:${event.entries.length}`);
-        if (repairAdded) return;
-        repairAdded = true;
-        return {
-          entries: [
-            ...event.entries,
-            {
-              type: "custom_message",
-              customType: "quality-repair",
-              content: "Apply the bounded repair.",
-              display: false,
-            },
-          ],
-          continue: true,
-        };
-      });
-      pi.on("agent_settled", () => {
-        order.push("settled");
-      });
+describe("OMP session_stop Code Analyzer boundary", () => {
+  it("returns repair context without replacing or fabricating session entries", async () => {
+    const h = harness();
+    await h.changedFile();
+    const result = await h.stop(new AbortController().signal);
+    expect(h.hooks.has("agent_before_settle")).toBe(false);
+    expect(result).toEqual({
+      continue: true,
+      additionalContext: expect.stringContaining("ApexCRUDViolation"),
     });
+    expect(h.appendEntry).toHaveBeenCalledWith(
+      "sf-code-analyzer",
+      expect.objectContaining({
+        details: expect.objectContaining({ status: "findings" }),
+      }),
+    );
+    expect(await h.stop(new AbortController().signal)).toBeUndefined();
+    expect(h.runCodeAnalyzer).toHaveBeenCalledOnce();
+  });
 
-    try {
-      await session.prompt("begin");
-      expect(calls()).toBe(2);
-      expect(order).toEqual(["prior:0", "repair:1", "prior:0", "repair:0", "settled"]);
-      expect(session.sessionManager.getEntries()).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ type: "custom", customType: "prior-boundary" }),
-          expect.objectContaining({
-            type: "custom_message",
-            customType: "quality-repair",
-            content: "Apply the bounded repair.",
-          }),
-        ]),
-      );
-    } finally {
-      session.dispose();
-    }
+  it("retains pending targets when an already-aborted settle pass is skipped", async () => {
+    const h = harness();
+    await h.changedFile();
+    const controller = new AbortController();
+    controller.abort();
+    expect(await h.stop(controller.signal)).toBeUndefined();
+    expect(h.runCodeAnalyzer).not.toHaveBeenCalled();
+    expect(await h.stop(new AbortController().signal)).toMatchObject({ continue: true });
+  });
+
+  it("does not request a repair continuation after a scan is cancelled", async () => {
+    const h = harness();
+    const controller = new AbortController();
+    h.runCodeAnalyzer.mockImplementationOnce(async () => {
+      controller.abort();
+      return { run: { violations: [] } };
+    });
+    await h.changedFile();
+    expect(await h.stop(controller.signal)).toBeUndefined();
   });
 });

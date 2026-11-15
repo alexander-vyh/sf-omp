@@ -28,6 +28,7 @@ import { fetchLatestApex } from "./versioning.ts";
 import { installApex, installLwc } from "./installer.ts";
 import { readLspInstallState, recordComponentDecision } from "./state.ts";
 import { doctorLsp } from "../lsp-client.ts";
+import { lspRootDir } from "./paths.ts";
 import type {
   ComponentDecision,
   ComponentInstallResult,
@@ -237,28 +238,14 @@ async function runInstalls(
 // file's concerns).
 // -------------------------------------------------------------------------------------------------
 
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
 function pushIndicator(ctx: ExtensionContext, label: string): void {
   if (!ctx.hasUI) return;
-  const theme = ctx.ui.theme;
-  const frames = SPINNER_FRAMES.map(
-    (frame) => `${theme.fg("accent", frame)} ${theme.fg("dim", `Installing ${label}…`)}`,
-  );
-  try {
-    ctx.ui.setWorkingIndicator({ frames, intervalMs: 80 });
-  } catch {
-    // older pi builds may lack WorkingIndicatorOptions
-  }
+  ctx.ui.setWorkingMessage(`Installing ${label}…`);
 }
 
 function popIndicator(ctx: ExtensionContext): void {
   if (!ctx.hasUI) return;
-  try {
-    ctx.ui.setWorkingIndicator();
-  } catch {
-    // ignore
-  }
+  ctx.ui.setWorkingMessage();
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -279,9 +266,9 @@ export function renderPromptBody(components: ComponentReport[]): string {
   });
 
   return [
-    "sf-pi wants to keep these Salesforce LSP servers current so Apex and",
+    "sf-omp keeps these Salesforce LSP servers current so Apex and",
     "LWC diagnostics work out of the box. Downloads land under",
-    "  ~/.pi/agent/lsp/",
+    `  ${lspRootDir()}`,
     "(no sudo, no global npm, no PATH changes).",
     "",
     ...rows,

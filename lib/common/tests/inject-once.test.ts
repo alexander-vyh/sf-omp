@@ -9,7 +9,6 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  buildContextEntries,
   type CompactionEntry,
   type CustomEntry,
   type CustomMessageEntry,
@@ -81,9 +80,8 @@ function customStateMarker(parentId: string | null, customType: string): CustomE
 
 function session(entries: readonly SessionEntry[]): ActiveContextSession {
   const copy = [...entries];
-  const leafId = copy.at(-1)?.id ?? null;
   return {
-    buildContextEntries: () => buildContextEntries(copy, leafId),
+    getBranch: () => copy,
   };
 }
 

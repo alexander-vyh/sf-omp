@@ -23,6 +23,7 @@
  */
 import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
+import { readSkillSourceSettings } from "../../../lib/common/skill-sources/skill-settings.ts";
 import { globalAgentPath } from "../../../lib/common/pi-paths.ts";
 import {
   detectSkillSources,
@@ -172,7 +173,7 @@ function isReferencedInSettings(
   const normalizedTarget = path.normalize(absolutePath);
   for (const settingsPath of [detection.settingsPath, detection.projectSettingsPath]) {
     if (!settingsPath) continue;
-    const skills = readSkillsArray(settingsPath);
+    const skills = readSkillsArray(settingsPath, cwd);
     for (const value of skills) {
       const expanded = expandSkillsValue(value, settingsPath, cwd);
       if (!expanded) continue;
@@ -185,21 +186,8 @@ function isReferencedInSettings(
   return false;
 }
 
-function readSkillsArray(settingsPath: string): string[] {
-  if (!existsSync(settingsPath)) return [];
-  try {
-    // Avoid pulling in the skill-sources internal helpers — just read
-    // the file directly. Reads are cheap and only happen on prune.
-    const raw = JSON.parse(
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require("node:fs").readFileSync(settingsPath, "utf8"),
-    );
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
-    const skills = (raw as Record<string, unknown>).skills;
-    return Array.isArray(skills) ? skills.filter((v): v is string => typeof v === "string") : [];
-  } catch {
-    return [];
-  }
+function readSkillsArray(settingsPath: string, cwd?: string): string[] {
+  return readSkillSourceSettings(settingsPath, cwd).customDirectories;
 }
 
 function expandSkillsValue(value: string, settingsPath: string, cwd: string): string | null {

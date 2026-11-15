@@ -14,7 +14,8 @@ import {
 
 let tempAgentDir: string;
 
-vi.mock("@earendil-works/pi-coding-agent", () => ({
+vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getAgentDir: () => tempAgentDir,
 }));
 
@@ -94,7 +95,7 @@ describe("SF Brain display capabilities", () => {
       glyphMode: "emoji",
     });
     const session = (content?: string) => ({
-      buildContextEntries: (): SessionEntry[] =>
+      getBranch: (): SessionEntry[] =>
         content === undefined
           ? []
           : [

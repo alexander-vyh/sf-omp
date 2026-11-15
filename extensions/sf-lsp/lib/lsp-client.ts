@@ -281,8 +281,7 @@ async function discoverApexLaunch(cwd: string): Promise<LaunchSpec | LspDoctorSt
   return {
     language: "apex",
     available: false,
-    detail:
-      "Apex LSP jar not found. Place apex-jorje-lsp.jar in .pi/lsp/apex/, ~/.pi/agent/lsp/apex/, set SF_LSP_APEX_JAR/APEX_LSP_JAR, or install the Salesforce VS Code Apex extension.",
+    detail: `Apex LSP jar not found. Place apex-jorje-lsp.jar in .pi/lsp/apex/ or ${globalAgentPath("lsp", "apex")}, set SF_LSP_APEX_JAR/APEX_LSP_JAR, or install the Salesforce VS Code Apex extension.`,
   };
 }
 
@@ -360,8 +359,7 @@ async function discoverAgentScriptLaunch(cwd: string): Promise<LaunchSpec | LspD
   return {
     language: "agentscript",
     available: false,
-    detail:
-      "Agent Script LSP server not found. Place server.mjs (v2.x) or server.js (v1.x) in .pi/lsp/agentscript/, ~/.pi/agent/lsp/agentscript/, set SF_LSP_AGENTSCRIPT_SERVER/AGENTSCRIPT_LSP_SERVER, or install the Salesforce Agent Script VS Code extension.",
+    detail: `Agent Script LSP server not found. Place server.mjs (v2.x) or server.js (v1.x) in .pi/lsp/agentscript/ or ${globalAgentPath("lsp", "agentscript")}, set SF_LSP_AGENTSCRIPT_SERVER/AGENTSCRIPT_LSP_SERVER, or install the Salesforce Agent Script VS Code extension.`,
   };
 }
 
@@ -461,8 +459,7 @@ async function discoverLwcLaunch(cwd: string): Promise<LaunchSpec | LspDoctorSta
   return {
     language: "lwc",
     available: false,
-    detail:
-      "lwc-language-server not found. Run /sf-lsp install to auto-install, drop the binary into .pi/lsp/bin/ or ~/.pi/agent/lsp/bin/, or set SF_LSP_LWC_COMMAND.",
+    detail: `lwc-language-server not found. Run /sf-lsp install, drop the binary into .pi/lsp/bin/ or ${globalAgentPath("lsp", "bin")}, or set SF_LSP_LWC_COMMAND.`,
   };
 }
 

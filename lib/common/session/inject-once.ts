@@ -24,15 +24,21 @@
  *   Predicates that check `type === "custom"` never match a real injection.
  *   This helper only matches `custom_message`, so the bug class disappears.
  *
- * - **Branch and compaction projection.** The helper reads Pi's public
- *   `buildContextEntries()` projection, which follows only the active leaf and
- *   omits entries swept into the latest compaction summary.
+ * - **Branch and compaction projection.** OMP's public `buildSessionContext`
+ *   projects the active branch, including provider-specific compaction and
+ *   reset boundaries. Read its model messages, not the unprojected journal.
  */
-import type { CustomMessageEntry, SessionEntry } from "@earendil-works/pi-coding-agent";
+import {
+  buildSessionContext,
+  type CustomMessageEntry,
+  type SessionEntry,
+} from "@earendil-works/pi-coding-agent";
 
 export interface ActiveContextSession {
-  buildContextEntries(): SessionEntry[];
+  getBranch(): SessionEntry[];
 }
+
+export type LiveCustomMessage = Pick<CustomMessageEntry, "customType" | "content" | "details">;
 
 /**
  * Type guard for a `custom_message` entry with the given customType.
@@ -61,12 +67,12 @@ export function isLiveCustomMessageEntry(
 export function shouldInjectOnce(
   sessionManager: ActiveContextSession,
   customType: string,
-  predicate: (entry: CustomMessageEntry) => boolean = () => true,
+  predicate: (entry: LiveCustomMessage) => boolean = () => true,
 ): boolean {
-  const entries = sessionManager.buildContextEntries();
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const entry = entries[i];
-    if (isLiveCustomMessageEntry(entry, customType)) return !predicate(entry);
+  const messages = buildSessionContext(sessionManager.getBranch()).messages;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message.role === "custom" && message.customType === customType) return !predicate(message);
   }
   return true;
 }

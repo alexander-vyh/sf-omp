@@ -11,11 +11,10 @@ afterEach(async () => {
 });
 
 describe("Eval Studio public open seam", () => {
-  it("mounts the exact Pi custom overlay with top-center responsive options", async () => {
+  it("mounts the native custom overlay with top-center responsive options", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "eval-studio-open-"));
     dirs.push(cwd);
     await writeFile(path.join(cwd, "sfdx-project.json"), "{}");
-    const setWorkingVisible = vi.fn();
     let overlayOptions: unknown;
     const custom = vi.fn(async (factory, options) => {
       overlayOptions = options.overlayOptions();
@@ -37,7 +36,7 @@ describe("Eval Studio public open seam", () => {
         cwd,
         mode: "tui",
         hasUI: true,
-        ui: { custom, setWorkingVisible },
+        ui: { custom },
       } as never,
     );
     expect(overlayOptions).toEqual({
@@ -46,7 +45,24 @@ describe("Eval Studio public open seam", () => {
       minWidth: 64,
       maxHeight: "92%",
     });
-    expect(setWorkingVisible.mock.calls).toEqual([[false], [true]]);
+  });
+
+  it("propagates a native custom UI failure", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "eval-studio-open-"));
+    dirs.push(cwd);
+    await writeFile(path.join(cwd, "sfdx-project.json"), "{}");
+    const error = new Error("overlay mount failed");
+    await expect(
+      openEvalStudio(
+        { appendEntry: vi.fn() } as never,
+        {
+          cwd,
+          mode: "tui",
+          hasUI: true,
+          ui: { custom: vi.fn().mockRejectedValue(error) },
+        } as never,
+      ),
+    ).rejects.toBe(error);
   });
 
   it("returns a bounded local inventory in non-TUI mode without mounting custom UI", async () => {

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Human-only transcript renderer for deferred Agent Script quality cards. */
-import type { EntryRenderer, ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+/** Human-only quality widgets, restored from durable branch entries on navigation. */
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { Text, type Component } from "@earendil-works/pi-tui";
 import { AGENT_SCRIPT_QUALITY_ENTRY_TYPE } from "./auto-scan.ts";
 import {
   createQualityCardComponent,
@@ -28,13 +28,32 @@ type AgentScriptQualityTranscriptEntry =
   AgentScriptQualityCardData | LegacyAgentScriptQualityTranscriptEntry;
 
 export function registerAgentScriptQualityTranscriptRenderer(pi: ExtensionAPI): void {
-  pi.registerEntryRenderer<AgentScriptQualityTranscriptEntry>(
-    AGENT_SCRIPT_QUALITY_ENTRY_TYPE,
-    createAgentScriptQualityTranscriptRenderer(),
-  );
+  const restore = (_event: unknown, ctx: ExtensionContext): void => {
+    if (ctx.mode !== "tui") return;
+    const entries = ctx.sessionManager.getBranch();
+    for (let index = entries.length - 1; index >= 0; index--) {
+      const entry = entries[index];
+      if (entry.type !== "custom" || entry.customType !== AGENT_SCRIPT_QUALITY_ENTRY_TYPE) continue;
+      const card = normalizeCard(entry.data as AgentScriptQualityTranscriptEntry | undefined);
+      if (!card) continue;
+      ctx.ui.setWidget(AGENT_SCRIPT_QUALITY_ENTRY_TYPE, (_tui, theme) =>
+        createAgentScriptQualityTranscriptRenderer()({ data: card }, { expanded: false }, theme),
+      );
+      return;
+    }
+    ctx.ui.setWidget(AGENT_SCRIPT_QUALITY_ENTRY_TYPE, undefined);
+  };
+  pi.on("session_start", restore);
+  const native = pi as unknown as { on(event: "session_switch", handler: typeof restore): void };
+  native.on("session_switch", restore);
+  pi.on("session_tree", restore);
 }
 
-export function createAgentScriptQualityTranscriptRenderer(): EntryRenderer<AgentScriptQualityTranscriptEntry> {
+export function createAgentScriptQualityTranscriptRenderer(): (
+  entry: { data?: AgentScriptQualityTranscriptEntry },
+  options: { expanded: boolean },
+  theme: Theme,
+) => Component {
   return (entry, options, theme) => {
     const card = normalizeCard(entry.data);
     return card

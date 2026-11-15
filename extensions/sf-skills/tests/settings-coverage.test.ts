@@ -14,29 +14,40 @@
  *      sibling expansion the apply path must write back.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { planDisable, planEnable } from "../lib/settings-coverage.ts";
+import * as YAML from "yaml";
+import { nativeSkillSettingsPath } from "../../../lib/common/skill-sources/skill-settings.ts";
+import {
+  updateSkillSources,
+  type SkillSourceScope,
+} from "../../../lib/common/skill-sources/skill-sources.ts";
+import { nativeTestDir } from "./native-fixture.ts";
 
 const tempDirs: string[] = [];
 const originalHome = process.env.HOME;
+const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 
 function makeHome(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "sf-skills-cov-home-"));
+  const dir = nativeTestDir("sf-skills-cov-home-");
   tempDirs.push(dir);
+  process.env.PI_CODING_AGENT_DIR = path.join(dir, "agent");
   return dir;
 }
 
 function makeCwd(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "sf-skills-cov-cwd-"));
+  const dir = nativeTestDir("sf-skills-cov-cwd-");
   tempDirs.push(dir);
   return dir;
 }
 
-function writeSettings(filePath: string, body: Record<string, unknown>): void {
+function writeSettings(scope: SkillSourceScope, cwd: string, skills: string[]): void {
+  const filePath = nativeSkillSettingsPath(scope, cwd);
   mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(filePath, `${JSON.stringify(body, null, 2)}\n`, "utf8");
+  writeFileSync(filePath, YAML.stringify({ skills: { customDirectories: [] } }), "utf8");
+  // Individual files must use the native single-skill projection, not widen to their siblings.
+  updateSkillSources({ add: skills, remove: [], scope, cwd });
 }
 
 function makeSkill(root: string, name: string): string {
@@ -50,6 +61,8 @@ function makeSkill(root: string, name: string): string {
 afterEach(() => {
   if (originalHome === undefined) delete process.env.HOME;
   else process.env.HOME = originalHome;
+  if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+  else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -59,9 +72,7 @@ describe("planDisable", () => {
     process.env.HOME = home;
     const root = path.join(home, ".claude", "skills");
     const skill = makeSkill(root, "demo");
-    writeSettings(path.join(home, ".pi", "agent", "settings.json"), {
-      skills: [skill],
-    });
+    writeSettings("global", home, [skill]);
 
     const plan = planDisable({ skillPath: skill, scope: "global", cwd: makeCwd() });
     expect(plan.coverage).toBe("exact");
@@ -76,13 +87,11 @@ describe("planDisable", () => {
     const a = makeSkill(root, "alpha");
     const b = makeSkill(root, "beta");
     const c = makeSkill(root, "gamma");
-    writeSettings(path.join(home, ".pi", "agent", "settings.json"), {
-      skills: ["~/.claude/skills"],
-    });
+    writeSettings("global", home, ["~/.claude/skills"]);
 
     const plan = planDisable({ skillPath: b, scope: "global", cwd: makeCwd() });
     expect(plan.coverage).toBe("parent");
-    expect(plan.remove).toEqual(["~/.claude/skills"]);
+    expect(plan.remove).toEqual([root]);
     // Order isn't guaranteed by readdirSync — sort for stable assertion.
     expect([...plan.add].sort()).toEqual([a, c].sort());
     expect(plan.expandedFrom).toBe(root);
@@ -93,7 +102,7 @@ describe("planDisable", () => {
     const home = makeHome();
     process.env.HOME = home;
     // Skill exists, but no settings entry covers it (auto-discovered case).
-    const skill = makeSkill(path.join(home, ".pi", "agent", "skills"), "auto");
+    const skill = makeSkill(path.join(home, "agent", "skills"), "auto");
     const plan = planDisable({ skillPath: skill, scope: "global", cwd: makeCwd() });
     expect(plan.coverage).toBe("none");
     expect(plan.remove).toEqual([]);
@@ -106,13 +115,11 @@ describe("planDisable", () => {
     const cwd = makeCwd();
     const root = path.join(cwd, ".claude", "skills");
     const skill = makeSkill(root, "demo");
-    writeSettings(path.join(cwd, ".pi", "settings.json"), {
-      skills: ["./.claude/skills"],
-    });
+    writeSettings("project", cwd, ["./.claude/skills"]);
 
     const plan = planDisable({ skillPath: skill, scope: "project", cwd });
     expect(plan.coverage).toBe("parent");
-    expect(plan.remove).toEqual(["./.claude/skills"]);
+    expect(plan.remove).toEqual([root]);
     expect(plan.add).toEqual([]); // only one skill under the parent
   });
 });
@@ -123,14 +130,16 @@ describe("planEnable", () => {
     process.env.HOME = home;
     const root = path.join(home, ".claude", "skills");
     const skill = makeSkill(root, "demo");
-    writeSettings(path.join(home, ".pi", "agent", "settings.json"), {
-      skills: [skill],
-    });
+    const sibling = makeSkill(root, "sibling");
+    writeSettings("global", home, [skill]);
 
     const plan = planEnable({ skillPath: skill, scope: "global", cwd: makeCwd() });
     expect(plan.alreadyCovered).toBe(true);
     expect(plan.coveredInScope).toBe("global");
     expect(plan.add).toEqual([]);
+    const siblingPlan = planEnable({ skillPath: sibling, scope: "global", cwd: makeCwd() });
+    expect(siblingPlan.alreadyCovered).toBe(false);
+    expect(siblingPlan.add).toEqual([sibling]);
   });
 
   it("returns alreadyCovered when a parent dir entry covers the file", () => {
@@ -138,9 +147,7 @@ describe("planEnable", () => {
     process.env.HOME = home;
     const root = path.join(home, ".claude", "skills");
     const skill = makeSkill(root, "demo");
-    writeSettings(path.join(home, ".pi", "agent", "settings.json"), {
-      skills: ["~/.claude/skills"],
-    });
+    writeSettings("global", home, ["~/.claude/skills"]);
 
     const plan = planEnable({ skillPath: skill, scope: "global", cwd: makeCwd() });
     expect(plan.alreadyCovered).toBe(true);
@@ -154,7 +161,7 @@ describe("planEnable", () => {
     const root = path.join(home, ".claude", "skills");
     const skill = makeSkill(root, "demo");
     // Settings empty.
-    writeSettings(path.join(home, ".pi", "agent", "settings.json"), { skills: [] });
+    writeSettings("global", home, []);
 
     const plan = planEnable({ skillPath: skill, scope: "global", cwd: makeCwd() });
     expect(plan.alreadyCovered).toBe(false);
@@ -171,10 +178,8 @@ describe("planEnable", () => {
     const cwd = makeCwd();
     const root = path.join(home, ".claude", "skills");
     const skill = makeSkill(root, "demo");
-    writeSettings(path.join(home, ".pi", "agent", "settings.json"), {
-      skills: ["~/.claude/skills"],
-    });
-    writeSettings(path.join(cwd, ".pi", "settings.json"), { skills: [] });
+    writeSettings("global", cwd, ["~/.claude/skills"]);
+    writeSettings("project", cwd, []);
 
     const plan = planEnable({ skillPath: skill, scope: "project", cwd });
     expect(plan.alreadyCovered).toBe(true);
@@ -188,9 +193,7 @@ describe("planEnable", () => {
     const cwd = makeCwd();
     const root = path.join(cwd, ".claude", "skills");
     const skill = makeSkill(root, "demo");
-    writeSettings(path.join(cwd, ".pi", "settings.json"), {
-      skills: ["./.claude/skills"],
-    });
+    writeSettings("project", cwd, ["./.claude/skills"]);
 
     const plan = planEnable({ skillPath: skill, scope: "global", cwd });
     expect(plan.alreadyCovered).toBe(true);

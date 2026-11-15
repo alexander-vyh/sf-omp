@@ -12,9 +12,11 @@ Catalog → Sources → Global → Project → Effective
 The interactive view inventories every discovered copy, gates source roots,
 controls global/project wiring, identifies additive-scope limits, resolves
 eligible name conflicts, and reports auto-discovered copies it cannot override.
-Pi remains the only skill loader for _wiring_. The Funnel still compiles load
-decisions into native `settings.skills[]` and does not rename user `SKILL.md`
-files. Managed-library _invocation_ is separate: `/sf-skills toggle` stamps
+OMP remains the only skill loader for _wiring_. The Funnel uses the shared native
+skill-source settings adapter for `skills.customDirectories` and preserves
+`skills.ignoredSkills`. Catalog loading awaits OMP's asynchronous loaders and
+remains explicit-command-only. Managed-library _invocation_ is separate:
+`/sf-skills toggle` stamps
 `disable-model-invocation` on a global `effective/` copy so unused skills stay
 out of the system prompt while `/skill:name` keeps working.
 
@@ -26,6 +28,9 @@ or `pi mcp` for those workflows. SF Skills does not install, recommend, or inspe
 third-party MCP adapters. A retired `forcedotcom/afv-library` checkout is detected
 and warned; `/sf-skills defaults install` switches wiring to the new library
 without deleting the old clone.
+
+Funnel and toggle overlays use OMP's `ui.custom` lifecycle; they do not override
+the working indicator with unsupported visibility calls.
 
 ## Commands
 

@@ -12,19 +12,11 @@
  * Dependencies are injected so the assembly logic is unit-testable without a
  * live Pi runtime or the real agent dir.
  */
-import { existsSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  loadSkills as realLoadSkills,
-  loadSkillsFromDir as realLoadSkillsFromDir,
-  type SlashCommandInfo,
-} from "@earendil-works/pi-coding-agent";
-import {
-  globalAgentDir,
-  globalSettingsPath,
-  projectSettingsPath,
-} from "../../../lib/common/pi-paths.ts";
+import { type SlashCommandInfo } from "@earendil-works/pi-coding-agent";
+import { globalAgentDir } from "../../../lib/common/pi-paths.ts";
 import { detectSkillSources } from "../../../lib/common/skill-sources/skill-sources.ts";
 import {
   readSourceRegistry,
@@ -38,15 +30,33 @@ import type {
   SkillCatalogInput,
   SkillUsage,
 } from "./catalog.ts";
-import { readFileSync } from "node:fs";
+import { readSkillSettings } from "../../../lib/common/skill-sources/skill-settings.ts";
 
 // -------------------------------------------------------------------------------------------------
 // Injectable deps
 // -------------------------------------------------------------------------------------------------
 
+interface GatherLoadResult {
+  skills: Array<{ name: string; filePath: string; description?: string }>;
+  diagnostics?: Array<{
+    type: string;
+    collision?: { name: string; winnerPath: string; loserPath: string };
+  }>;
+}
+
 export interface GatherDeps {
-  loadSkills: typeof realLoadSkills;
-  loadSkillsFromDir: typeof realLoadSkillsFromDir;
+  loadSkills: (options: {
+    cwd: string;
+    customDirectories: string[];
+    ignoredSkills: string[];
+    enablePiProject: boolean;
+    enableClaudeProject: boolean;
+    enableAgentsProject: boolean;
+  }) => GatherLoadResult | Promise<GatherLoadResult>;
+  loadSkillsFromDir: (options: {
+    dir: string;
+    source: string;
+  }) => GatherLoadResult | Promise<GatherLoadResult>;
   getCommands: () => SlashCommandInfo[];
   /** Override $HOME (tests). */
   home?: string;
@@ -71,16 +81,16 @@ export interface GatherOptions {
  * Assemble a `SkillCatalogInput` from the live environment. Pure logic lives
  * in `buildSkillCatalog`; this just collects the six inputs.
  */
-export function gatherCatalogInput(opts: GatherOptions): SkillCatalogInput {
+export async function gatherCatalogInput(opts: GatherOptions): Promise<SkillCatalogInput> {
   const { cwd, deps } = opts;
   const projectTrusted = opts.projectTrusted !== false;
   const home = deps.home ?? os.homedir();
   const agentDir = deps.agentDir ?? globalAgentDir();
 
-  const settingsGlobal = readSettingsEntries(globalSettingsPath(), home, cwd);
-  const settingsProject = projectTrusted
-    ? readSettingsEntries(projectSettingsPath(cwd), home, cwd)
-    : [];
+  const global = readSkillSettings("global", cwd);
+  const project = projectTrusted ? readSkillSettings("project", cwd) : undefined;
+  const settingsGlobal = readSettingsEntries(global.customDirectories, home, cwd);
+  const settingsProject = readSettingsEntries(project?.customDirectories ?? [], home, cwd);
 
   const registryGlobal = readSourceRegistry("global");
   const registryProject = projectTrusted ? readSourceRegistry("project", cwd) : [];
@@ -91,14 +101,23 @@ export function gatherCatalogInput(opts: GatherOptions): SkillCatalogInput {
   // not rediscover project-local skills behind Pi's trust gate.
   const skillPaths = uniq([
     ...(projectTrusted ? [] : [path.join(agentDir, "skills")]),
-    ...settingsGlobal.map((e) => e.raw),
-    ...settingsProject.map((e) => e.raw),
+    ...global.nativeDirectories,
+    ...(project?.nativeDirectories ?? []),
     ...[...registryGlobal, ...registryProject].filter((s) => s.gate === "seen").map((s) => s.value),
   ]);
 
-  const load = deps.loadSkills({ cwd, agentDir, skillPaths, includeDefaults: projectTrusted });
+  const load = await deps.loadSkills({
+    cwd,
+    customDirectories: skillPaths,
+    ignoredSkills: [...global.ignoredSkills, ...(project?.ignoredSkills ?? [])],
+    enablePiProject: projectTrusted,
+    enableClaudeProject: projectTrusted,
+    enableAgentsProject: projectTrusted,
+  });
   const winners = load.skills.map((s) => ({ name: s.name, filePath: s.filePath }));
-  const collisions = load.diagnostics.flatMap((d) =>
+  // Native OMP namespaces duplicate names and reports warnings, rather than
+  // Pi collision diagnostics. The catalog still groups every scanned copy.
+  const collisions = (load.diagnostics ?? []).flatMap((d) =>
     d.type === "collision" && d.collision
       ? [
           {
@@ -115,7 +134,7 @@ export function gatherCatalogInput(opts: GatherOptions): SkillCatalogInput {
     .filter((c) => c.source === "skill" && typeof c.sourceInfo?.path === "string")
     .map((c) => c.sourceInfo.path);
 
-  const sources = buildSources({
+  const sources = await buildSources({
     cwd,
     home,
     agentDir,
@@ -152,10 +171,10 @@ interface BuildSourcesArgs {
   settingsGlobal: ResolvedSettingsEntry[];
   settingsProject: ResolvedSettingsEntry[];
   registry: RegisteredSource[];
-  loadSkillsFromDir: typeof realLoadSkillsFromDir;
+  loadSkillsFromDir: GatherDeps["loadSkillsFromDir"];
 }
 
-function buildSources(args: BuildSourcesArgs): CatalogSourceInput[] {
+async function buildSources(args: BuildSourcesArgs): Promise<CatalogSourceInput[]> {
   // A source is "wired" when any settings entry sits AT or UNDER its root —
   // this covers both directory entries and per-file (`…/SKILL.md`) entries,
   // the latter produced by expand-minus-one. Using only `isDir` entries here
@@ -281,7 +300,7 @@ function buildSources(args: BuildSourcesArgs): CatalogSourceInput[] {
       spec.autoDefault || spec.kind === "managed" || isWiredUnder(spec.rootPath)
         ? "seen"
         : spec.gate;
-    const skills = scanRoot(spec, args.loadSkillsFromDir);
+    const skills = await scanRoot(spec, args.loadSkillsFromDir);
     out.push({
       id: spec.id,
       rootPath: spec.rootPath,
@@ -308,9 +327,12 @@ function defaultRoot(rootPath: string, label: string): RootSpec {
   return { id: rootPath, rootPath, kind: "auto-default", label, gate: "seen", autoDefault: true };
 }
 
-function scanRoot(spec: RootSpec, loadSkillsFromDir: typeof realLoadSkillsFromDir): ScannedSkill[] {
+async function scanRoot(
+  spec: RootSpec,
+  loadSkillsFromDir: GatherDeps["loadSkillsFromDir"],
+): Promise<ScannedSkill[]> {
   try {
-    const result = loadSkillsFromDir({ dir: spec.rootPath, source: spec.kind });
+    const result = await loadSkillsFromDir({ dir: spec.rootPath, source: spec.kind });
     return result.skills.map((s) => ({
       name: s.name,
       filePath: path.normalize(s.filePath),
@@ -326,29 +348,14 @@ function scanRoot(spec: RootSpec, loadSkillsFromDir: typeof realLoadSkillsFromDi
 // -------------------------------------------------------------------------------------------------
 
 function readSettingsEntries(
-  settingsPath: string,
+  skills: readonly string[],
   home: string,
   cwd: string,
 ): ResolvedSettingsEntry[] {
-  let raw: unknown;
-  try {
-    if (!existsSync(settingsPath)) return [];
-    raw = JSON.parse(readFileSync(settingsPath, "utf8"));
-  } catch {
-    return [];
-  }
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
-  const skills = (raw as Record<string, unknown>).skills;
-  if (!Array.isArray(skills)) return [];
-
-  const out: ResolvedSettingsEntry[] = [];
-  const isProject = settingsPath.includes(`${path.sep}.pi${path.sep}settings.json`);
-  for (const value of skills) {
-    if (typeof value !== "string") continue;
-    const absPath = path.normalize(resolveValue(value, home, isProject ? cwd : home));
-    out.push({ raw: value, absPath, isDir: isDirectory(absPath) });
-  }
-  return out;
+  return skills.map((value) => {
+    const absPath = path.normalize(resolveValue(value, home, cwd));
+    return { raw: value, absPath, isDir: isDirectory(absPath) };
+  });
 }
 
 // -------------------------------------------------------------------------------------------------

@@ -3,15 +3,15 @@
  * Source Registry round-trip tests.
  *
  * The registry exists for exactly one reason: a source that is "seen" but
- * has zero enabled skills leaves no settings.skills[] trace and would be
+ * has zero enabled skills leaves no skills.customDirectories trace and would be
  * forgotten on reload. These tests pin that durability across scopes plus
  * the small CRUD surface (upsert/remove/gate), and confirm the canonical
  * on-disk layout.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import path from "node:path";
+import { nativeTestDir } from "./native-fixture.ts";
 import {
   findSource,
   readSourceRegistry,
@@ -27,16 +27,15 @@ const AGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
 const originalAgentDir = process.env[AGENT_DIR_ENV];
 
 function makeHome(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "sf-skills-reg-home-"));
+  const dir = nativeTestDir("sf-skills-reg-home-");
   tempDirs.push(dir);
-  // Pi's getAgentDir() honors PI_CODING_AGENT_DIR — point the global state
-  // store at a throwaway dir so tests never touch the real agent dir.
-  process.env[AGENT_DIR_ENV] = path.join(dir, ".pi", "agent");
+  // Global source metadata shares the repository-isolated native agent root.
+  process.env[AGENT_DIR_ENV] = path.join(dir, "agent");
   return dir;
 }
 
 function makeProject(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "sf-skills-reg-proj-"));
+  const dir = nativeTestDir("sf-skills-reg-proj-");
   tempDirs.push(dir);
   return dir;
 }

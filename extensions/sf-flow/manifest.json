@@ -7,7 +7,7 @@
   "defaultEnabled": true,
   "commands": ["/sf-flow"],
   "tools": ["sf_flow"],
-  "events": ["session_start", "tool_result", "message_end", "agent_settled"],
+  "events": ["session_start", "tool_result", "assistant_message", "session_stop"],
   "docs": {
     "intentGroup": "Build apps",
     "agentGuide": "AGENT_GUIDE.md",

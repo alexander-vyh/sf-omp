@@ -2,11 +2,11 @@
 
 ## What It Does
 
-SF LSP returns real-time language-server diagnostics after successful Pi file
+SF LSP returns real-time language-server diagnostics after successful OMP file
 writes and edits for Apex, LWC, and Agent Script. Diagnostics join the tool
-result so the agent can correct errors in the same turn; the visible working
-indicator, transcript row, Welcome readiness row, and Manager detail remain
-human-only presentation.
+result so the agent can correct errors in the same turn. OMP's native working
+message and latest-check widget, persisted custom entries, Welcome readiness
+row, and Manager detail are human-only presentation.
 
 When SF Agent Script is enabled, it owns `.agent` diagnostics in process and SF
 LSP yields those files. Otherwise SF LSP can use its discovered Agent Script LSP
@@ -21,7 +21,7 @@ server.
 | Agent Script | `.agent`              | Agent Script LSP when SF Agent Script is absent |
 
 The first available source wins. Environment overrides are checked before
-project `.pi/lsp/`, global `~/.pi/agent/lsp/`, VS Code Salesforce extensions,
+project `.pi/lsp/`, the isolated `$PI_CODING_AGENT_DIR/lsp/`, VS Code Salesforce extensions,
 and applicable PATH binaries.
 
 ## Commands
@@ -34,8 +34,10 @@ and applicable PATH binaries.
 | `/sf-lsp install status`          | Show installed versus available server state  |
 | `/sf-lsp verbose on\|off\|toggle` | Control human transcript row verbosity        |
 
-No permanent LSP HUD or keyboard shortcut is added. SF Welcome shows one
-readiness row; recent activity and controls stay on demand.
+The latest emitted check is shown in a model-safe OMP widget; errors include
+diagnostic previews without requiring an unsupported custom-entry renderer.
+SF Welcome shows one readiness row, and the full recent activity panel remains
+available on demand.
 
 ## Configuration
 
@@ -49,7 +51,7 @@ Discovery overrides include `SF_LSP_APEX_JAR`, `SF_LSP_LWC_COMMAND`, and
 `SF_LSP_AGENTSCRIPT_SERVER` (plus their documented legacy aliases).
 
 The opt-in installer writes managed Apex and LWC servers under
-`~/.pi/agent/lsp/` after one confirmation. It does not install Java, use sudo,
+`$PI_CODING_AGENT_DIR/lsp/` (`.runtime/omp/agent/lsp/` in this checkout) after one confirmation. It does not install Java, use sudo,
 change PATH, or overwrite environment/project/VS Code-provided servers. Declined
 version decisions are remembered until a newer upstream version appears. Native
 Windows receives manual instructions; macOS, Linux, and WSL use the managed
@@ -95,6 +97,22 @@ complete.
 **`.agent` diagnostics are absent:** When SF Agent Script is enabled, inspect its
 status instead. Otherwise verify Agent Script LSP discovery with the SF LSP
 doctor.
+
+## Offline OMP smoke
+
+`/sf-lsp doctor` probes local server availability without org authentication.
+After dependencies and a real Apex server are available, use the fixture
+`extensions/sf-apex/tests/fixtures/OfflineExample.cls` from the repo root:
+
+```sh
+SF_LSP_APEX_JAR=/absolute/path/to/apex-jorje-lsp.jar bun -e 'import path from "node:path"; import { getLspDiagnosticsForFile, shutdownLspClients } from "./extensions/sf-lsp/lib/lsp-client.ts"; try { console.log(await getLspDiagnosticsForFile("apex", path.resolve("extensions/sf-apex/tests/fixtures/OfflineExample.cls"), process.cwd(), 6000)); } finally { await shutdownLspClients(); }'
+```
+
+This invokes the real stdio JSON-RPC process path; it needs Java 11+ and the
+Jorje JAR but no org. LWC needs its language-server executable and a file in an
+LWC bundle. Agent Script needs its server script and Node, and is delegated to
+SF Agent Script when that extension owns diagnostics. Missing servers are
+reported explicitly; none are downloaded by these smoke operations.
 
 ## File Structure
 

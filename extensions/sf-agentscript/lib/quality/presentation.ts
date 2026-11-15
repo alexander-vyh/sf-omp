@@ -5,8 +5,6 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import { Box, Text, type Component } from "@earendil-works/pi-tui";
 import type { AgentScriptQualityFinding, AgentScriptQualityResult } from "./types.ts";
 
-export const AGENT_SCRIPT_QUALITY_REPAIR_MESSAGE_TYPE = "sf-agentscript-quality-repair";
-
 export type AgentScriptQualityCardState =
   | "checking"
   | "passed"

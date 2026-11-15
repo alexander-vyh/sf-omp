@@ -271,13 +271,10 @@ function validatePackageExtensions(manifests) {
   }
 
   const discovered = new Set(manifests.map(({ dir }) => `./extensions/${dir}/index.ts`));
-  const missing = [...discovered].filter((entry) => !seen.has(entry)).sort();
   const packageOnly = [...seen].filter((entry) => !discovered.has(entry)).sort();
-  if (missing.length > 0 || packageOnly.length > 0) {
-    const details = [];
-    if (missing.length > 0) details.push(`missing discovered entries: ${missing.join(", ")}`);
-    if (packageOnly.length > 0) details.push(`package-only entries: ${packageOnly.join(", ")}`);
-    fail(`package.json pi.extensions does not match discovered extensions; ${details.join("; ")}`);
+  // This fork retains upstream source/docs, but explicitly enables only its ported subset.
+  if (packageOnly.length > 0) {
+    fail(`package.json pi.extensions includes undiscovered entries: ${packageOnly.join(", ")}`);
   }
 }
 

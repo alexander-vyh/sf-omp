@@ -33,7 +33,9 @@ remains the compact chat overview.
 When the selected model is `sf-llm-gateway/gpt-6-sol`, SF Brain adds a small,
 model-scoped system prompt section asking for a developed explanation with an
 example and relevant trade-offs on substantive questions. It keeps simple
-answers short and honors explicit requests for brevity. Pi removes the section
+answers short and honors explicit requests for brevity. OMP receives the section
+through `before_agent_start`'s `systemPrompt` array result. Brain replaces its own
+tagged block instead of accumulating copies on repeated turns, and removes it
 when another model is selected; the persistent constitution is unchanged.
 This guidance does not change reasoning effort or API text verbosity.
 

@@ -1,104 +1,64 @@
-# SF Pi
+# sf-omp
 
-[![CI](https://github.com/salesforce/sf-pi/actions/workflows/ci.yml/badge.svg)](https://github.com/salesforce/sf-pi/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/salesforce/sf-pi?sort=semver)](https://github.com/salesforce/sf-pi/releases)
-[![CodeQL](https://github.com/salesforce/sf-pi/actions/workflows/codeql.yml/badge.svg)](https://github.com/salesforce/sf-pi/actions/workflows/codeql.yml)
-[![Coverage](https://codecov.io/gh/salesforce/sf-pi/branch/main/graph/badge.svg)](https://codecov.io/gh/salesforce/sf-pi)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE.txt)
+Repository-local Salesforce Agentforce tooling for **OMP 18.17.0**, forked from [Salesforce SF Pi](https://github.com/salesforce/sf-pi) 0.352.1. Independent checkout: the original SF Pi repository and global OMP installation are not used as the runtime.
 
-Opinionated Salesforce extensions for the
-[Pi coding agent](https://pi.dev): focused lifecycle tools, Salesforce-aware
-status and safety surfaces, Agent Script authoring, and one Manager for package
-settings and extension enablement.
+## Run
 
-📚 **Documentation:** [salesforce.github.io/sf-pi](https://salesforce.github.io/sf-pi/)
+Requires Node.js >=22.19 and npm; Node 24 is recommended for the bundled Salesforce tooling. OMP and Bun are pinned local dependencies; no global installation or `omp install` step.
 
-![SF Pi terminal interface showing Salesforce environment and extension status](https://github.com/user-attachments/assets/cbf2db6b-939c-4c66-8dab-fc505749fc77)
-
-## Get started
-
-Install Node.js 22.19 or newer, the latest supported Pi coding agent, and
-Salesforce CLI. Then install SF Pi:
-
-```bash
-npm install --global @earendil-works/pi-coding-agent
-pi install git:github.com/salesforce/sf-pi
-pi
+```sh
+npm ci
+npm start
 ```
 
-Inside Pi:
+First interactive launch offers OMP's setup wizard. Provider login and its settings stay local to this checkout; optional LSP downloads require confirmation.
 
-```text
-/reload
-/sf-pi doctor
-/sf-skills defaults install global
+From an existing Salesforce project, preserve that project's working directory:
+
+```sh
+cd /path/to/your/salesforce-project
+node /path/to/sf-omp/scripts/omp.ts
 ```
 
-The supported Pi range is currently
-`>=1.5.1 <2.0.0`. Exact Pi `1.5.2` is the latest audited and recommended runtime.
+Use explicit subcommands such as `/sf-agentscript help` and `/sf-skills help`. Bare commands that open the disabled SF Pi Manager are not ported; this checkout focuses on agent tools, direct commands, and native hooks. Existing extension READMEs describe the tools; upstream Pi installation instructions do not apply here.
 
-See [Installation](./docs/install.md) for updates, project-local setup, platform
-notes, fonts, and recovery. Follow [Quickstart](./docs/quickstart.md) for a first
-working session.
+## Isolation
 
-## What SF Pi adds
+- Launcher invokes this checkout's OMP **18.17.0** with local Bun **1.4.4**, never the global `omp`/`bun` command.
+- OMP configuration, profiles, agent state, native addon cache, and Bun/npm caches live under ignored `.runtime/`. Global extension discovery is disabled; the root manifest selects the ten extensions below.
+- Normal launches retain your real HOME, XDG tool configuration, and existing Salesforce CLI authentication. OMP provider authentication is separate and local: use OMP's `/login` or provider environment variables; no global OMP credentials/settings are copied.
+- Project-specific configuration still belongs to the current Salesforce project. Skill loading uses native YAML `skills.customDirectories`; selecting an individual `SKILL.md` creates a local directory projection without enabling its siblings.
+- Offline smoke uses a separate empty HOME and strips credential environment variables. It makes no model requests, Salesforce API requests, or org changes.
 
-- **Build and test agents:** Agent Script authoring, preview, eval, publication,
-  and eval-gated activation.
-- **Develop Salesforce code:** API-native Apex and SOQL lifecycles plus local LWC
-  inspection and Jest execution.
-- **Work with org UI:** curated Salesforce navigation, compact snapshots, small
-  last-mile interactions, and private Browser Evidence.
-- **Use Data 360:** lifecycle-oriented connect, prepare, harmonize, segment,
-  activate, query, semantic, observe, and orchestration families.
-- **Find official guidance:** cited Salesforce documentation retrieval and
-  deterministic Salesforce diagrams.
-- **Collaborate deliberately:** Slack research and human-confirmed write
-  surfaces when credentials and scopes are available.
-- **Stay safe:** org-aware command and native-tool mediation with fail-closed
-  headless behavior and auditable approvals.
-- **Personalize Pi:** Salesforce status bars, startup readiness, LSP feedback,
-  skills, and a configurable working indicator.
+`npm ci` applies one version-checked patch **only inside this checkout's `node_modules`**. OMP 18.17's compatibility loader otherwise returns ESM namespace objects to CommonJS callers, breaking Salesforce dependencies with callable exports. `scripts/patch-local-omp.mjs` preserves Bun's `module.exports` interop, patches both bundled CLI and matching source, refuses a different OMP version, and is safe to rerun. Review/remove it when upgrading OMP.
 
-Browse the complete generated [extension catalog](./docs/extensions.md) and
-[top-level command inventory](./docs/commands.md). Extension pages link to their
-current README, safety notes, operating guide, and deeper references.
+## Current evidence
 
-## Manage the bundle
+`npm run smoke:omp` starts real local OMP and calls actual registered tool implementations with its native extension context. It checks valid and invalid fixtures, native skill rediscovery, local runtime paths, and before/after hashes of global OMP configuration/installed files. Active logs, sessions, and runtime databases are excluded from that hash comparison.
 
-Open `/sf-pi` for the interactive Manager. Common direct commands are:
+| Extension          | Exercised in native OMP                                                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `sf-agentscript`   | Valid and invalid local AgentScript compilation; native terminal help panel                                                     |
+| `sf-apex`          | Authoring plans and debug-log analysis; LSP diagnostics blocked without provisioned server assets                               |
+| `sf-lwc`           | Valid and invalid template diagnostics using the real LWC compiler                                                              |
+| `sf-flow`          | Authoring plan and valid/invalid local Flow diagnostics                                                                         |
+| `sf-soql`          | API-versioned SOQL parser accepts/rejects queries; registered org-connected tool not exercised offline                          |
+| `sf-skills`        | Native YAML loading, sibling exclusion, manual-only invocation, removal, unrelated-setting preservation                         |
+| `sf-code-analyzer` | Startup/lifecycle registration; analyzer execution not yet exercised                                                            |
+| `sf-lsp`           | Startup/lifecycle registration; native installer confirmation shows the repository-local destination; installation not accepted |
+| `sf-brain`         | Startup/lifecycle registration; model-turn prompt projection not exercised by offline smoke                                     |
+| `sf-guardrail`     | Startup/lifecycle registration; native tool interception not exercised by offline smoke                                         |
 
-```text
-/sf-pi doctor
-/sf-pi status
-/sf-pi open <extension-id>
-/sf-pi enable <extension-id> global
-/sf-pi disable <extension-id> global
+This is **not** proof of live deploy/activate, Agentforce preview/evaluation, schema grounding, Apex execution/tests, Code Analyzer engines, other interactive panels, or model-driven repair continuations. Those require additional runtime scenarios and, where applicable, an authorized Salesforce org. Java is currently unavailable on the development workstation; Apex language-server diagnostics require Java and the server installation. No org deployment/activation has been attempted.
+
+## Checks
+
+```sh
+npm run check
+npm run test:omp
+npm run smoke:omp
 ```
 
-Optional companion packages are installed only after explicit user action with
-`/sf-pi recommended`. Access-controlled integrations such as SF LLM Gateway,
-SF Docs, and SF Slack require separately provided credentials and can be
-disabled when unavailable.
+The smoke report is `.runtime/omp-smoke-report.json`; detailed child logs and integrity snapshots remain in `.runtime/smoke/`. A blocked optional diagnostic is reported as blocked, never as a clean file. Any import failure, incorrect local result, or global integrity difference fails the smoke command.
 
-## Privacy and security
-
-SF Pi collects no active runtime telemetry. It defaults Pi's anonymous
-install/update ping off only when the user has not already chosen a setting, and
-preserves explicit user preferences. See [Privacy](./docs/privacy.md), the
-[Security model](./docs/security-model.md), and [Security policy](./SECURITY.md).
-
-Start troubleshooting with `/sf-pi doctor`, then use the generated
-[Troubleshooting index](./docs/troubleshooting.md).
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md), the
-[Code of Conduct](./CODE_OF_CONDUCT.md), and [Governance](./GOVERNANCE.md).
-
-SF Pi builds on [Mario Zechner's Pi coding agent](https://pi.dev) and credits
-extension-specific upstream work in the corresponding `CREDITS.md` files.
-
-## License
-
-Licensed under the [Apache License 2.0](./LICENSE.txt).
+The larger upstream source/docs tree is retained as reference. Only the ten root-manifest extensions form this OMP integration; gateway, browser, branding, package-manager UI, and other SF Pi extensions are not enabled or claimed ported. Upstream release history and Apache-2.0 attribution are retained.

@@ -52,19 +52,14 @@ function result(findings: AgentScriptQualityResult["findings"]): AgentScriptQual
   };
 }
 
-function beforeSettleEvent(entries: unknown[] = []) {
+function stopEvent(signal = new AbortController().signal) {
   return {
-    type: "agent_before_settle",
-    entries,
-    continue: false,
-    outcome: "completed",
-    context: {
-      contextEntries: [],
-      contextMessages: [],
-      llmMessages: [],
-      pendingMessages: [],
-      canContinue: true,
-    },
+    type: "session_stop",
+    messages: [],
+    turn_id: 1,
+    session_id: "test-session",
+    stop_hook_active: false,
+    signal,
   };
 }
 
@@ -92,12 +87,7 @@ describe("deferred Agent Script quality", () => {
       ctx,
     );
     expect(pi.sendMessage).not.toHaveBeenCalled();
-    expect(handlers.get("agent_settled")).toBeUndefined();
-    const prior = { type: "custom", customType: "prior-handler", data: { ok: true } };
-    const boundary = await handlers.get("agent_before_settle")?.[0]?.(
-      beforeSettleEvent([prior]),
-      ctx,
-    );
+    const boundary = await handlers.get("session_stop")?.[0]?.(stopEvent(), ctx);
     expect(pi.appendEntry).toHaveBeenCalledWith(
       AGENT_SCRIPT_QUALITY_ENTRY_TYPE,
       expect.objectContaining({
@@ -109,18 +99,15 @@ describe("deferred Agent Script quality", () => {
     expect(pi.sendUserMessage).not.toHaveBeenCalled();
     expect(pi.sendMessage).not.toHaveBeenCalled();
     expect(boundary).toMatchObject({
-      entries: [
-        prior,
-        {
-          type: "custom_message",
-          customType: "sf-agentscript-quality-repair",
-          display: false,
-        },
-      ],
       continue: true,
+      additionalContext: expect.any(String),
     });
-    const message = (boundary as { entries?: Array<{ content?: unknown }> })?.entries?.[1];
-    expect(JSON.parse(String(message?.content))).toMatchObject({
+    expect(boundary).not.toHaveProperty("entries");
+    const context =
+      boundary && typeof boundary === "object" && "additionalContext" in boundary
+        ? boundary.additionalContext
+        : undefined;
+    expect(JSON.parse(String(context))).toMatchObject({
       version: 1,
       task: "repair_agent_script_quality",
       attempt: 1,
@@ -141,7 +128,7 @@ describe("deferred Agent Script quality", () => {
       { isError: false, input: { path: file }, toolName: "edit" },
       ctx,
     );
-    const boundary = await handlers.get("agent_before_settle")?.[0]?.(beforeSettleEvent(), ctx);
+    const boundary = await handlers.get("session_stop")?.[0]?.(stopEvent(), ctx);
     expect(boundary).toBeUndefined();
     expect(pi.appendEntry).toHaveBeenCalledWith(
       AGENT_SCRIPT_QUALITY_ENTRY_TYPE,
@@ -166,7 +153,7 @@ describe("deferred Agent Script quality", () => {
         { isError: false, input: { path: file }, toolName: "edit" },
         ctx,
       );
-      boundaries.push(await handlers.get("agent_before_settle")?.[0]?.(beforeSettleEvent(), ctx));
+      boundaries.push(await handlers.get("session_stop")?.[0]?.(stopEvent(), ctx));
     }
     expect(boundaries[0]).toMatchObject({ continue: true });
     expect(boundaries[1]).toBeUndefined();
@@ -193,7 +180,7 @@ describe("deferred Agent Script quality", () => {
         { isError: false, input: { path: file }, toolName: "edit" },
         ctx,
       );
-      boundaries.push(await handlers.get("agent_before_settle")?.[0]?.(beforeSettleEvent(), ctx));
+      boundaries.push(await handlers.get("session_stop")?.[0]?.(stopEvent(), ctx));
     }
     expect(boundaries[0]).toMatchObject({ continue: true });
     expect(boundaries[1]).toBeUndefined();
@@ -201,6 +188,52 @@ describe("deferred Agent Script quality", () => {
       AGENT_SCRIPT_QUALITY_ENTRY_TYPE,
       expect.objectContaining({ state: "fixed", repair: expect.objectContaining({ attempt: 1 }) }),
     );
+    expect(pi.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("retains pending scans and repair state when a stop pass is cancelled", async () => {
+    const { pi, handlers } = harness();
+    const controller = new AbortController();
+    const file = path.join(cwd, "A.agent");
+    let calls = 0;
+    registerDeferredAgentScriptQuality(pi as never, {
+      readSettings: () => ({ autoRun: true }),
+      runQualityFile: async () => {
+        if (calls++ === 0) controller.abort();
+        return result([finding]);
+      },
+    });
+    const ctx = { cwd } as never;
+    await handlers.get("tool_result")?.[0]?.(
+      { isError: false, input: { path: file }, toolName: "write" },
+      ctx,
+    );
+    expect(
+      await handlers.get("session_stop")?.[0]?.(stopEvent(controller.signal), ctx),
+    ).toBeUndefined();
+    expect(pi.appendEntry).not.toHaveBeenCalled();
+    const boundary = await handlers.get("session_stop")?.[0]?.(stopEvent(), ctx);
+    expect(boundary).toMatchObject({ continue: true });
+    expect(pi.appendEntry).toHaveBeenLastCalledWith(
+      AGENT_SCRIPT_QUALITY_ENTRY_TYPE,
+      expect.objectContaining({ repair: expect.objectContaining({ attempt: 1 }) }),
+    );
+  });
+
+  it("presents quality as a real human-only OMP widget", async () => {
+    const { pi, handlers } = harness();
+    const setWidget = vi.fn();
+    registerDeferredAgentScriptQuality(pi as never, {
+      readSettings: () => ({ autoRun: true }),
+      runQualityFile: async () => result([]),
+    });
+    const ctx = { cwd, mode: "tui", ui: { setWidget } };
+    await handlers.get("tool_result")?.[0]?.(
+      { isError: false, input: { path: "A.agent" }, toolName: "write" },
+      ctx,
+    );
+    await handlers.get("session_stop")?.[0]?.(stopEvent(), ctx);
+    expect(setWidget).toHaveBeenCalledWith(AGENT_SCRIPT_QUALITY_ENTRY_TYPE, expect.any(Function));
     expect(pi.sendMessage).not.toHaveBeenCalled();
   });
 });

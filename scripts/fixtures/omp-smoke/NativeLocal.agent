@@ -1,0 +1,22 @@
+config:
+    agent_name: "NativeLocal"
+    agent_type: "AgentforceEmployeeAgent"
+    description: "Offline smoke compilation fixture."
+
+system:
+    instructions: |
+        Answer briefly using only supplied information.
+    messages:
+        welcome: "Hello. How can I help?"
+        error: "Please try again."
+
+subagent primary:
+    description: "Answer general questions without external actions."
+    reasoning:
+        instructions: ->
+            | Answer using only information in the conversation.
+
+start_agent main:
+    description: "Entry point for local compilation."
+    before_reasoning:
+        transition to @subagent.primary

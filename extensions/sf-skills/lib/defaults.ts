@@ -26,8 +26,9 @@
  * never touches a checkout without one — we refuse to mutate a tree
  * the user might be editing.
  */
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { readSkillSourceSettings } from "../../../lib/common/skill-sources/skill-settings.ts";
 import { spawn as realSpawn, type ChildProcess } from "node:child_process";
 import { globalAgentPath, projectConfigPath } from "../../../lib/common/pi-paths.ts";
 import {
@@ -333,7 +334,7 @@ export async function installDefaults(options: InstallOptions): Promise<InstallR
 }
 
 function cloneSkillsSettingsValue(): string {
-  return `~/.pi/agent/sf-skills/${REPO_DIR_NAME}/${SKILLS_SUBDIR}`;
+  return globalAgentPath("sf-skills", REPO_DIR_NAME, SKILLS_SUBDIR);
 }
 
 /** Point Pi at the stamped effective tree instead of the pristine clone. */
@@ -357,7 +358,9 @@ function isManagedWired(
 ): boolean {
   const settingsPath = skillSettingsPath(scope, cwd);
   if (!settingsPath) return false;
-  return readSkillsArray(settingsPath).some((value) => resolvesToSamePath(value, skillsPath, cwd));
+  return readSkillsArray(settingsPath, cwd).some((value) =>
+    resolvesToSamePath(value, skillsPath, cwd),
+  );
 }
 
 function skillSettingsPath(scope: SkillSourceScope, cwd?: string): string | undefined {
@@ -368,7 +371,7 @@ function skillSettingsPath(scope: SkillSourceScope, cwd?: string): string | unde
 function legacySettingsEntries(scope: SkillSourceScope, cwd?: string): string[] {
   const settingsPath = skillSettingsPath(scope, cwd);
   if (!settingsPath) return [];
-  return readSkillsArray(settingsPath).filter((value) => {
+  return readSkillsArray(settingsPath, cwd).filter((value) => {
     const resolved = resolveConfiguredPath(value, cwd);
     return path.normalize(resolved).split(path.sep).includes(LEGACY_LIBRARY_DIR_NAME);
   });
@@ -629,16 +632,8 @@ function runGit(
   });
 }
 
-function readSkillsArray(settingsPath: string): string[] {
-  if (!existsSync(settingsPath)) return [];
-  try {
-    const parsed = JSON.parse(readFileSync(settingsPath, "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
-    const skills = (parsed as Record<string, unknown>).skills;
-    return Array.isArray(skills) ? skills.filter((v): v is string => typeof v === "string") : [];
-  } catch {
-    return [];
-  }
+function readSkillsArray(settingsPath: string, cwd?: string): string[] {
+  return readSkillSourceSettings(settingsPath, cwd).customDirectories;
 }
 
 function expandPath(value: string): string {

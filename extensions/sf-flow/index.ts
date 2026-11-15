@@ -18,6 +18,7 @@
  *   /sf-flow status        | Print status as plain text (headless-safe)
  *   /sf-flow help          | Print command usage as plain text
  */
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
@@ -82,7 +83,17 @@ export default function (pi: ExtensionAPI) {
     captureFlowTopology(event, pendingTopologies);
     return handleToolResult(event, ctx, repairState);
   });
-  pi.on("message_end", (event) => {
+  // OMP final-message rewrites are awaited; message_end is observation-only.
+  const omp = pi as unknown as {
+    on(
+      event: "assistant_message",
+      handler: (event: {
+        message: AssistantMessage;
+      }) => { content: AssistantMessage["content"] } | undefined,
+    ): void;
+    on(event: "session_stop", handler: () => void): void;
+  };
+  omp.on("assistant_message", (event) => {
     if (event.message.role !== "assistant" || pendingTopologies.size === 0) return undefined;
     if (event.message.content.some((part) => part.type === "toolCall")) return undefined;
 
@@ -90,25 +101,24 @@ export default function (pi: ExtensionAPI) {
       .filter((part) => part.type === "text")
       .map((part) => part.text)
       .join("\n");
+    // OMP only permits text edits in existing blocks, never adding blocks.
+    let textIndex = event.message.content.length - 1;
+    while (textIndex >= 0 && event.message.content[textIndex].type !== "text") textIndex--;
+    if (textIndex < 0) return undefined;
     const topologies = [...pendingTopologies.values()];
     pendingTopologies.clear();
     const missing = topologies.filter((topology) => !existingText.includes(topology.mermaid));
     if (!missing.length) return undefined;
 
     return {
-      message: {
-        ...event.message,
-        content: [
-          ...event.message.content,
-          {
-            type: "text" as const,
-            text: `\n\n${missing.map(topologyMarkdown).join("\n\n")}`,
-          },
-        ],
-      },
+      content: event.message.content.map((part, index) =>
+        index === textIndex && part.type === "text"
+          ? { ...part, text: `${part.text}\n\n${missing.map(topologyMarkdown).join("\n\n")}` }
+          : part,
+      ),
     };
   });
-  pi.on("agent_settled", () => {
+  omp.on("session_stop", () => {
     pendingTopologies.clear();
   });
 

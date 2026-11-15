@@ -6,14 +6,23 @@ const GATEWAY_GPT6_RESPONSE_STYLE =
   "For substantive questions, lead with the answer, then develop the explanation with a concrete example and relevant trade-offs. " +
   "Do not stop at a summary. Keep simple answers short and honor explicit requests for brevity.";
 
+const RESPONSE_STYLE_OPEN = `<${GATEWAY_GPT6_RESPONSE_STYLE_SECTION}>`;
+const RESPONSE_STYLE_CLOSE = `</${GATEWAY_GPT6_RESPONSE_STYLE_SECTION}>`;
+
 export function applyGatewayGpt6ResponseStyle(
-  options: { sections: Record<string, string> },
+  systemPrompt: readonly string[],
   model: { provider: string; id: string } | undefined,
-): void {
+): string[] {
+  // Replace our own block on every preparation, including repeated turns and
+  // model switches; leave all other extensions' policy blocks untouched.
+  const sections = systemPrompt.filter(
+    (section) =>
+      !(section.startsWith(RESPONSE_STYLE_OPEN) && section.endsWith(RESPONSE_STYLE_CLOSE)),
+  );
   if (model?.provider === "sf-llm-gateway" && model.id === "gpt-6-sol") {
-    options.sections[GATEWAY_GPT6_RESPONSE_STYLE_SECTION] = GATEWAY_GPT6_RESPONSE_STYLE;
-  } else {
-    // Pi removes a missing named section from the transcript on the next turn.
-    delete options.sections[GATEWAY_GPT6_RESPONSE_STYLE_SECTION];
+    sections.push(
+      `${RESPONSE_STYLE_OPEN}\n${GATEWAY_GPT6_RESPONSE_STYLE}\n${RESPONSE_STYLE_CLOSE}`,
+    );
   }
+  return sections;
 }

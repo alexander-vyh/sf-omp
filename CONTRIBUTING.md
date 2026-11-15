@@ -110,7 +110,7 @@ validation.
 This complete inventory is generated from `package.json`; edit that file and run `npm run generate-catalog`.
 
 <details>
-<summary>Show all 76 package scripts</summary>
+<summary>Show all 81 package scripts</summary>
 
 **Generated sources**
 
@@ -170,6 +170,7 @@ This complete inventory is generated from `package.json`; edit that file and run
 
 - `npm run test`
 - `npm run test:coverage`
+- `npm run test:omp`
 - `npm run test:runtime-surface`
 - `npm run test:watch`
 
@@ -216,6 +217,10 @@ This complete inventory is generated from `package.json`; edit that file and run
 **Other**
 
 - `npm run audit:production`
+- `npm run omp`
+- `npm run postinstall`
+- `npm run smoke:omp`
+- `npm run start`
 - `npm run visual-response:report`
 
 </details>

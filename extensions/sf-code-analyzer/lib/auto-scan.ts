@@ -1,11 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
- * Actionable pre-settlement Code Analyzer quality pass.
+ * Deferred Code Analyzer quality pass at OMP's native session_stop boundary.
  *
- * The hook records files changed by successful write/edit tool results and waits
- * until `agent_before_settle` before running Code Analyzer. Pi has finished any
- * automatic retry, recovery compaction, or queued user work, while the boundary
- * can still persist one repair instruction and request one continuation.
+ * Successful write/edit results enqueue targets. Human-only evidence is retained
+ * as custom entries; actionable findings request a continuation through OMP's
+ * additionalContext channel without rewriting the session message draft.
  */
 import path from "node:path";
 import type {
@@ -37,7 +36,18 @@ import type { CodeAnalyzerReportSummary } from "./types.ts";
 
 const AUTO_SCAN_TIMEOUT_MS = 30_000;
 const AUTO_APEXGURU_BATCH_TIMEOUT_MS = 60_000;
-const AUTO_SCAN_REPAIR_MESSAGE_TYPE = "sf-code-analyzer-auto-scan-repair";
+
+// Unchanged Salesforce tools retain Pi SDK types. This owned boundary describes
+// the native session_stop API of the pinned OMP 18.17 runtime only.
+interface NativeSessionStopAPI {
+  on(
+    event: "session_stop",
+    handler: (
+      event: { signal: AbortSignal },
+      ctx: ExtensionContext,
+    ) => Promise<{ continue?: boolean; additionalContext?: string } | undefined>,
+  ): void;
+}
 
 interface ScanOutcome {
   selector: string;
@@ -74,8 +84,9 @@ export function registerDeferredCodeAnalyzerAutoScan(
     collectChangedFile(event, ctx, pendingFiles);
   });
 
-  pi.on("agent_before_settle", async (event, ctx) => {
-    if (pendingFiles.size === 0) return;
+  const nativePi = pi as unknown as NativeSessionStopAPI;
+  nativePi.on("session_stop", async (event, ctx) => {
+    if (event.signal.aborted || pendingFiles.size === 0) return;
     const settings = readSettings(ctx.cwd);
     if (!settings.autoScan) {
       pendingFiles.clear();
@@ -104,6 +115,7 @@ export function registerDeferredCodeAnalyzerAutoScan(
       const localOutcomes = await Promise.all(
         groups.map((group) => runLocalScanGroup(pi, exec, ctx, group, deps)),
       );
+      if (event.signal.aborted) return;
 
       const apexGuruOutcome = await runApexGuruAutoInsights(
         pi,
@@ -112,6 +124,7 @@ export function registerDeferredCodeAnalyzerAutoScan(
         plan.apexGuruCandidates,
         deps,
       );
+      if (event.signal.aborted) return;
       const violations = [
         ...localOutcomes.flatMap((outcome) => outcome.summary?.run?.violations ?? []),
         ...apexGuruOutcome.violations,
@@ -151,22 +164,7 @@ export function registerDeferredCodeAnalyzerAutoScan(
           .join("\n"),
       });
       if (followUp) {
-        return {
-          entries: [
-            ...event.entries,
-            {
-              type: "custom_message" as const,
-              customType: AUTO_SCAN_REPAIR_MESSAGE_TYPE,
-              content: followUp,
-              display: false,
-              details: {
-                violation_count: violations.length,
-                report_count: reports.length,
-              },
-            },
-          ],
-          continue: true,
-        };
+        return { continue: true, additionalContext: followUp };
       }
     } catch (error) {
       emitCodeAnalyzerTranscript(pi, `[sf-code-analyzer] deferred scan error · ${message(error)}`, {

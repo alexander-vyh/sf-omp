@@ -19,7 +19,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { VERSION, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { VERSION, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { SF_PI_REGISTRY } from "../../catalog/registry.ts";
 import { buildExecFn } from "../../lib/common/exec-adapter.ts";
@@ -73,9 +73,20 @@ export default function (pi: ExtensionAPI) {
   ]);
   const exec = buildExecFn(pi);
 
-  pi.on("before_agent_start", (event, ctx) => {
-    applyGatewayGpt6ResponseStyle(event.systemPromptOptions, ctx.model);
-  });
+  // Narrow native OMP boundary: its prompt is an ordered policy-block array,
+  // not Pi's mutable structured systemPromptOptions.
+  const omp = pi as unknown as {
+    on(
+      event: "before_agent_start",
+      handler: (
+        event: { systemPrompt: string[] },
+        ctx: ExtensionContext,
+      ) => { systemPrompt: string[] },
+    ): void;
+  };
+  omp.on("before_agent_start", (event, ctx) => ({
+    systemPrompt: applyGatewayGpt6ResponseStyle(event.systemPrompt, ctx.model),
+  }));
 
   pi.on("before_agent_start", async (_event, ctx) => {
     if (!shouldInjectConstitution(ctx.sessionManager)) return;

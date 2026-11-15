@@ -1,18 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Org-versioned SOQL normalization and the single syntax-validation pass. */
 
-import { createRequire } from "node:module";
-import type {
-  parseHeaderComments as parseHeaderCommentsType,
-  SOQLParser as SOQLParserType,
-} from "@salesforce/soql-common";
+import { parseHeaderComments, SOQLParser } from "@salesforce/soql-common";
 import type { SoqlFormulaExpression, SoqlParseContext, SoqlQueryShape } from "./types.ts";
-
-const require = createRequire(import.meta.url);
-const { parseHeaderComments, SOQLParser } = require("@salesforce/soql-common") as {
-  parseHeaderComments: typeof parseHeaderCommentsType;
-  SOQLParser: typeof SOQLParserType;
-};
 
 const TRAILING_ALL_ROWS = /\s+ALL\s+ROWS\s*;?\s*$/i;
 const FORMULA_EXPRESSION =

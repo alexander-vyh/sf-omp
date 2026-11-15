@@ -1,10 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { describe, expect, it, vi } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import {
-  emitHumanOnlyCommandOutput,
-  registerHumanOnlyCommandOutput,
-} from "../human-only-command-output.ts";
+import { emitHumanOnlyCommandOutput } from "../human-only-command-output.ts";
 
 describe("emitHumanOnlyCommandOutput", () => {
   it("emits JSON-mode reports as human-only session entries", async () => {
@@ -128,18 +125,6 @@ describe("emitHumanOnlyCommandOutput", () => {
     expect(component?.render(80).join("\n")).toContain("Ready");
     expect(pi.appendEntry).not.toHaveBeenCalled();
     expect(pi.sendMessage).not.toHaveBeenCalled();
-  });
-
-  it("registers an entry renderer rather than a model-visible message renderer", () => {
-    const pi = {
-      registerEntryRenderer: vi.fn(),
-      registerMessageRenderer: vi.fn(),
-    };
-
-    registerHumanOnlyCommandOutput(pi as never, "test-report");
-
-    expect(pi.registerEntryRenderer).toHaveBeenCalledWith("test-report", expect.any(Function));
-    expect(pi.registerMessageRenderer).not.toHaveBeenCalled();
   });
 
   it("prints reports in print mode while appending only a custom entry", async () => {

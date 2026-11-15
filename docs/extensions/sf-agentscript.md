@@ -31,7 +31,7 @@ Open its Manager detail or change its package state with:
 ## Safety notes
 
 - Compile-on-save stays silent on unsupported files and on failed write/edit results; only enabled edit-time High hardening rules join that feedback.
-- Deferred quality repair uses Pi's actionable pre-settlement boundary after retries and queued user work finish.
+- Deferred quality repair uses OMP's session_stop boundary and native additionalContext; unchanged signatures stop repair and OMP bounds continuations.
 - Global per-rule quality toggles dynamically control reporting, repair, metrics, and local-file publication gating without a reload.
 - Quality cards show every finding header by default; overlong variable descriptions gate publication, while official instruction-template diagnostics remain pre-activation recommendations.
 - Eval batches retry a rejected org credential once with Agentforce named-user auth; org reads retain the normal @salesforce/core connection and tokens are never logged or persisted.
@@ -65,7 +65,7 @@ Open its Manager detail or change its package state with:
 - **Commands:** `/sf-agentscript`
 - **LLM tools:** `agentscript_authoring`, `agentscript_preview`, `agentscript_eval`, `agentscript_lifecycle`
 - **Providers:** _none_
-- **Events/hooks:** `session_start`, `session_shutdown`, `tool_result`, `agent_before_settle`
+- **Events/hooks:** `session_start`, `session_switch`, `session_tree`, `session_shutdown`, `tool_result`, `session_stop`
 
 </details>
 

@@ -48,7 +48,7 @@ Open its Manager detail or change its package state with:
 - **Commands:** `/sf-code-analyzer`
 - **LLM tools:** `code_analyzer`
 - **Providers:** _none_
-- **Events/hooks:** `session_start`, `tool_result`, `agent_before_settle`, `session_shutdown`
+- **Events/hooks:** `session_start`, `tool_result`, `session_stop`, `session_shutdown`
 
 </details>
 

@@ -6,25 +6,22 @@
  * Why this exists
  * ---------------
  * The Skill Funnel narrows the on-disk catalog through a Source Gate
- * (which roots Pi may see) before the per-skill Skill Gate. Most funnel
- * state is reconstructable by reading `settings.skills[]` back — but one
- * thing is not: a source that is *seen* yet currently has zero enabled
- * skills leaves no `settings.skills[]` trace and would be forgotten on
- * reload. That bites custom paths hardest. The Source Registry is the
- * small durable memory that fixes exactly that gap.
+ * (which roots OMP may see) before the per-skill Skill Gate. Most funnel
+ * state is reconstructable from native skills.customDirectories, but a
+ * source with no enabled skills leaves no native setting and would be forgotten.
+ * The Source Registry is the small durable memory that fixes exactly that gap.
  *
  * Scope boundary (per ADR-0006 / AGENTS.md state decision tree, Q4):
  *   global  → <globalAgentDir>/sf-pi/sf-skills/sources.json
  *   project → <cwd>/.pi/sf-skills/sources.json
  *
- * This module is pure persistence + a tiny CRUD surface. It never reads
- * `settings.skills[]`, never scans disk for skills, and never compiles
- * anything to native settings — that is the job of the catalog,
- * resolution, and settings-skills modules. Keeping it dumb keeps it off
- * the boot hot path: a single tolerant JSON read.
+ * This is SF-owned metadata, not native loader configuration. It never scans
+ * disk or writes skills.customDirectories/ignoredSkills; skill-sources.ts owns
+ * that translation. Global metadata shares the launcher's isolated agent root.
  */
 import path from "node:path";
 import { createStateStore, type StateStore } from "../state-store.ts";
+import { skillAgentDir } from "./skill-settings.ts";
 
 // -------------------------------------------------------------------------------------------------
 // Types
@@ -48,7 +45,7 @@ export type SourceGate = "seen" | "off";
 export interface RegisteredSource {
   /** Stable id — the normalized settings-style value (e.g. `~/.claude/skills`). */
   id: string;
-  /** Settings-style value as it should appear in `settings.skills[]`. */
+  /** User-facing source value; native configuration is compiled separately. */
   value: string;
   kind: SourceKind;
   gate: SourceGate;
@@ -93,6 +90,7 @@ export function sourceRegistryStore(scope: SourceScope, cwd?: string): StateStor
     filename: FILENAME,
     schemaVersion: SCHEMA_VERSION,
     defaults: { sources: [] },
+    pathOverride: path.join(skillAgentDir(), "sf-pi", NAMESPACE, FILENAME),
   });
 }
 

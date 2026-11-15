@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Actionable pre-settlement Agent Script quality pass and bounded repair loop. */
+/** Native OMP stop-boundary Agent Script quality pass and bounded repair loop. */
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -10,7 +10,7 @@ import { getAgentScriptAnalysis } from "../analysis-snapshot.ts";
 import { isAgentScriptFile, resolveToolPath } from "../file-classify.ts";
 import { readEffectiveAgentScriptQualitySettings } from "./settings.ts";
 import {
-  AGENT_SCRIPT_QUALITY_REPAIR_MESSAGE_TYPE,
+  createQualityCardComponent,
   buildQualityRepairPayload,
   qualityCardData,
 } from "./presentation.ts";
@@ -27,6 +27,25 @@ export interface DeferredAgentScriptQualityDeps {
   runQualityFile?: (file: string) => Promise<AgentScriptQualityResult>;
 }
 
+interface QualityStopEvent {
+  signal: AbortSignal;
+}
+
+interface QualityStopResult {
+  continue: true;
+  additionalContext: string;
+}
+
+type QualityStopAPI = ExtensionAPI & {
+  on(
+    event: "session_stop",
+    handler: (
+      event: QualityStopEvent,
+      ctx: ExtensionContext,
+    ) => Promise<QualityStopResult | undefined>,
+  ): void;
+};
+
 export function registerDeferredAgentScriptQuality(
   pi: ExtensionAPI,
   deps: DeferredAgentScriptQualityDeps = {},
@@ -41,18 +60,25 @@ export function registerDeferredAgentScriptQuality(
     collectFile(event, ctx, pending);
   });
 
-  pi.on("agent_before_settle", async (event) => {
-    if (pending.size === 0) return;
+  // Pi's published SDK types predate OMP's native stop hook.
+  const nativePi = pi as QualityStopAPI;
+  nativePi.on("session_stop", async (event, ctx) => {
+    if (event.signal.aborted || pending.size === 0) return;
     if (!readSettings().autoRun) {
       pending.clear();
       return;
     }
 
     const files = [...pending].sort();
-    const entries = [...event.entries];
-    pending.clear();
+    const repairs: string[] = [];
+    const results: Array<{ file: string; quality: AgentScriptQualityResult }> = [];
     for (const file of files) {
-      const quality = await runQualityFile(file);
+      if (event.signal.aborted) return;
+      results.push({ file, quality: await runQualityFile(file) });
+    }
+    if (event.signal.aborted) return;
+    for (const file of files) pending.delete(file);
+    for (const { file, quality } of results) {
       const actionable = quality.findings.filter(
         (finding) => finding.severity === "high" || finding.severity === "moderate",
       );
@@ -60,7 +86,7 @@ export function registerDeferredAgentScriptQuality(
       const priorAttempt = attempts.get(file) ?? 0;
 
       if (!quality.ok || quality.status === "failed" || actionable.length === 0) {
-        emitQualityCard(pi, file, quality, {
+        emitQualityCard(pi, ctx, file, quality, {
           ...(quality.status === "clean" && priorAttempt > 0
             ? {
                 state: "fixed" as const,
@@ -74,7 +100,7 @@ export function registerDeferredAgentScriptQuality(
       }
 
       if (signatures.get(file) === signature) {
-        emitQualityCard(pi, file, quality, {
+        emitQualityCard(pi, ctx, file, quality, {
           state: "stopped",
           repair: { attempt: Math.max(1, priorAttempt), signature },
           message: "No further automatic repair was scheduled.",
@@ -85,27 +111,16 @@ export function registerDeferredAgentScriptQuality(
       const attempt = priorAttempt + 1;
       signatures.set(file, signature);
       attempts.set(file, attempt);
-      emitQualityCard(pi, file, quality, {
+      emitQualityCard(pi, ctx, file, quality, {
         state: "repairing",
         repair: { attempt, signature },
       });
       const payload = buildQualityRepairPayload(file, actionable, attempt, signature);
-      entries.push({
-        type: "custom_message",
-        customType: AGENT_SCRIPT_QUALITY_REPAIR_MESSAGE_TYPE,
-        content: JSON.stringify(payload),
-        display: false,
-        details: {
-          file,
-          attempt,
-          finding_signature: signature,
-          finding_count: payload.findings.length,
-        },
-      });
+      repairs.push(JSON.stringify(payload));
     }
 
-    if (entries.length === event.entries.length) return;
-    return { entries, continue: true };
+    if (repairs.length === 0) return;
+    return { continue: true, additionalContext: repairs.join("\n\n") };
   });
 
   pi.on("session_shutdown", () => {
@@ -129,11 +144,18 @@ async function runFile(file: string): Promise<AgentScriptQualityResult> {
 
 function emitQualityCard(
   pi: ExtensionAPI,
+  ctx: ExtensionContext,
   file: string,
   quality: AgentScriptQualityResult,
   options: Parameters<typeof qualityCardData>[2] = {},
 ): void {
-  pi.appendEntry(AGENT_SCRIPT_QUALITY_ENTRY_TYPE, qualityCardData(file, quality, options));
+  const card = qualityCardData(file, quality, options);
+  pi.appendEntry(AGENT_SCRIPT_QUALITY_ENTRY_TYPE, card);
+  if (ctx.mode === "tui") {
+    ctx.ui.setWidget(AGENT_SCRIPT_QUALITY_ENTRY_TYPE, (_tui, theme) =>
+      createQualityCardComponent(card, false, theme),
+    );
+  }
 }
 
 function findingSignature(findings: AgentScriptQualityFinding[]): string {

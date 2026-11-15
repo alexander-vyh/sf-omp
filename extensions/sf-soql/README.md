@@ -89,6 +89,25 @@ Cards intentionally contain bounded previews.
 **Export rejects a path:** Use a relative file name/subpath under the allowed
 workspace export directory; absolute paths and `..` are refused.
 
+## Offline OMP syntax smoke
+
+The syntax engine statically imports `@salesforce/soql-common` from this package's
+dependency graph, so compiled OMP does not resolve a dynamic require relative to
+its executable. It is still the Salesforce parser, not a replacement validator.
+No SOQL language-server process is needed.
+
+With dependencies available, run from the repo root:
+
+```sh
+bun -e 'import { normalizeAndValidateSoql } from "./extensions/sf-soql/lib/syntax.ts"; console.log(normalizeAndValidateSoql("SELECT Id FROM Account LIMIT 1", {apiVersion: 67, context: "api"}));'
+```
+
+The file equivalent is `tests/fixtures/offline-query.soql`. Public-example
+fixtures in `tests/fixtures/official-select-examples.ts` and
+`tests/fixtures/official-advanced-examples.ts` exercise the same core. Syntax
+parsing alone is offline; org-resolved API versions, schema validation, and all
+query execution require an authenticated Salesforce connection.
+
 ## File Structure
 
 <!-- GENERATED:file-structure:start -->

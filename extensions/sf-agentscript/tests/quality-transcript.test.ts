@@ -1,10 +1,14 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { AGENT_SCRIPT_QUALITY_RULES } from "../lib/quality/catalog.ts";
 import { qualityCardData, type AgentScriptQualityCardState } from "../lib/quality/presentation.ts";
-import { createAgentScriptQualityTranscriptRenderer } from "../lib/quality/transcript.ts";
+import {
+  createAgentScriptQualityTranscriptRenderer,
+  registerAgentScriptQualityTranscriptRenderer,
+} from "../lib/quality/transcript.ts";
+import { AGENT_SCRIPT_QUALITY_ENTRY_TYPE } from "../lib/quality/auto-scan.ts";
 import type { AgentScriptQualityResult } from "../lib/quality/types.ts";
 
 const theme = {
@@ -155,5 +159,41 @@ describe("Agent Script quality transcript card", () => {
     );
     const lines = component?.render(width) ?? [];
     expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
+  });
+
+  it("restores the active branch's last quality card and clears absent cards", () => {
+    type Restore = (event: unknown, ctx: unknown) => void;
+    const handlers = new Map<string, Restore>();
+    registerAgentScriptQualityTranscriptRenderer({
+      on: (event: string, handler: Restore) => handlers.set(event, handler),
+    } as never);
+    const setWidget = vi.fn();
+    const card = qualityCardData("/tmp/A.agent", result());
+    const ctx = {
+      mode: "tui",
+      ui: { setWidget },
+      sessionManager: {
+        getBranch: () => [
+          {
+            type: "custom",
+            customType: AGENT_SCRIPT_QUALITY_ENTRY_TYPE,
+            data: card,
+          },
+        ],
+      },
+    };
+    handlers.get("session_start")?.({}, ctx);
+    expect(setWidget).toHaveBeenCalledWith(AGENT_SCRIPT_QUALITY_ENTRY_TYPE, expect.any(Function));
+    const component = setWidget.mock.calls[0]?.[1]({}, theme);
+    expect(component.render(120).join("\n")).toContain("Quality passed");
+    handlers.get("session_tree")?.(
+      {},
+      {
+        ...ctx,
+        sessionManager: { getBranch: () => [] },
+      },
+    );
+    expect(setWidget).toHaveBeenLastCalledWith(AGENT_SCRIPT_QUALITY_ENTRY_TYPE, undefined);
+    expect(handlers.has("session_switch")).toBe(true);
   });
 });

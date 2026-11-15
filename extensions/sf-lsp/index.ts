@@ -8,11 +8,11 @@
  *
  * Surfaces (all optional, all feature-gated by `ctx.hasUI`):
  *
- *   Surface                | Pi API                                 | Lifetime
+ *   Surface                | OMP API                                | Lifetime
  *   -----------------------|----------------------------------------|--------------------
- *   Working indicator      | ctx.ui.setWorkingIndicator             | streaming window
+ *   Working message        | ctx.ui.setWorkingMessage               | streaming window
  *   Welcome readiness row  | sf-lsp-health registry -> sf-welcome   | startup header
- *   Transcript row         | pi.appendEntry + registerEntryRenderer  | per event
+ *   Diagnostic widget      | appendEntry + ctx.ui.setWidget         | latest check
  *   Rich /sf-lsp panel     | ctx.ui.custom overlay + SelectList     | on-demand
  *
  * The shared `lib/common/sf-lsp-health` registry keeps probing owned here
@@ -58,10 +58,9 @@ import {
   resetLspIndicator,
 } from "./lib/working-indicator.ts";
 import {
-  createTranscriptRenderer,
+  registerLspTranscriptPresentation,
   emitTranscriptRow,
   shouldEmitTranscriptRow,
-  LSP_TRANSCRIPT_CUSTOM_TYPE,
   type LspTranscriptDetails,
 } from "./lib/transcript.ts";
 import { openSfLspPanel, type SfLspPanelAction } from "./lib/command-panel.ts";
@@ -177,8 +176,8 @@ export default function sfLspExtension(pi: ExtensionAPI) {
   let uiSettings: SfLspUiSettings = { verbose: false };
   const unavailableSeenByLanguage = new Set<SupportedLanguage>();
 
-  // --- Register human-only transcript entry renderer ----------------------------------------
-  pi.registerEntryRenderer(LSP_TRANSCRIPT_CUSTOM_TYPE, createTranscriptRenderer());
+  // Persist human-only evidence and present the latest check with OMP widgets.
+  registerLspTranscriptPresentation(pi);
 
   // --- Core hooks -----------------------------------------------------------------------------
   registerMainCommand(pi);

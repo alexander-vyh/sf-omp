@@ -35,7 +35,7 @@ Read **one** child. Do not load the whole `docs/` folder.
 
 Specialized refs, only when needed: [`docs/transitions.md`](./docs/transitions.md) · [`docs/agent-user-setup.md`](./docs/agent-user-setup.md) · [`docs/DIAGNOSTIC_PARITY.md`](./docs/DIAGNOSTIC_PARITY.md)
 
-Automatic quality analysis runs at Pi's `agent_before_settle` boundary. Clean evidence stays human-only; new High/Moderate findings persist one hidden repair instruction and request one native continuation. An unchanged finding signature stops the loop.
+Automatic quality analysis runs at OMP's `session_stop` boundary. Clean evidence stays human-only in durable scan entries and a branch-restored widget; new High/Moderate findings request native repair continuation through `additionalContext`. An unchanged finding signature stops the loop, and OMP caps continuations even when findings change. Cancelled scans remain pending without advancing repair state.
 
 ## Branch-Durable Tool State
 

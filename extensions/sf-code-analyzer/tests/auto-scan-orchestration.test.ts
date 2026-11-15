@@ -38,19 +38,14 @@ function ctx(): ExtensionContext {
   return { cwd } as ExtensionContext;
 }
 
-function beforeSettleEvent(entries: unknown[] = []) {
+function sessionStopEvent(messages: unknown[] = []) {
   return {
-    type: "agent_before_settle",
-    entries,
-    continue: false,
-    outcome: "completed",
-    context: {
-      contextEntries: [],
-      contextMessages: [],
-      llmMessages: [],
-      pendingMessages: [],
-      canContinue: true,
-    },
+    type: "session_stop",
+    messages,
+    turn_id: 1,
+    session_id: "offline-diagnostics-test",
+    stop_hook_active: false,
+    signal: new AbortController().signal,
   };
 }
 
@@ -82,7 +77,7 @@ function readyDeps(overrides: Record<string, unknown> = {}) {
 }
 
 describe("deferred Code Analyzer auto-scan orchestration", () => {
-  it("waits for agent_before_settle instead of scanning at agent_end", async () => {
+  it("waits for session_stop instead of scanning at agent_end", async () => {
     const { pi, handlers } = harness();
     const runCodeAnalyzer = vi.fn();
 
@@ -96,7 +91,7 @@ describe("deferred Code Analyzer auto-scan orchestration", () => {
     expect(handlers.get("agent_end")).toBeUndefined();
     expect(handlers.get("agent_settled")).toBeUndefined();
 
-    await handlers.get("agent_before_settle")?.[0]?.(beforeSettleEvent(), ctx());
+    await handlers.get("session_stop")?.[0]?.(sessionStopEvent(), ctx());
 
     expect(runCodeAnalyzer).toHaveBeenCalledOnce();
   });
@@ -117,7 +112,7 @@ describe("deferred Code Analyzer auto-scan orchestration", () => {
     });
 
     await handlers.get("tool_result")?.[0]?.(writeResult("src/foo.ts"), ctx());
-    const boundary = await handlers.get("agent_before_settle")?.[0]?.(beforeSettleEvent(), ctx());
+    const boundary = await handlers.get("session_stop")?.[0]?.(sessionStopEvent(), ctx());
 
     expect(boundary).toBeUndefined();
     expect(runCodeAnalyzer).not.toHaveBeenCalled();
@@ -151,7 +146,7 @@ describe("deferred Code Analyzer auto-scan orchestration", () => {
     );
 
     await handlers.get("tool_result")?.[0]?.(writeResult("src/foo.ts"), ctx());
-    const boundary = await handlers.get("agent_before_settle")?.[0]?.(beforeSettleEvent(), ctx());
+    const boundary = await handlers.get("session_stop")?.[0]?.(sessionStopEvent(), ctx());
 
     expect(boundary).toBeUndefined();
     expect(runCodeAnalyzer).toHaveBeenCalledOnce();
@@ -215,23 +210,12 @@ describe("deferred Code Analyzer auto-scan orchestration", () => {
 
     await handlers.get("tool_result")?.[0]?.(writeResult("classes/Foo.cls"), ctx());
     const prior = { type: "custom", customType: "prior-handler", data: { ok: true } };
-    const boundary = await handlers.get("agent_before_settle")?.[0]?.(
-      beforeSettleEvent([prior]),
-      ctx(),
-    );
+    const boundary = await handlers.get("session_stop")?.[0]?.(sessionStopEvent([prior]), ctx());
 
     expect(pi.sendUserMessage).not.toHaveBeenCalled();
     expect(pi.sendMessage).not.toHaveBeenCalled();
     expect(boundary).toEqual({
-      entries: [
-        prior,
-        expect.objectContaining({
-          type: "custom_message",
-          customType: "sf-code-analyzer-auto-scan-repair",
-          content: expect.stringContaining("ApexCRUDViolation"),
-          display: false,
-        }),
-      ],
+      additionalContext: expect.stringContaining("ApexCRUDViolation"),
       continue: true,
     });
   });
@@ -255,16 +239,14 @@ describe("deferred Code Analyzer auto-scan orchestration", () => {
 
     await handlers.get("tool_result")?.[0]?.(writeResult("src/foo.ts"), ctx());
     await handlers.get("tool_result")?.[0]?.(writeResult("classes/Foo.cls"), ctx());
-    const boundary = await handlers.get("agent_before_settle")?.[0]?.(beforeSettleEvent(), ctx());
+    const boundary = await handlers.get("session_stop")?.[0]?.(sessionStopEvent(), ctx());
 
     expect(runCodeAnalyzer).toHaveBeenCalledTimes(2);
     expect(pi.appendEntry).toHaveBeenCalledWith(
       "sf-code-analyzer",
       expect.objectContaining({ content: expect.stringContaining("eslint unavailable") }),
     );
-    const followUp = String(
-      (boundary as { entries?: Array<{ content?: unknown }> })?.entries?.[0]?.content,
-    );
+    const followUp = continuationContext(boundary);
     expect(followUp).toContain("ApexCRUDViolation");
     expect(followUp).toContain("/tmp/pmd-partial.json");
   });
@@ -299,13 +281,11 @@ describe("deferred Code Analyzer auto-scan orchestration", () => {
     );
 
     await handlers.get("tool_result")?.[0]?.(writeResult("classes/Foo.cls"), ctx());
-    const boundary = await handlers.get("agent_before_settle")?.[0]?.(beforeSettleEvent(), ctx());
+    const boundary = await handlers.get("session_stop")?.[0]?.(sessionStopEvent(), ctx());
 
     expect(order).toEqual(["local", "apexguru"]);
     expect(boundary).toMatchObject({
-      entries: [
-        expect.objectContaining({ content: expect.stringContaining("AvoidExpensiveApex") }),
-      ],
+      additionalContext: expect.stringContaining("AvoidExpensiveApex"),
       continue: true,
     });
   });
@@ -336,7 +316,7 @@ describe("deferred Code Analyzer auto-scan orchestration", () => {
     );
 
     await handlers.get("tool_result")?.[0]?.(writeResult("classes/Foo.cls"), ctx());
-    const boundary = await handlers.get("agent_before_settle")?.[0]?.(beforeSettleEvent(), ctx());
+    const boundary = await handlers.get("session_stop")?.[0]?.(sessionStopEvent(), ctx());
 
     expect(boundary).toBeUndefined();
     expect(runApexGuru).not.toHaveBeenCalled();
@@ -363,15 +343,9 @@ describe("deferred Code Analyzer auto-scan orchestration", () => {
     );
 
     await handlers.get("tool_result")?.[0]?.(writeResult("src/foo.ts"), ctx());
-    const firstBoundary = await handlers.get("agent_before_settle")?.[0]?.(
-      beforeSettleEvent(),
-      ctx(),
-    );
+    const firstBoundary = await handlers.get("session_stop")?.[0]?.(sessionStopEvent(), ctx());
     await handlers.get("tool_result")?.[0]?.(writeResult("src/foo.ts"), ctx());
-    const secondBoundary = await handlers.get("agent_before_settle")?.[0]?.(
-      beforeSettleEvent(),
-      ctx(),
-    );
+    const secondBoundary = await handlers.get("session_stop")?.[0]?.(sessionStopEvent(), ctx());
 
     expect(runCodeAnalyzer).toHaveBeenCalledTimes(2);
     expect(firstBoundary).toMatchObject({ continue: true });
@@ -404,11 +378,9 @@ describe("deferred Code Analyzer auto-scan orchestration", () => {
     );
 
     await handlers.get("tool_result")?.[0]?.(writeResult("src/foo.ts"), ctx());
-    const boundary = await handlers.get("agent_before_settle")?.[0]?.(beforeSettleEvent(), ctx());
+    const boundary = await handlers.get("session_stop")?.[0]?.(sessionStopEvent(), ctx());
 
-    const followUp = String(
-      (boundary as { entries?: Array<{ content?: unknown }> })?.entries?.[0]?.content,
-    );
+    const followUp = continuationContext(boundary);
     expect(followUp).toContain("Optional broader validation:");
     expect(followUp).toContain(guidance);
   });
@@ -447,4 +419,11 @@ function scanSummary(reportFile: string, rule: string) {
 
 function emptyGuidance() {
   return { recipes: [], suggestions: [], herdrHandoffs: [], text: "" };
+}
+
+function continuationContext(result: unknown): string {
+  if (result && typeof result === "object" && "additionalContext" in result) {
+    return String(result.additionalContext);
+  }
+  return "";
 }

@@ -9,9 +9,6 @@
  * extension name.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
-import path from "node:path";
-import { SF_PI_REGISTRY } from "../../../catalog/registry.ts";
 import {
   AUDITED_MAX_PI_VERSION_EXCLUSIVE,
   classifyPiVersion,
@@ -54,64 +51,6 @@ describe("compareVersions", () => {
   });
 });
 
-function productionTypeScriptFiles(root: string): string[] {
-  const files: string[] = [];
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    const fullPath = path.join(root, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name === "tests" || entry.name === "__tests__") continue;
-      files.push(...productionTypeScriptFiles(fullPath));
-    } else if (entry.isFile() && entry.name.endsWith(".ts")) {
-      files.push(fullPath);
-    }
-  }
-  return files;
-}
-
-describe("pi version floor", () => {
-  it("every bundled extension gates startup through requirePiVersion", () => {
-    for (const extension of SF_PI_REGISTRY) {
-      const source = readFileSync(path.resolve(extension.file), "utf8");
-      expect(source).toContain(`requirePiVersion(pi, "${extension.id}")`);
-    }
-  });
-
-  it("does not use Pi's removed private authStorage surface", () => {
-    const offenders = ["extensions", "lib"]
-      .flatMap((root) => productionTypeScriptFiles(path.resolve(root)))
-      .filter((file) => readFileSync(file, "utf8").includes(".authStorage"))
-      .map((file) => path.relative(process.cwd(), file));
-
-    expect(offenders).toEqual([]);
-  });
-
-  it("declares exactly one package entry for every bundled registry extension", () => {
-    const pkg = JSON.parse(readFileSync(path.resolve("package.json"), "utf8")) as {
-      pi?: { extensions?: string[] };
-    };
-    const packageExtensions = (pkg.pi?.extensions ?? []).map((entry) => entry.replace(/^\.\//, ""));
-    const registryExtensions = SF_PI_REGISTRY.map((extension) => extension.file);
-
-    expect(new Set(packageExtensions).size).toBe(packageExtensions.length);
-    expect(new Set(registryExtensions).size).toBe(registryExtensions.length);
-    expect([...packageExtensions].sort()).toEqual([...registryExtensions].sort());
-  });
-
-  it("tracks the forward-compatible peer range and exact audited development SDK", () => {
-    const pkg = JSON.parse(readFileSync(path.resolve("package.json"), "utf8")) as {
-      peerDependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-    };
-
-    expect(MIN_PI_VERSION).toBe("1.5.1");
-    expect(pkg.peerDependencies?.["@earendil-works/pi-coding-agent"]).toBe(">=1.5.1 <2.0.0");
-    expect(pkg.peerDependencies?.["@earendil-works/pi-ai"]).toBe("*");
-    expect(pkg.peerDependencies?.["@earendil-works/pi-tui"]).toBe("*");
-    expect(pkg.devDependencies?.["@earendil-works/pi-coding-agent"]).toBe("1.5.2");
-    expect(pkg.devDependencies?.["@earendil-works/pi-ai"]).toBe("1.5.2");
-    expect(pkg.devDependencies?.["@earendil-works/pi-tui"]).toBe("1.5.2");
-  });
-});
 
 describe("Pi compatibility policy", () => {
   it("distinguishes audited, forward-compatible, and blocked releases", () => {

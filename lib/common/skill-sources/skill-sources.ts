@@ -1,55 +1,46 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
- * Skill-source interop detection and wiring for `/sf-pi skills`.
+ * Skill-source discovery and native OMP configuration for SF Skills.
  *
- * Why this exists
- * ---------------
- * Pi loads skills from several conventional roots (see
- * pi-coding-agent/docs/skills.md). Two of those roots — `~/.pi/agent/skills`
- * and `~/.agents/skills` — are auto-discovered. Everything else
- * (`~/.claude/skills`, `~/.codex/skills`, `~/.cursor/skills`, arbitrary
- * project paths) has to be listed explicitly in `settings.json → skills[]`.
+ * OMP 18.17 loads configured roots from skills.customDirectories in YAML:
+ * global config lives under the repository-isolated agent directory, and
+ * project config lives at <cwd>/.omp/config.yml. SF source registry metadata
+ * remains separate. Reads tolerate malformed config; writes refuse to erase it.
  *
- * Users coming from Claude Code or OpenAI Codex often have a sizeable
- * skill library in those directories and don't realize pi can read them
- * with a one-line settings edit. This helper detects the candidate
- * directories on disk, compares them against what the user has already
- * wired, and is used by the `/sf-pi skills` overlay to persist the
- * delta into `~/.pi/agent/settings.json`.
- *
- * Scope: this module never shells out to `pi install` and never runs
- * network. It is a pure settings-file writer + disk scanner.
+ * Relative native roots resolve against the skill loader's cwd, not $HOME or
+ * the config directory. Newly added relative roots are persisted absolutely
+ * so global wiring cannot drift when the next session opens another project.
  */
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { globalSettingsPath, projectSettingsPath } from "../pi-paths.ts";
-import { writeJsonFile } from "../sf-pi-settings.ts";
+import {
+  nativeSkillSettingsPath,
+  readSkillSettingsDocument,
+  resolveSkillSourcePath,
+  logicalSkillSettingsValues,
+  skillSourceIdentity,
+  writeSkillSourceSettings,
+} from "./skill-settings.ts";
 
 /** Where a candidate writes when the user opts it in. */
 export type SkillSourceScope = "global" | "project";
 
 /**
- * A directory on disk that looks like a usable skill root.
- *
- * "Usable" means: it exists, it's a directory, and it either contains a
- * top-level `.md` skill file or a subdirectory with `SKILL.md`. We
- * deliberately don't validate frontmatter — pi does that at load time,
- * and we want the overlay to surface roots that are a few typos away
- * from loading successfully.
+ * A known skill directory on disk, including empty roots the user may populate.
+ * Counts follow OMP's immediate child-directory SKILL.md convention. OMP
+ * validates frontmatter at load time; discovery does not read skill contents.
  */
 export interface SkillSourceCandidate {
   /** Absolute path, with the user's home dir substituted back to `~` for display. */
   displayPath: string;
   /** Absolute path on disk. */
   absolutePath: string;
-  /** The value we'll write to `skills[]` — uses `~/…` when under $HOME so
-   *  the settings file stays portable across machines with different
-   *  home paths. */
+  /** Portable value to write to native skills.customDirectories. */
   settingsPath: string;
   /** Short human label shown in the overlay (e.g. "Claude Code"). */
   label: string;
-  /** How many immediate skill entries we detected (skills + root `.md` files). */
+  /** Number of immediate child directories containing SKILL.md. */
   skillCount: number;
   /** True when this path already appears (verbatim or resolved) in the
    *  candidate's target settings file. */
@@ -70,10 +61,8 @@ interface KnownRoot {
 }
 
 /**
- * Build the fixed list of external skill roots we probe for at *global*
- * scope. Pi already auto-discovers `~/.pi/agent/skills` and
- * `~/.agents/skills`, so listing those in `skills[]` would be a no-op.
- * We stick to roots that genuinely require opt-in.
+ * Native and agents roots are already discovered by OMP; external harness
+ * roots are offered for explicit user opt-in.
  */
 function knownGlobalRoots(home: string): KnownRoot[] {
   return [
@@ -102,10 +91,8 @@ function knownGlobalRoots(home: string): KnownRoot[] {
  * Build the fixed list of external skill roots we probe for at *project*
  * scope. These mirror the global roots but live inside the current
  * working tree (e.g. a repo that ships its own `.claude/skills`). They
- * write to `<cwd>/.pi/settings.json` so the wiring is per-project.
- *
- * `.pi/skills` and `.agents/skills` are intentionally excluded — pi
- * auto-discovers those, so wiring them up is a no-op.
+ * write to `<cwd>/.omp/config.yml` so wiring is per-project.
+ * Native and agents roots are excluded because OMP discovers them itself.
  */
 function knownProjectRoots(cwd: string): KnownRoot[] {
   return [
@@ -139,18 +126,15 @@ export interface SkillSourcesResult {
   projectIncluded: boolean;
   /** Every candidate root we detected on disk, wired or not. */
   candidates: SkillSourceCandidate[];
-  /** Entries in included settings.skills[] files that point at a non-existent path.
-   *  Surfaced so users can prune stale references. */
+  /** Native customDirectories entries that point at a non-existent directory. */
   staleWired: string[];
 }
 
 /**
  * Discover external skill roots on disk and cross-reference them with
- * the user's current settings.json `skills[]` arrays.
+ * the user's current native YAML skills.customDirectories arrays.
  *
- * Pass `cwd` to also probe project-scope candidates and read the
- * matching `<cwd>/.pi/settings.json`. Without `cwd`, only global roots
- * are detected.
+ * Pass trusted `cwd` to include `<cwd>/.omp/config.yml` and project roots.
  *
  * The result is safe to render even when settings are missing or malformed.
  */
@@ -163,8 +147,8 @@ export function detectSkillSources(
   const cwd = args.cwd;
   const includeProject = !!cwd && args.includeProject !== false;
 
-  const globalPath = globalSettingsPath();
-  const projectPath = includeProject ? projectSettingsPath(cwd) : undefined;
+  const globalPath = nativeSkillSettingsPath("global");
+  const projectPath = includeProject ? nativeSkillSettingsPath("project", cwd) : undefined;
   const globalWired = readWiredSkillPaths(globalPath, home, cwd);
   const projectWired = projectPath ? readWiredSkillPaths(projectPath, home, cwd) : null;
 
@@ -177,7 +161,8 @@ export function detectSkillSources(
     const wiredSet = root.scope === "project" ? projectWired : globalWired;
     const wired = !!(
       wiredSet &&
-      (wiredSet.absolute.has(root.absolute) || wiredSet.raw.has(root.settingsValue))
+      (wiredSet.absolute.has(skillSourceIdentity(root.absolute, cwd, home)) ||
+        wiredSet.raw.has(root.settingsValue))
     );
     candidates.push({
       displayPath: toDisplayPath(root.absolute, home),
@@ -195,9 +180,10 @@ export function detectSkillSources(
   for (const wired of [globalWired, projectWired]) {
     if (!wired) continue;
     for (const raw of wired.raw) {
-      const resolved = resolvePath(raw, home, cwd);
+      const resolved = resolveSkillSourcePath(raw, cwd, home);
       if (!resolved) continue;
-      if (isDirectory(resolved)) continue;
+      if (isDirectory(resolved) || (path.basename(resolved) === "SKILL.md" && existsSync(resolved)))
+        continue;
       if (seenStale.has(raw)) continue;
       seenStale.add(raw);
       staleWired.push(raw);
@@ -214,18 +200,11 @@ export function detectSkillSources(
 }
 
 /**
- * Update a settings.json `skills[]` array.
+ * Update native YAML skills.customDirectories without changing any other setting.
  *
- * - `add`: values to insert (deduped against whatever's already there).
- * - `remove`: values to drop (matched verbatim *or* by resolved absolute path).
- * - `scope`: which settings file to write to. Defaults to "global".
- *           When "project", `cwd` is required so we can resolve
- *           `<cwd>/.pi/settings.json`.
- *
- * Returns the updated array so the caller can show a summary. This is
- * the only write path used by `/sf-pi skills` and `/sf-skills sources` —
- * the overlay always funnels through here so we have a single place
- * that owns the JSON shape and newline convention.
+ * Add/remove values match by normalized real path when available. Project scope
+ * requires cwd; global scope is confined to this repository's runtime directory.
+ * The return shape remains compatible with existing SF Skills callers.
  */
 export function updateSkillSources(args: {
   add: string[];
@@ -237,53 +216,41 @@ export function updateSkillSources(args: {
 }): { settingsPath: string; skills: string[] } {
   const home = args.home ?? os.homedir();
   const scope: SkillSourceScope = args.scope ?? "global";
-  const settingsPath =
-    args.settingsFile ??
-    (scope === "project" ? requireProjectSettingsPath(args.cwd) : globalSettingsPath());
-  const root = readJsonObject(settingsPath);
-  const current = Array.isArray(root.skills) ? (root.skills as unknown[]) : [];
-
-  const existing: string[] = current.filter((v): v is string => typeof v === "string");
-  const removeAbsolute = new Set(
-    args.remove
-      .map((value) => resolvePath(value, home, args.cwd))
-      .filter((p): p is string => typeof p === "string"),
-  );
-  const removeRaw = new Set(args.remove);
-
-  const retained = existing.filter((value) => {
-    if (removeRaw.has(value)) return false;
-    const resolved = resolvePath(value, home, args.cwd);
-    if (resolved && removeAbsolute.has(resolved)) return false;
-    return true;
-  });
-
-  const existingAbsolute = new Set(
-    retained
-      .map((value) => resolvePath(value, home, args.cwd))
-      .filter((p): p is string => typeof p === "string"),
-  );
-  const existingRaw = new Set(retained);
-
-  for (const value of args.add) {
-    if (existingRaw.has(value)) continue;
-    const resolved = resolvePath(value, home, args.cwd);
-    if (resolved && existingAbsolute.has(resolved)) continue;
+  const canonical = nativeSkillSettingsPath(scope, args.cwd);
+  const settingsPath = args.settingsFile ?? canonical;
+  if (path.resolve(settingsPath) !== path.resolve(canonical)) {
+    throw new Error(`Skill-source mutations must target native OMP config ${canonical}.`);
+  }
+  const root = readSkillSettingsDocument(settingsPath);
+  const { customDirectories: existing } = logicalSkillSettingsValues(root);
+  const identity = (value: string) => skillSourceIdentity(value, args.cwd, home);
+  const removeAbsolute = new Set(args.remove.map(identity));
+  const retained: string[] = [];
+  const seen = new Set<string>();
+  for (const value of existing) {
+    const absolute = identity(value);
+    if (removeAbsolute.has(absolute) || seen.has(absolute)) continue;
     retained.push(value);
-    existingRaw.add(value);
-    if (resolved) existingAbsolute.add(resolved);
+    seen.add(absolute);
   }
-
-  // Only rewrite the file if something actually changed. This keeps the
-  // mtime stable for no-op confirmations.
+  for (const value of args.add) {
+    if (!value.trim()) continue;
+    const absolute = identity(value);
+    if (seen.has(absolute)) continue;
+    // Persist relative additions against the actual loader cwd, never the YAML directory.
+    retained.push(
+      value.startsWith("~/") || value === "~" || path.isAbsolute(value)
+        ? value
+        : resolveSkillSourcePath(value, args.cwd, home),
+    );
+    seen.add(absolute);
+  }
   const unchanged =
-    retained.length === existing.length && retained.every((value, i) => value === existing[i]);
-  if (unchanged) {
-    return { settingsPath, skills: retained };
+    retained.length === existing.length &&
+    retained.every((value, index) => value === existing[index]);
+  if (!unchanged) {
+    writeSkillSourceSettings(settingsPath, root, retained, scope, args.cwd, home);
   }
-
-  const nextRoot = { ...root, skills: retained };
-  writeJsonFile(settingsPath, nextRoot);
   return { settingsPath, skills: retained };
 }
 
@@ -300,47 +267,17 @@ interface WiredPaths {
 
 function readWiredSkillPaths(settingsPath: string, home: string, cwd?: string): WiredPaths {
   const result: WiredPaths = { raw: new Set(), absolute: new Set() };
-  const root = readJsonObject(settingsPath);
-  const skills = Array.isArray(root.skills) ? (root.skills as unknown[]) : [];
+  let skills: string[];
+  try {
+    skills = logicalSkillSettingsValues(readSkillSettingsDocument(settingsPath)).customDirectories;
+  } catch {
+    return result;
+  }
   for (const value of skills) {
-    if (typeof value !== "string") continue;
     result.raw.add(value);
-    const resolved = resolvePath(value, home, cwd);
-    if (resolved) result.absolute.add(resolved);
+    result.absolute.add(skillSourceIdentity(value, cwd, home));
   }
   return result;
-}
-
-function requireProjectSettingsPath(cwd: string | undefined): string {
-  if (!cwd) {
-    throw new Error(
-      "updateSkillSources({ scope: 'project' }) requires `cwd` so the project settings file can be resolved.",
-    );
-  }
-  return projectSettingsPath(cwd);
-}
-
-function readJsonObject(filePath: string): Record<string, unknown> {
-  if (!existsSync(filePath)) return {};
-  try {
-    const parsed = JSON.parse(readFileSync(filePath, "utf8"));
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-function resolvePath(value: string, home: string, cwd?: string): string | null {
-  if (!value) return null;
-  if (value.startsWith("~/")) return path.join(home, value.slice(2));
-  if (value === "~") return home;
-  if (path.isAbsolute(value)) return value;
-  // Relative paths in project settings resolve against `cwd`; in global
-  // settings they resolve against `$HOME`. Pi follows the same rule when
-  // loading `skills[]`.
-  return path.resolve(cwd ?? home, value);
 }
 
 function toDisplayPath(absolute: string, home: string): string {
@@ -360,11 +297,8 @@ function isDirectory(absolute: string): boolean {
 /**
  * Count the discoverable skill entries under a root.
  *
- * We mirror pi's two discovery conventions without loading any files:
- *   - a subdirectory containing `SKILL.md` counts as one skill
- *   - a `.md` file at the root counts as one skill (only in roots that
- *     allow loose `.md`; safe-upper-bound elsewhere since pi ignores
- *     the rest)
+ * Mirror OMP's custom directory scanner: visible child directories containing
+ * SKILL.md count; loose Markdown files and hidden directories do not.
  *
  * This is a cheap heuristic for the overlay label — it never throws.
  */
@@ -377,13 +311,12 @@ function countSkillEntries(root: string): number {
     return 0;
   }
   for (const entry of entries) {
+    if (entry.startsWith(".")) continue;
     const full = path.join(root, entry);
     try {
       const st = statSync(full);
       if (st.isDirectory()) {
         if (existsSync(path.join(full, "SKILL.md"))) count += 1;
-      } else if (st.isFile() && entry.toLowerCase().endsWith(".md")) {
-        count += 1;
       }
     } catch {
       // Skip unreadable entries.

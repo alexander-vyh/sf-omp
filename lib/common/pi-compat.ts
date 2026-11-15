@@ -123,6 +123,20 @@ export function requirePiVersion(
   const installed = getInstalledPiVersion();
   if (!installed) return true;
 
+  // This fork audits OMP explicitly; never pretend its version is a Pi version.
+  // Both native registration methods distinguish OMP from an unrelated Pi major.
+  if (
+    installed === "18.17.0" &&
+    _pi !== null &&
+    typeof _pi === "object" &&
+    "registerTranscriptPresenter" in _pi &&
+    typeof _pi.registerTranscriptPresenter === "function" &&
+    "registerFileWriteFallback" in _pi &&
+    typeof _pi.registerFileWriteFallback === "function"
+  ) {
+    return true;
+  }
+
   const compatibility = classifyPiVersion(
     installed,
     minVersion,

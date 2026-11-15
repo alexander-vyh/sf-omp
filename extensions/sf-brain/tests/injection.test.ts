@@ -50,9 +50,9 @@ describe("sf-brain before_agent_start handler", () => {
     expect(brainSource).toContain("getSharedSfEnvironment");
   });
 
-  it("injects model-scoped response guidance through the structured system prompt", () => {
+  it("returns model-scoped response guidance through the native system prompt", () => {
     expect(brainSource).toContain(
-      "applyGatewayGpt6ResponseStyle(event.systemPromptOptions, ctx.model)",
+      "systemPrompt: applyGatewayGpt6ResponseStyle(event.systemPrompt, ctx.model)",
     );
   });
 

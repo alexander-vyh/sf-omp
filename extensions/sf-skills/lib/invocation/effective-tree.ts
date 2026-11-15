@@ -37,7 +37,7 @@ export function managedEffectiveSkillsPath(): string {
 }
 
 export function managedEffectiveSettingsValue(): string {
-  return "~/.pi/agent/sf-skills/effective/skills";
+  return managedEffectiveSkillsPath();
 }
 
 export interface EffectiveSkillRecord {

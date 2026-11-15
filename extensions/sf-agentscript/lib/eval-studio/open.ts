@@ -40,8 +40,8 @@ export async function openEvalStudio(
     return undefined;
   }
 
+  // OMP owns overlay focus and teardown through custom(); no private loader visibility API.
   for (;;) {
-    ctx.ui.setWorkingVisible(false);
     let result: EvalStudioIntent | undefined;
     let refreshTimer: ReturnType<typeof setInterval> | undefined;
     try {
@@ -125,7 +125,6 @@ export async function openEvalStudio(
       );
     } finally {
       if (refreshTimer) clearInterval(refreshTimer);
-      ctx.ui.setWorkingVisible(true);
     }
 
     if (!result || result.kind === "close") return undefined;

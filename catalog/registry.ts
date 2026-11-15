@@ -17,7 +17,7 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
     defaultEnabled: true,
     commands: ["/sf-agentscript"],
     tools: ["agentscript_authoring","agentscript_preview","agentscript_eval","agentscript_lifecycle"],
-    events: ["session_start","session_shutdown","tool_result","agent_before_settle"],
+    events: ["session_start","session_switch","session_tree","session_shutdown","tool_result","session_stop"],
     configurable: true,
     getConfigPanel: async () => {
       const mod = await import("../extensions/sf-agentscript/lib/config-panel.ts");
@@ -73,7 +73,7 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
     defaultEnabled: true,
     commands: ["/sf-code-analyzer"],
     tools: ["code_analyzer"],
-    events: ["session_start","tool_result","agent_before_settle","session_shutdown"],
+    events: ["session_start","tool_result","session_stop","session_shutdown"],
     configurable: true,
     getConfigPanel: async () => {
       const mod = await import("../extensions/sf-code-analyzer/lib/config-panel.ts");
@@ -185,7 +185,7 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
     defaultEnabled: true,
     commands: ["/sf-flow"],
     tools: ["sf_flow"],
-    events: ["session_start","tool_result","message_end","agent_settled"],
+    events: ["session_start","tool_result","assistant_message","session_stop"],
   },
   {
     id: "sf-guardrail",

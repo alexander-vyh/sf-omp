@@ -88,7 +88,8 @@ import { updateSkillSources } from "../../lib/common/skill-sources/skill-sources
 import { setSourceGate, upsertSource } from "../../lib/common/skill-sources/source-registry.ts";
 import { loadUsageMap, recordSkillInvocation } from "./lib/usage-store.ts";
 import { applyPrunePlan, buildPrunePlan } from "./lib/prune.ts";
-import { gatherCatalogInput } from "./lib/gather.ts";
+import { gatherCatalogInput, type GatherDeps } from "./lib/gather.ts";
+
 import { buildSkillCatalog, type SkillCatalog } from "./lib/catalog.ts";
 import {
   planConflictWinner,
@@ -104,6 +105,12 @@ import { applyFileAction, type FileActionOp } from "./lib/conflict-actions.ts";
 // -------------------------------------------------------------------------------------------------
 // Constants
 // -------------------------------------------------------------------------------------------------
+
+// The runtime aliases these SDK imports to OMP's async skill loaders.
+const catalogLoaders: Pick<GatherDeps, "loadSkills" | "loadSkillsFromDir"> = {
+  loadSkills: loadSkills as unknown as GatherDeps["loadSkills"],
+  loadSkillsFromDir: loadSkillsFromDir as unknown as GatherDeps["loadSkillsFromDir"],
+};
 
 const COMMAND_NAME = "sf-skills";
 const PROJECT_SCOPE_UNTRUSTED_MESSAGE =
@@ -568,10 +575,10 @@ export default function sfSkills(pi: ExtensionAPI) {
     const clone = inspectManagedClone("global");
     const policy = readGlobalInvocationPolicy();
     const managed = clone.exists ? syncEffectiveSkills(clone.skillsPath, policy).skills : [];
-    const gathered = gatherCatalogInput({
+    const gathered = await gatherCatalogInput({
       cwd: ctx.cwd,
       projectTrusted: ctx.isProjectTrusted(),
-      deps: { loadSkills, loadSkillsFromDir, getCommands: () => pi.getCommands() },
+      deps: { ...catalogLoaders, getCommands: () => pi.getCommands() },
     });
     const skills = buildToggleInventory(managed, scannedSkillsForToggle(gathered.sources));
     if (skills.length === 0) {
@@ -581,25 +588,20 @@ export default function sfSkills(pi: ExtensionAPI) {
       );
       return;
     }
-    ctx.ui.setWorkingVisible(false);
-    let result: ToggleViewResult | undefined;
-    try {
-      result = await ctx.ui.custom<ToggleViewResult>(
-        (_tui, theme, _keybindings, done) =>
-          new SkillToggleViewComponent(theme, skills, policy, done),
-        {
-          overlay: true,
-          overlayOptions: () => ({
-            anchor: "center" as const,
-            width: "92%",
-            minWidth: 100,
-            maxHeight: "88%",
-          }),
-        },
-      );
-    } finally {
-      ctx.ui.setWorkingVisible(true);
-    }
+    // OMP owns overlay focus and the working indicator for this UI lifecycle.
+    const result = await ctx.ui.custom<ToggleViewResult>(
+      (_tui, theme, _keybindings, done) =>
+        new SkillToggleViewComponent(theme, skills, policy, done),
+      {
+        overlay: true,
+        overlayOptions: () => ({
+          anchor: "center" as const,
+          width: "92%",
+          minWidth: 100,
+          maxHeight: "88%",
+        }),
+      },
+    );
     if (!result || result.action !== "apply") return;
     writeGlobalInvocationPolicy(result.policy);
     if (clone.exists) {
@@ -622,35 +624,28 @@ export default function sfSkills(pi: ExtensionAPI) {
 
     // Heavy catalog work happens HERE, on explicit /sf-skills intent — never
     // in a session hook. See tests/boot-path.test.ts for the enforced contract.
-    const input = gatherCatalogInput({
+    const input = await gatherCatalogInput({
       cwd: ctx.cwd,
       projectTrusted: ctx.isProjectTrusted(),
-      deps: { loadSkills, loadSkillsFromDir, getCommands: () => pi.getCommands() },
+      deps: { ...catalogLoaders, getCommands: () => pi.getCommands() },
     });
     const catalog = buildSkillCatalog(input);
 
-    ctx.ui.setWorkingVisible(false);
-    let result: FunnelResult | undefined;
-    try {
-      result = await ctx.ui.custom<FunnelResult>(
-        (_tui, theme, _keybindings, done) =>
-          new SkillFunnelViewComponent(theme, { catalog, cwd: ctx.cwd }, done),
-        {
-          overlay: true,
-          // Fixed max column width (pi clamps to the terminal on narrow
-          // screens); the component's flex columns fill whatever it gets, so
-          // the funnel is responsive between ~84 and ~152 columns.
-          overlayOptions: () => ({
-            anchor: "center" as const,
-            width: 152,
-            minWidth: 84,
-            maxHeight: "90%",
-          }),
-        },
-      );
-    } finally {
-      ctx.ui.setWorkingVisible(true);
-    }
+    // OMP owns overlay focus and the working indicator for this UI lifecycle.
+    const result = await ctx.ui.custom<FunnelResult>(
+      (_tui, theme, _keybindings, done) =>
+        new SkillFunnelViewComponent(theme, { catalog, cwd: ctx.cwd }, done),
+      {
+        overlay: true,
+        // Fixed max column width (OMP clamps to narrow terminals).
+        overlayOptions: () => ({
+          anchor: "center" as const,
+          width: 152,
+          minWidth: 84,
+          maxHeight: "90%",
+        }),
+      },
+    );
 
     if (!result || result.kind === "cancel") return;
     if (result.kind === "resolve") {

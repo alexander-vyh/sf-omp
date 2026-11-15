@@ -8,14 +8,17 @@ SF Code Analyzer provides a focused wrapper around the supported
 - explicit scans, rule discovery, config generation, recipes, and prior-report
   summaries through one `code_analyzer` family tool;
 - readiness diagnostics through `/sf-code-analyzer` and `/sf-pi doctor`;
-- narrow deferred scans at Pi's actionable pre-settlement boundary after successful `write` or `edit` results;
+- narrow deferred scans at OMP's native `session_stop` boundary after successful `write` or `edit` results;
 - explicit org-backed ApexGuru analysis when the target supports it;
 - session-scoped report artifacts and bounded result cards.
 
 Automatic scans are quality feedback for files the agent just touched, not a
 replacement for full-project, AppExchange, or CI scans. Clean results remain
-human-only; actionable findings persist one hidden repair instruction and use
-Pi's native one-continuation boundary instead of queueing an out-of-band message.
+human-only custom entries, with the latest evidence displayed in an OMP widget.
+Actionable findings return `continue: true` with `additionalContext`; the hook
+does not rewrite session messages or queue an out-of-band message. Unchanged
+finding signatures stop the repair loop, and aborted settle passes do not
+request a continuation.
 
 ## Automatic and explicit scans
 
@@ -90,6 +93,21 @@ Java readiness.
 **A scan wrote unexpected files:** SF Pi's default artifact path is outside the
 project. Review caller-supplied `output_files`, which are passed to Code Analyzer
 as explicit output destinations.
+
+## Offline OMP smoke
+
+With the repo-local launcher and dependencies available, invoke `code_analyzer`
+with `{"action":"recipes","target":["extensions/sf-apex/tests/fixtures/OfflineExample.cls"]}`
+or `{"action":"last_report","report_file":"extensions/sf-code-analyzer/tests/fixtures/offline-report.json"}`.
+These actions require neither an org nor the Salesforce CLI.
+
+The deferred-scan native boundary and human-only widget contracts have offline
+fixtures in `tests/actionable-boundary-runtime.test.ts`,
+`tests/auto-scan-orchestration.test.ts`, and `tests/transcript-format.test.ts`.
+Run these with the repository's test runner after integration; they issue no
+provider requests. Actual `run` scans require the installed Salesforce CLI and
+Code Analyzer plugin; PMD needs Java and Flow Scanner needs Python. ApexGuru
+requires an authenticated, entitled org and is not an offline operation.
 
 ## File Structure
 

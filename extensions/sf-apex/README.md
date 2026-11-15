@@ -58,6 +58,23 @@ started. The watch is bounded and does not start an unbounded CLI tail process.
 **Anonymous Apex is refused as mutating:** Pass `allow_mutation=true` only when
 execution is intentional. Prefer a focused Apex test or rollback-safe probe.
 
+## Offline OMP smoke
+
+Local actions remain independent of org authentication. Through `sf_apex`, use:
+
+```json
+{"action":"author.plan","target":"extensions/sf-apex/tests/fixtures/OfflineExample.cls","intent":"Review local Apex"}
+{"action":"log.analyze","file":"extensions/sf-apex/tests/fixtures/offline-debug.log"}
+{"action":"diagnose.file","file":"extensions/sf-apex/tests/fixtures/OfflineExample.cls"}
+```
+
+`author.plan` uses local filename heuristics. `log.analyze` parses the fixture and
+writes a local digest artifact. `diagnose.file` uses the real Apex LSP process:
+Java 11+ and a Jorje LSP JAR are required (for example `SF_LSP_APEX_JAR`), not an
+org connection. Without those prerequisites it reports unavailability rather
+than fabricating diagnostics. The fixture log is also suitable for direct
+`parseApexLog` calls in `lib/log-parser.ts` without artifact writes.
+
 ## File Structure
 
 <!-- GENERATED:file-structure:start -->

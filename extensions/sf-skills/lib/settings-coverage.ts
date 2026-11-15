@@ -26,10 +26,11 @@
  * This module owns just the math; the apply path in index.ts wires
  * the result into `updateSkillSources`.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { globalSettingsPath, projectSettingsPath } from "../../../lib/common/pi-paths.ts";
+import { readSkillSourceSettings } from "../../../lib/common/skill-sources/skill-settings.ts";
+import { nativeSkillSettingsPath } from "../../../lib/common/skill-sources/skill-settings.ts";
 import type { SkillSourceScope } from "../../../lib/common/skill-sources/skill-sources.ts";
 
 // -------------------------------------------------------------------------------------------------
@@ -90,10 +91,12 @@ export interface PlanInput {
 export function planDisable(input: PlanInput): DisablePlan {
   const home = input.home ?? os.homedir();
   const settingsPath =
-    input.scope === "project" ? projectSettingsPath(input.cwd) : globalSettingsPath();
+    input.scope === "project"
+      ? nativeSkillSettingsPath("project", input.cwd)
+      : nativeSkillSettingsPath("global", input.cwd);
   const skillAbs = path.normalize(input.skillPath);
 
-  const skills = readSkills(settingsPath);
+  const skills = readSkills(settingsPath, input.cwd);
 
   for (const entry of skills) {
     const entryAbs = path.normalize(expandSettingsValue(entry, settingsPath, home, input.cwd));
@@ -141,7 +144,9 @@ export function planEnable(input: PlanInput): {
 } {
   const home = input.home ?? os.homedir();
   const targetSettingsPath =
-    input.scope === "project" ? projectSettingsPath(input.cwd) : globalSettingsPath();
+    input.scope === "project"
+      ? nativeSkillSettingsPath("project", input.cwd)
+      : nativeSkillSettingsPath("global", input.cwd);
   const skillAbs = path.normalize(input.skillPath);
 
   // Walk both scopes — target scope first so an exact-match in the
@@ -151,12 +156,14 @@ export function planEnable(input: PlanInput): {
     {
       scope: input.scope === "project" ? "global" : "project",
       settingsPath:
-        input.scope === "project" ? globalSettingsPath() : projectSettingsPath(input.cwd),
+        input.scope === "project"
+          ? nativeSkillSettingsPath("global", input.cwd)
+          : nativeSkillSettingsPath("project", input.cwd),
     },
   ];
 
   for (const { scope, settingsPath } of scopes) {
-    for (const entry of readSkills(settingsPath)) {
+    for (const entry of readSkills(settingsPath, input.cwd)) {
       const entryAbs = path.normalize(expandSettingsValue(entry, settingsPath, home, input.cwd));
       if (!entryAbs) continue;
       if (entryAbs === skillAbs) {
@@ -185,16 +192,8 @@ export function planEnable(input: PlanInput): {
 // Internal helpers
 // -------------------------------------------------------------------------------------------------
 
-function readSkills(settingsPath: string): string[] {
-  if (!existsSync(settingsPath)) return [];
-  try {
-    const parsed = JSON.parse(readFileSync(settingsPath, "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
-    const skills = (parsed as Record<string, unknown>).skills;
-    return Array.isArray(skills) ? skills.filter((v): v is string => typeof v === "string") : [];
-  } catch {
-    return [];
-  }
+function readSkills(settingsPath: string, cwd?: string): string[] {
+  return readSkillSourceSettings(settingsPath, cwd).customDirectories;
 }
 
 function expandSettingsValue(

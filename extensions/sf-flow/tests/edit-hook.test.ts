@@ -142,7 +142,7 @@ describe("SF Flow edit feedback", () => {
     );
 
     expect(
-      await handlers.get("message_end")?.(
+      await handlers.get("assistant_message")?.(
         {
           message: {
             role: "assistant",
@@ -153,16 +153,29 @@ describe("SF Flow edit feedback", () => {
       ),
     ).toBeUndefined();
 
-    const completed = (await handlers.get("message_end")?.(
+    const completed = (await handlers.get("assistant_message")?.(
       {
         message: {
           role: "assistant",
-          content: [{ type: "text", text: "Inspection complete." }],
+          content: [
+            { type: "thinking", thinking: "Inspecting graph.", thinkingSignature: "keep" },
+            { type: "text", text: "Inspection complete." },
+            { type: "text", text: "Topology follows." },
+          ],
         },
       },
       { cwd: process.cwd() },
-    )) as { message?: { content?: Array<{ type?: string; text?: string }> } };
-    const text = completed.message?.content
+    )) as { content?: Array<{ type?: string; text?: string }> };
+    expect(completed.content).toHaveLength(3);
+    expect(completed.content?.[0]).toEqual({
+      type: "thinking",
+      thinking: "Inspecting graph.",
+      thinkingSignature: "keep",
+    });
+    expect(completed.content?.[1]).toEqual({ type: "text", text: "Inspection complete." });
+    expect(handlers.has("session_stop")).toBe(true);
+    expect(handlers.has("message_end")).toBe(false);
+    const text = completed.content
       ?.filter((part) => part.type === "text")
       .map((part) => part.text)
       .join("\n");
@@ -175,7 +188,7 @@ describe("SF Flow edit feedback", () => {
     expect(text).not.toContain('finish["Finish"]');
     expect(text?.match(/```mermaid/g)).toHaveLength(1);
     expect(
-      await handlers.get("message_end")?.(
+      await handlers.get("assistant_message")?.(
         { message: { role: "assistant", content: [{ type: "text", text: "Next." }] } },
         { cwd: process.cwd() },
       ),

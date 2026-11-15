@@ -20,9 +20,11 @@
     ],
     "events": [
       "session_start",
+      "session_switch",
+      "session_tree",
       "session_shutdown",
       "tool_result",
-      "agent_before_settle"
+      "session_stop"
     ],
     "docs": {
       "intentGroup": "Build agents",
@@ -39,7 +41,7 @@
       ],
       "safety": [
         "Compile-on-save stays silent on unsupported files and on failed write/edit results; only enabled edit-time High hardening rules join that feedback.",
-        "Deferred quality repair uses Pi's actionable pre-settlement boundary after retries and queued user work finish.",
+        "Deferred quality repair uses OMP's session_stop boundary and native additionalContext; unchanged signatures stop repair and OMP bounds continuations.",
         "Global per-rule quality toggles dynamically control reporting, repair, metrics, and local-file publication gating without a reload.",
         "Quality cards show every finding header by default; overlong variable descriptions gate publication, while official instruction-template diagnostics remain pre-activation recommendations.",
         "Eval batches retry a rejected org credential once with Agentforce named-user auth; org reads retain the normal @salesforce/core connection and tokens are never logged or persisted.",
@@ -71,7 +73,7 @@
     "entry": "extensions/sf-agentscript/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 37914
+    "srcLoc": 37950
   },
   {
     "id": "sf-apex",
@@ -173,7 +175,7 @@
     "entry": "extensions/sf-brain/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 1696
+    "srcLoc": 1715
   },
   {
     "id": "sf-browser",
@@ -275,7 +277,7 @@
     "events": [
       "session_start",
       "tool_result",
-      "agent_before_settle",
+      "session_stop",
       "session_shutdown"
     ],
     "docs": {
@@ -302,7 +304,7 @@
     "entry": "extensions/sf-code-analyzer/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 4501
+    "srcLoc": 4516
   },
   {
     "id": "sf-data-explorer",
@@ -651,8 +653,8 @@
     "events": [
       "session_start",
       "tool_result",
-      "message_end",
-      "agent_settled"
+      "assistant_message",
+      "session_stop"
     ],
     "docs": {
       "intentGroup": "Build apps",
@@ -699,7 +701,7 @@
     "entry": "extensions/sf-flow/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 10585
+    "srcLoc": 10595
   },
   {
     "id": "sf-guardrail",
@@ -972,7 +974,7 @@
     "entry": "extensions/sf-lsp/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 4209
+    "srcLoc": 4185
   },
   {
     "id": "sf-lwc",
@@ -1270,7 +1272,7 @@
     "entry": "extensions/sf-skills/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 6026
+    "srcLoc": 6008
   },
   {
     "id": "sf-slack",
@@ -1393,7 +1395,7 @@
     "entry": "extensions/sf-soql/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 5445
+    "srcLoc": 5436
   },
   {
     "id": "sf-tldraw",

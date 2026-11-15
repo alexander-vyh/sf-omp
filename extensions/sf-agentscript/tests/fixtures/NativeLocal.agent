@@ -1,0 +1,23 @@
+config:
+    agent_name: "NativeLocal"
+    agent_type: "AgentforceEmployeeAgent"
+    description: "Local AgentScript compilation fixture."
+
+system:
+    instructions: |
+        Answer briefly and clearly using only the supplied information.
+    messages:
+        welcome: "Hello. How can I help?"
+        error: "I could not complete that request. Please try again."
+
+subagent primary:
+    description: "Answer general questions without invoking external actions."
+    reasoning:
+        instructions: ->
+            | Answer the user's question using only information in the conversation.
+            | If information is missing, ask a clarifying question.
+
+start_agent main:
+    description: "Entry point for local compilation."
+    before_reasoning:
+        transition to @subagent.primary

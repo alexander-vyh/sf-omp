@@ -93,7 +93,7 @@ This complete top-level inventory is generated from `lib/common/`. Directory cou
 | `sf-pi-settings.ts`            | module    |                     1 |               0 |
 | `sf-schema/`                   | directory |                     1 |               1 |
 | `skill-detection/`             | directory |                     2 |               0 |
-| `skill-sources/`               | directory |                     2 |               0 |
+| `skill-sources/`               | directory |                     3 |               0 |
 | `slack-status/`                | directory |                     1 |               0 |
 | `state-store.ts`               | module    |                     1 |               0 |
 | `test-fixtures.ts`             | module    |                     1 |               0 |
