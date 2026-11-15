@@ -102,7 +102,7 @@ describe("gatherCatalogInput", () => {
             name: "skill:alpha",
             description: "",
             source: "skill",
-            sourceInfo: { path: alphaFile, source: "path", scope: "user", origin: "top-level" },
+            path: alphaFile,
           },
         ],
       }),

@@ -63,6 +63,14 @@ export function runtimeEnvironment(stateRoot?: string): NodeJS.ProcessEnv {
     }
   } else {
     env.OMP_AUTH_BROKER_SNAPSHOT_CACHE = path.join(cache, "auth-broker-snapshot.enc");
+    const toolchain = path.join(ROOT, ".runtime", "toolchains", "java");
+    const javaHome =
+      process.platform === "darwin" ? path.join(toolchain, "Contents", "Home") : toolchain;
+    if (existsSync(path.join(javaHome, "bin", "java"))) {
+      env.JAVA_HOME = javaHome;
+      env.SF_LSP_JAVA = path.join(javaHome, "bin", "java");
+      env.PATH = `${path.join(javaHome, "bin")}${path.delimiter}${env.PATH}`;
+    }
   }
   // Global config overlays can include extensions; the auth bridge supplies
   // only its own policy overlay explicitly, never the inherited whole config.

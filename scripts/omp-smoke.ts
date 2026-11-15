@@ -78,6 +78,12 @@ function object(value: unknown): Record<string, unknown> {
 await mkdir(runRoot, { recursive: true });
 try {
   await cp(path.join(ROOT, "scripts", "fixtures", "omp-smoke"), workspace, { recursive: true });
+  const startupSkill = path.join(workspace, ".omp", "skills", "sf-omp-startup-smoke", "SKILL.md");
+  await mkdir(path.dirname(startupSkill), { recursive: true });
+  await writeFile(
+    startupSkill,
+    "---\nname: sf-omp-startup-smoke\ndescription: Offline native skill-command discovery.\n---\nUse only for the local startup smoke.\n",
+  );
   // An explicit stateRoot selects the helper's hermetic HOME/XDG/OMP mode.
   const stateRoot = path.join(runRoot, "state");
   const env = runtimeEnvironment(stateRoot);
@@ -104,7 +110,8 @@ try {
     "--no-session",
     "--no-title",
     "--no-extensions",
-    "--no-skills",
+    "--skills",
+    "sf-omp-startup-smoke",
     "--no-rules",
     "--no-context-files",
     "--trusted-extension",

@@ -15,7 +15,7 @@
 import { statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { type SlashCommandInfo } from "@earendil-works/pi-coding-agent";
+import { type SlashCommandInfo } from "@oh-my-pi/pi-coding-agent";
 import { globalAgentDir } from "../../../lib/common/pi-paths.ts";
 import { detectSkillSources } from "../../../lib/common/skill-sources/skill-sources.ts";
 import {
@@ -131,8 +131,7 @@ export async function gatherCatalogInput(opts: GatherOptions): Promise<SkillCata
 
   const loadedPaths = deps
     .getCommands()
-    .filter((c) => c.source === "skill" && typeof c.sourceInfo?.path === "string")
-    .map((c) => c.sourceInfo.path);
+    .flatMap((c) => (c.source === "skill" && c.path ? [c.path] : []));
 
   const sources = await buildSources({
     cwd,

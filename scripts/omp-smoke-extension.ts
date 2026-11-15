@@ -13,6 +13,7 @@ import {
 import { parseSoql } from "../extensions/sf-soql/lib/parser.ts";
 import { updateSkillSources } from "../lib/common/skill-sources/skill-sources.ts";
 import { skillSettingsValues } from "../lib/common/skill-sources/skill-settings.ts";
+import { buildSkillInventory } from "../lib/common/skill-detection/detection.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const selected = [
@@ -298,6 +299,22 @@ export default async function smoke(pi: ExtensionAPI): Promise<void> {
           };
         });
       }
+      await run("skills.native.command-discovery", "sf-skills", async () => {
+        const skillPath = file(".omp/skills/sf-omp-startup-smoke/SKILL.md");
+        const command = pi
+          .getCommands()
+          .find((entry) => entry.source === "skill" && entry.path === skillPath);
+        requireTrue(
+          command,
+          `Native OMP did not expose the startup skill path: ${JSON.stringify(pi.getCommands())}`,
+        );
+        const inventory = buildSkillInventory(pi.getCommands(), workspace);
+        requireTrue(
+          inventory.byFilePath.get(skillPath)?.commandName === command.name,
+          "Skill tracking did not retain native command provenance.",
+        );
+        return command;
+      });
       await run("agentscript.valid.compile.check", "sf-agentscript", async () => {
         const result = await requireSuccess("agentscript_authoring", {
           verb: "compile",

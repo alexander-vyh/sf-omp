@@ -22,6 +22,39 @@ node /path/to/sf-omp/scripts/omp.ts
 
 Use explicit subcommands such as `/sf-agentscript help` and `/sf-skills help`. Bare commands that open the disabled SF Pi Manager are not ported; this checkout focuses on agent tools, direct commands, and native hooks. Existing extension READMEs describe the tools; upstream Pi installation instructions do not apply here.
 
+## Salesforce prerequisites
+
+All additional installs for this checkout belong under ignored `.runtime/`, not
+global OMP. The launcher uses a JDK extracted to `.runtime/toolchains/java`
+(`Contents/Home` inside that directory on macOS), setting `JAVA_HOME`,
+`SF_LSP_JAVA`, and the child process's `PATH` only. It does not register Java
+with the OS or modify shell profiles. Use an ARM64 archive on Apple Silicon;
+JDK 21 LTS is the recommended version. Download from
+[Eclipse Temurin](https://adoptium.net/temurin/releases/?version=21) and verify
+the vendor's SHA-256 before extraction. `npm ci` does not provision the JDK.
+
+From `npm start`:
+
+```text
+/sf-lsp install
+/sf-lsp doctor
+/sf-skills defaults install global
+/sf-skills defaults status
+```
+
+Here `global` means this launcher's isolated `.runtime/omp/agent`, **not**
+`~/.omp`. The managed Apex/LWC server assets and Salesforce skill clone stay
+there. Use `project` instead to limit skill wiring to the current project's
+`.omp/config.yml`; the downloaded skill content still stays in `.runtime/`.
+
+Existing Salesforce CLI authentication is reused. Code Analyzer additionally
+needs its `code-analyzer` CLI plugin, Java 11+ for PMD/CPD/SFGE, and Python 3.10+
+for Flow analysis. Python needs no repo virtual environment unless extra Python
+packages are being installed. LWC Jest belongs in the Salesforce application
+project (`@salesforce/sfdx-lwc-jest` as a dev dependency), not this tooling host.
+Org-connected features also require a suitable authenticated org and its
+feature permissions/entitlements; installing packages cannot supply those.
+
 ## Isolation
 
 - Launcher invokes this checkout's OMP **18.17.0** with local Bun **1.4.4**, never the global `omp`/`bun` command.
@@ -38,20 +71,27 @@ Use explicit subcommands such as `/sf-agentscript help` and `/sf-skills help`. B
 
 `npm run smoke:omp` starts real local OMP and calls actual registered tool implementations with its native extension context. It checks valid and invalid fixtures, native skill rediscovery, local runtime paths, and before/after hashes of global OMP configuration/installed files. Active logs, sessions, and runtime databases are excluded from that hash comparison.
 
-| Extension          | Exercised in native OMP                                                                                                         |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `sf-agentscript`   | Valid and invalid local AgentScript compilation; native terminal help panel                                                     |
-| `sf-apex`          | Authoring plans and debug-log analysis; LSP diagnostics blocked without provisioned server assets                               |
-| `sf-lwc`           | Valid and invalid template diagnostics using the real LWC compiler                                                              |
-| `sf-flow`          | Authoring plan and valid/invalid local Flow diagnostics                                                                         |
-| `sf-soql`          | API-versioned SOQL parser accepts/rejects queries; registered org-connected tool not exercised offline                          |
-| `sf-skills`        | Native YAML loading, sibling exclusion, manual-only invocation, removal, unrelated-setting preservation                         |
-| `sf-code-analyzer` | Startup/lifecycle registration; analyzer execution not yet exercised                                                            |
-| `sf-lsp`           | Startup/lifecycle registration; native installer confirmation shows the repository-local destination; installation not accepted |
-| `sf-brain`         | Startup/lifecycle registration; model-turn prompt projection not exercised by offline smoke                                     |
-| `sf-guardrail`     | Startup/lifecycle registration; native tool interception not exercised by offline smoke                                         |
+| Extension          | Exercised in native OMP                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `sf-agentscript`   | Valid and invalid local AgentScript compilation; native terminal help panel                                                           |
+| `sf-apex`          | Authoring plans and debug-log analysis; LSP diagnostics blocked without provisioned server assets                                     |
+| `sf-lwc`           | Valid and invalid template diagnostics using the real LWC compiler                                                                    |
+| `sf-flow`          | Authoring plan and valid/invalid local Flow diagnostics                                                                               |
+| `sf-soql`          | API-versioned SOQL parser accepts/rejects queries; registered org-connected tool not exercised offline                                |
+| `sf-skills`        | Native skill-command path discovery/tracking, YAML loading, sibling exclusion, manual-only invocation, removal, settings preservation |
+| `sf-code-analyzer` | Startup/lifecycle registration only in isolated smoke                                                                                 |
+| `sf-lsp`           | Startup/lifecycle and repository-local installer confirmation only in isolated smoke                                                  |
+| `sf-brain`         | Startup/lifecycle registration; model-turn prompt projection not exercised by offline smoke                                           |
+| `sf-guardrail`     | Startup/lifecycle registration; native tool interception not exercised by offline smoke                                               |
 
-This is **not** proof of live deploy/activate, Agentforce preview/evaluation, schema grounding, Apex execution/tests, Code Analyzer engines, other interactive panels, or model-driven repair continuations. Those require additional runtime scenarios and, where applicable, an authorized Salesforce org. Java is currently unavailable on the development workstation; Apex language-server diagnostics require Java and the server installation. No org deployment/activation has been attempted.
+This is **not** proof of live deploy/activate, Agentforce preview/evaluation, schema grounding, Apex execution/tests, Code Analyzer engines, other interactive panels, or model-driven repair continuations. Those require additional runtime scenarios and, where applicable, an authorized Salesforce org. The isolated offline smoke deliberately does not provision Java or language servers; those paths remain blocked there even when the normal checkout has them installed. No org deployment/activation has been attempted.
+
+A separate provisioned-checkout run exercised JDK 21.0.13, Apex server 68.9.6
+(valid source accepted; invalid source returned its syntax error), a real PMD
+scan through the registered Code Analyzer tool, and discovery of all 265
+managed Salesforce skills with no loader warnings. Evidence from that run is
+under `.runtime/provisioned-proof/report.json`; it does not exercise org APIs.
+The Apex client supplies Jorje's required `rootPath` alongside `rootUri`.
 
 ## Checks
 

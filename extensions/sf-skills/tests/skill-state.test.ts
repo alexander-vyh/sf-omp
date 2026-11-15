@@ -1,10 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { describe, expect, it } from "vitest";
-import {
-  buildSessionContext,
-  type SessionEntry,
-  type SlashCommandInfo,
-} from "@earendil-works/pi-coding-agent";
+import { buildSessionContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { SlashCommandInfo } from "@oh-my-pi/pi-coding-agent";
 import { buildSkillsHudState } from "../lib/skill-state.ts";
 
 const CWD = "/workspace/project";
@@ -14,12 +11,7 @@ function skillCommand(name: string, filePath: string): SlashCommandInfo {
     name: `skill:${name}`,
     description: `${name} skill`,
     source: "skill",
-    sourceInfo: {
-      path: filePath,
-      source: "project",
-      scope: "project",
-      origin: "top-level",
-    },
+    path: filePath,
   };
 }
 
@@ -107,11 +99,30 @@ describe("sf-skills skill state", () => {
     expect(state.live.map((skill) => skill.name)).toEqual(["sf-apex"]);
     expect(state.earlier).toEqual([]);
   });
+  it("tracks native skill commands without an optional file path", () => {
+    const entries = [
+      messageEntry(
+        "1",
+        null,
+        userMessage(
+          '<skill name="sf-apex" location="/skills/apex/SKILL.md">\nApex guidance\n</skill>',
+        ),
+      ),
+    ];
+    const state = buildSkillsHudState({
+      branchEntries: entries,
+      sessionContext: buildSessionContext(entries),
+      commands: [{ name: "skill:sf-apex", source: "skill" }],
+      cwd: CWD,
+    });
+    expect(state.discoveredCount).toBe(1);
+    expect(state.live.map((skill) => skill.name)).toEqual(["sf-apex"]);
+  });
 
   it("detects live skills from read(SKILL.md) tool calls", () => {
-    const commands = [skillCommand("sf-testing", "/skills/sf-testing/SKILL.md")];
+    const commands = [skillCommand("sf-testing", "/skills/testing-guidance/SKILL.md")];
     const entries: SessionEntry[] = [
-      messageEntry("1", null, assistantToolCall("/skills/sf-testing/SKILL.md")),
+      messageEntry("1", null, assistantToolCall("/skills/testing-guidance/SKILL.md")),
     ];
 
     const state = buildSkillsHudState({

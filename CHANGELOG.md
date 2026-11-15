@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Corrected native skill-settings labels and removed redundant Pi JSON path expansion; coverage and pruning use the shared YAML reader.
 - Shared existing global OMP provider auth and account policies through its native broker, including provider/MCP OAuth refresh, without importing global extensions/history or installing Salesforce extensions globally.
 - Added isolated native shared-auth smoke checks for credential updates, refresh-token redaction, auth-only configuration, local sessions, extension isolation, and broker cleanup.
+- Fixed SF Skills tracking and catalog discovery to consume native OMP command paths instead of upstream Pi `sourceInfo`; native smoke now loads a real skill command before checking its provenance.
+- Added launcher support for a repository-local JDK under `.runtime/toolchains/java`, without global Java registration or shell-profile changes, and documented isolated Salesforce prerequisites.
 
 ## [0.354.0](https://github.com/salesforce/sf-pi/compare/v0.353.0...v0.354.0) (2026-11-11)
 

@@ -23,8 +23,8 @@ import {
   parseSkillBlock,
   type SessionContext,
   type SessionEntry,
-  type SlashCommandInfo,
 } from "@earendil-works/pi-coding-agent";
+import type { SlashCommandInfo } from "@oh-my-pi/pi-coding-agent";
 
 // -------------------------------------------------------------------------------------------------
 // Types
@@ -144,7 +144,7 @@ export function buildSkillInventory(commands: SlashCommandInfo[], cwd: string): 
     }
 
     const name = deriveSkillNameFromCommand(command);
-    const filePath = normalizePathForLookup(command.sourceInfo.path, cwd);
+    const filePath = normalizePathForLookup(command.path, cwd);
     const descriptor: SkillDescriptor = {
       name,
       commandName: command.name,
@@ -359,7 +359,7 @@ function deriveSkillNameFromCommand(command: SlashCommandInfo): string {
     return command.name.slice("skill:".length);
   }
 
-  const fromPath = inferSkillNameFromPath(command.sourceInfo.path);
+  const fromPath = inferSkillNameFromPath(command.path);
   if (fromPath) {
     return fromPath;
   }
