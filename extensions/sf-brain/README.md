@@ -7,7 +7,17 @@ SF Brain adds two compact hidden context messages:
 1. The immutable Salesforce Engineering Constitution from
    [`SF_CONSTITUTION.md`](./SF_CONSTITUTION.md).
 2. A small SF Pi routing summary that prioritizes active SF Pi tools and lists
-   only disabled capability owners with their `/sf-pi enable <id>` recovery path.
+   only packaged capability owners whose declared tools failed to register in
+   the running session.
+
+Both messages are scoped to the extensions in the package's root
+`pi.extensions` manifest. Constitution lines prefixed with `{{if <id>}}` or
+`{{unless <id>}}` are kept or dropped at render time, so operating guides and
+tool routing for unloaded extensions never reach the model, and unpackaged
+extensions are absent rather than reported as unavailable. SF Brain does not
+read Pi `settings.json` package filters: OMP ignores them when loading, and
+the registered tool list already reflects any extension that gates its own
+tools on them (for example `sf-code-analyzer`).
 
 The constitution establishes Salesforce-first interpretation, source authority,
 Behavior-Proof-First Development, minimal change, Guardrail authority, raw CLI
@@ -27,8 +37,8 @@ top-level fence, vertical flowcharts, short labels, and roughly 6–8 nodes.
 Sequence diagrams should stay near four participants; ER and class diagrams
 should stay near four boxes. Flowchart, state, and class diagrams use `classDef`
 colors when color carries meaning (status, ownership, new versus existing).
-Editable or durable Salesforce diagrams belong in `tldraw_canvas`; Mermaid
-remains the compact chat overview.
+When `sf-tldraw` is loaded, editable or durable Salesforce diagrams belong in
+`tldraw_canvas`; Mermaid remains the compact chat overview.
 
 When the selected model is `sf-llm-gateway/gpt-6-sol`, SF Brain adds a small,
 model-scoped system prompt section asking for a developed explanation with an
@@ -42,8 +52,10 @@ This guidance does not change reasoning effort or API text verbosity.
 User guidance can extend—but never replace—the bundled constitution through
 `<globalAgentDir>/sf-brain/SF_CONSTITUTION_APPEND.md`. Empty or unreadable files
 are ignored; legacy replacement-style `SF_KERNEL.md` files are not loaded.
-Bundled constitution updates take effect on the next turn after `/reload`;
-addendum changes still require a new session.
+Under OMP, extension code is imported once per process (`/reload-plugins` does
+not re-import it): after editing SF Brain, restart and resume the session
+(`omp -r <id>`) and the changed constitution and routing summary are
+re-injected on the next turn. Addendum changes still require a new session.
 
 ## Diagnostics
 

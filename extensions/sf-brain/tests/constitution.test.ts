@@ -20,10 +20,17 @@ import {
   loadConstitution,
   readBundledConstitution,
   renderGuidePaths,
+  renderBundledConstitution,
   shouldInjectConstitution,
 } from "../lib/constitution.ts";
 
 let tempAgentDir: string;
+const EXTENSIONS_ROOT = path.resolve(import.meta.dirname, "../..");
+const ALL_EXTENSIONS: ReadonlySet<string> = new Set(
+  readdirSync(EXTENSIONS_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name),
+);
 
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -61,13 +68,14 @@ describe("Salesforce Engineering Constitution", () => {
 
   it("routes every tool owner directly to its installed manifest-declared operating guide", () => {
     const bundled = readBundledConstitution();
-    const constitution = loadConstitution({ cliInstalled: true });
-    const extensionsRoot = path.resolve(import.meta.dirname, "../..");
-    const packageRoot = path.resolve(extensionsRoot, "..");
-    const manifests = readdirSync(extensionsRoot, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) =>
-        JSON.parse(readFileSync(path.join(extensionsRoot, entry.name, "manifest.json"), "utf8")),
+    const constitution = loadConstitution({
+      cliInstalled: true,
+      availableExtensions: ALL_EXTENSIONS,
+    });
+    const packageRoot = path.resolve(EXTENSIONS_ROOT, "..");
+    const manifests = [...ALL_EXTENSIONS]
+      .map((id) =>
+        JSON.parse(readFileSync(path.join(EXTENSIONS_ROOT, id, "manifest.json"), "utf8")),
       )
       .filter((manifest) => (manifest.tools?.length ?? 0) > 0);
     const expectedRelative = manifests
@@ -86,6 +94,26 @@ describe("Salesforce Engineering Constitution", () => {
       expect(existsSync(guide), guide).toBe(true);
     }
     expect(constitution).not.toContain("SF_REFERENCE_MAP.md");
+  });
+
+  it("lists operating guides only for loaded extensions", () => {
+    const constitution = loadConstitution({
+      cliInstalled: true,
+      availableExtensions: new Set(["sf-apex", "sf-flow"]),
+    });
+    const listed = [...constitution.matchAll(/extensions\/(sf-[a-z0-9-]+)\/AGENT_GUIDE\.md/g)].map(
+      (match) => match[1],
+    );
+
+    expect(listed).toEqual(["sf-apex", "sf-flow"]);
+    expect(constitution).not.toMatch(/\{\{(if|unless) /);
+  });
+
+  it("conditions bundled lines only on real extension ids", () => {
+    const conditioned = [...readBundledConstitution().matchAll(/^\{\{(?:if|unless) ([^}]+)\}\}/gm)];
+
+    expect(conditioned.length).toBeGreaterThan(0);
+    for (const [, id] of conditioned) expect(ALL_EXTENSIONS.has(id), id).toBe(true);
   });
 
   it("refreshes stale bundled guidance after reload without reinjecting unchanged or addendum-only content", () => {
@@ -123,14 +151,13 @@ describe("Salesforce Engineering Constitution", () => {
     writeFileSync(constitutionAddendumPath(), "Prefer project-specific test suites.\n");
 
     const content = loadConstitution({ cliInstalled: true });
-    const packageRoot = path.resolve(import.meta.dirname, "../../..");
-    expect(content).toContain(renderGuidePaths(readBundledConstitution(), packageRoot).trim());
+    expect(content).toContain(renderBundledConstitution().trim());
     expect(content).toContain("<sf_user_constitution_addendum>");
     expect(content).toContain("Prefer project-specific test suites.");
   });
 
   it("routes material Salesforce architecture through current docs without forcing routine or Pi-only work", () => {
-    const content = loadConstitution({ cliInstalled: true });
+    const content = loadConstitution({ cliInstalled: true, availableExtensions: ALL_EXTENSIONS });
 
     expect(content).toContain("material Salesforce solution design or architecture review");
     expect(content).toContain("`sf_docs` in the `architect` collection (`current`)");
@@ -146,8 +173,24 @@ describe("Salesforce Engineering Constitution", () => {
     expect(content).toContain("silently enable a disabled capability");
   });
 
+  it("routes architecture review to official web pages when sf-docs is not loaded", () => {
+    const content = loadConstitution({
+      cliInstalled: true,
+      availableExtensions: new Set([...ALL_EXTENSIONS].filter((id) => id !== "sf-docs")),
+    });
+
+    expect(content).not.toContain("sf_docs");
+    expect(content).not.toContain("Salesforce Docs guide");
+    expect(content).toContain("material Salesforce solution design or architecture review");
+    expect(content).toContain(
+      "official architect.salesforce.com pages through available web access",
+    );
+    expect(content).toContain("Skip routine edits");
+    expect(content).toContain("report the evidence gap");
+  });
+
   it("makes terminal-safe visual communication part of the bundled baseline", () => {
-    const content = loadConstitution({ cliInstalled: true });
+    const content = loadConstitution({ cliInstalled: true, availableExtensions: ALL_EXTENSIONS });
 
     expect(content).toContain("7. SIMPLE, VISUAL COMMUNICATION");
     expect(content).toContain("Applies to chat responses only");
@@ -163,6 +206,16 @@ describe("Salesforce Engineering Constitution", () => {
     expect(content).toContain("never use `style` lines");
     expect(content).toContain("✅ done/pass");
     expect(content).not.toContain("<sf_display_capabilities>");
+  });
+
+  it("omits editable-diagram routing when sf-tldraw is not loaded", () => {
+    const content = loadConstitution({
+      cliInstalled: true,
+      availableExtensions: new Set([...ALL_EXTENSIONS].filter((id) => id !== "sf-tldraw")),
+    });
+
+    expect(content).not.toContain("tldraw");
+    expect(content).toContain("Use the most specific supported Mermaid form");
   });
 
   it("does not read the legacy replacement-style SF_KERNEL.md", () => {

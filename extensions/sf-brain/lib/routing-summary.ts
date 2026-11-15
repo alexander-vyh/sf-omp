@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Tiny runtime routing summary: one priority rule plus disabled capability owners. */
+/** Tiny runtime routing summary: one priority rule plus unavailable capability owners. */
 import type { CustomMessageEntry } from "@earendil-works/pi-coding-agent";
 import { SF_PI_REGISTRY } from "../../../catalog/registry.ts";
-import { isSfPiExtensionEnabled } from "../../../lib/common/sf-pi-extension-state.ts";
 import {
   type ActiveContextSession,
   shouldInjectOnce,
 } from "../../../lib/common/session/inject-once.ts";
+import { packagedExtensionIds } from "./packaged-extensions.ts";
 
 export const SF_PI_ROUTING_ENTRY_TYPE = "sf-pi-routing-summary";
 export const SF_PI_ROUTING_OPEN_TAG = "<sf_pi_routing>";
@@ -32,22 +32,34 @@ const CAPABILITY_LABELS: Record<string, string> = {
   "sf-tldraw": "editable Salesforce diagrams",
 };
 
-export function formatSfPiRoutingSummary(cwd: string): string {
-  const disabled = SF_PI_REGISTRY.filter(
-    (extension) => hasAgentCapability(extension) && !isSfPiExtensionEnabled(cwd, extension.id),
+export function formatSfPiRoutingSummary(
+  registeredToolNames: ReadonlySet<string>,
+  packagedExtensions: ReadonlySet<string> = packagedExtensionIds(),
+): string {
+  // OMP loads exactly the root manifest and ignores Pi settings.json package
+  // filters for loading; an extension can still skip its own tool registration
+  // (sf-code-analyzer honors those filters itself). A packaged tool owner is
+  // unavailable only when none of its declared tools registered. Unpackaged
+  // upstream extensions are absent, not unavailable.
+  const unavailable = SF_PI_REGISTRY.filter(
+    (extension) =>
+      packagedExtensions.has(extension.id) &&
+      (extension.tools?.length ?? 0) > 0 &&
+      !extension.tools?.some((tool) => registeredToolNames.has(tool)),
   );
   const lines = [
     SF_PI_ROUTING_OPEN_TAG,
     "Family tools perform the action. Skills are supplemental playbooks; they do not own the turn.",
     "Active tool definitions are authoritative. Mix families when the task needs it. Raw sf CLI is a fallback only.",
   ];
-  if (disabled.length === 0) {
-    lines.push("Disabled capability owners: none.");
+  if (unavailable.length === 0) {
+    lines.push("Unavailable capability owners: none.");
   } else {
-    lines.push("Disabled capability owners:");
-    for (const extension of disabled) {
-      const label = CAPABILITY_LABELS[extension.id] ?? extension.description;
-      lines.push(`- ${extension.id} — ${label}. Enable: /sf-pi enable ${extension.id}`);
+    lines.push("Unavailable capability owners (declared tools not registered):");
+    for (const extension of unavailable) {
+      lines.push(
+        `- ${extension.id} — ${CAPABILITY_LABELS[extension.id] ?? extension.description}.`,
+      );
     }
   }
   lines.push(SF_PI_ROUTING_CLOSE_TAG);
@@ -60,13 +72,4 @@ export function shouldInjectSfPiRoutingSummary(
 ): boolean {
   const stillFresh = (entry: CustomMessageEntry) => entry.content === summary;
   return shouldInjectOnce(sessionManager, SF_PI_ROUTING_ENTRY_TYPE, stillFresh);
-}
-
-function hasAgentCapability(extension: (typeof SF_PI_REGISTRY)[number]): boolean {
-  return !!(
-    extension.tools?.length ||
-    extension.commands?.length ||
-    extension.providers?.length ||
-    extension.id === "sf-guardrail"
-  );
 }

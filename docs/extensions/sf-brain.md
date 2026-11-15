@@ -10,7 +10,7 @@ editLink: false
 
 ## What it does
 
-Injects the Salesforce Engineering Constitution, mutable terminal display capabilities, a tiny disabled-capability routing summary, and Gateway GPT-6 Sol-only response guidance; provides content-safe display, instruction-surface, and aggregate visual-response diagnostics.
+Injects the Salesforce Engineering Constitution, mutable terminal display capabilities, a tiny unavailable-capability routing summary, and Gateway GPT-6 Sol-only response guidance; provides content-safe display, instruction-surface, and aggregate visual-response diagnostics.
 
 ## Start
 

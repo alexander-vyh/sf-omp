@@ -1,8 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   formatSfPiRoutingSummary,
@@ -10,67 +7,49 @@ import {
   SF_PI_ROUTING_OPEN_TAG,
 } from "../lib/routing-summary.ts";
 
-let tempAgentDir: string;
-const cwdDirs: string[] = [];
-
-vi.mock("@earendil-works/pi-coding-agent", async () => {
-  const actual = await vi.importActual<typeof import("@earendil-works/pi-coding-agent")>(
-    "@earendil-works/pi-coding-agent",
-  );
-  return { ...actual, getAgentDir: () => tempAgentDir };
-});
-
-beforeEach(() => {
-  tempAgentDir = mkdtempSync(path.join(tmpdir(), "sf-brain-routing-agent-"));
-});
-
-afterEach(() => {
-  rmSync(tempAgentDir, { recursive: true, force: true });
-  for (const dir of cwdDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
-
-function makeCwd(disabledFiles: string[] = []): string {
-  const cwd = mkdtempSync(path.join(tmpdir(), "sf-brain-routing-cwd-"));
-  cwdDirs.push(cwd);
-  mkdirSync(path.join(cwd, ".pi"), { recursive: true });
-  writeFileSync(
-    path.join(cwd, ".pi", "settings.json"),
-    `${JSON.stringify({
-      packages: [
-        {
-          source: "git:github.com/salesforce/sf-pi",
-          extensions: ["extensions/*/index.ts", ...disabledFiles.map((file) => `!${file}`)],
-        },
-      ],
-    })}\n`,
-  );
-  return cwd;
-}
+const PACKAGED = new Set(["sf-brain", "sf-apex", "sf-soql", "sf-agentscript"]);
 
 describe("SF Pi Routing Summary", () => {
-  it("keeps the all-enabled summary tiny and does not repeat the extension catalog", () => {
-    const summary = formatSfPiRoutingSummary(makeCwd());
+  it("keeps the all-available summary tiny and does not repeat the extension catalog", () => {
+    const summary = formatSfPiRoutingSummary(
+      new Set(["sf_apex", "sf_soql", "agentscript_authoring", "read"]),
+      PACKAGED,
+    );
 
     expect(summary.startsWith(SF_PI_ROUTING_OPEN_TAG)).toBe(true);
     expect(summary.endsWith(SF_PI_ROUTING_CLOSE_TAG)).toBe(true);
     expect(summary).toContain(
       "Family tools perform the action. Skills are supplemental playbooks; they do not own the turn.",
     );
-    expect(summary).toContain("Disabled capability owners: none.");
-    expect(summary).not.toContain("Extension map:");
-    expect(summary).not.toContain("sf-ohana-spinner");
+    expect(summary).toContain("Unavailable capability owners: none.");
     expect(summary.split("\n").length).toBeLessThanOrEqual(5);
   });
 
-  it("lists only disabled capability owners and their enablement path", () => {
+  it("treats an owner as available when any one of its declared tools registered", () => {
     const summary = formatSfPiRoutingSummary(
-      makeCwd(["extensions/sf-apex/index.ts", "extensions/sf-agentscript/index.ts"]),
+      new Set(["sf_apex", "sf_soql", "agentscript_preview"]),
+      PACKAGED,
     );
 
-    expect(summary).toContain("- sf-agentscript — Agentforce Agent Script");
-    expect(summary).toContain("Enable: /sf-pi enable sf-agentscript");
+    expect(summary).toContain("Unavailable capability owners: none.");
+  });
+
+  it("lists packaged tool owners whose tools did not register, without a Manager recovery path", () => {
+    const summary = formatSfPiRoutingSummary(new Set(["sf_soql"]), PACKAGED);
+
     expect(summary).toContain("- sf-apex — Apex lifecycle");
-    expect(summary).toContain("Enable: /sf-pi enable sf-apex");
+    expect(summary).toContain("- sf-agentscript — Agentforce Agent Script");
     expect(summary).not.toContain("- sf-soql");
+    expect(summary).not.toContain("/sf-pi enable");
+  });
+
+  it("never reports extensions absent from the package manifest", () => {
+    const summary = formatSfPiRoutingSummary(
+      new Set(["sf_apex", "sf_soql", "agentscript_eval"]),
+      PACKAGED,
+    );
+
+    expect(summary).toContain("Unavailable capability owners: none.");
+    expect(summary).not.toContain("sf-docs");
   });
 });

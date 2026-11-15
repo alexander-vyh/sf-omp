@@ -124,7 +124,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("before_agent_start", async (_event, ctx) => {
-    const summary = formatSfPiRoutingSummary(ctx.cwd);
+    const summary = formatSfPiRoutingSummary(new Set(pi.getAllTools().map((tool) => tool.name)));
     if (!shouldInjectSfPiRoutingSummary(ctx.sessionManager, summary)) return;
 
     return {

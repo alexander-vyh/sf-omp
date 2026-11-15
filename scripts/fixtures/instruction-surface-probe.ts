@@ -6,7 +6,7 @@ import { VERSION, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { SF_PI_REGISTRY } from "../../catalog/registry.ts";
 import { renderInstructionSurfaceMarkdown } from "../../extensions/sf-brain/lib/instruction-surface-artifact.ts";
-import { readBundledConstitution } from "../../extensions/sf-brain/lib/constitution.ts";
+import { renderBundledConstitution } from "../../extensions/sf-brain/lib/constitution.ts";
 import { formatSfPiRoutingSummary } from "../../extensions/sf-brain/lib/routing-summary.ts";
 import { readBundledConfig } from "../../extensions/sf-guardrail/lib/config.ts";
 import { renderGuardrailGuidance } from "../../extensions/sf-guardrail/lib/guidance.ts";
@@ -35,11 +35,13 @@ export default function instructionSurfaceProbe(pi: ExtensionAPI): void {
           ? [
               {
                 customType: "sf-brain-constitution",
-                content: readBundledConstitution(),
+                content: renderBundledConstitution(),
               },
               {
                 customType: "sf-pi-routing-summary",
-                content: formatSfPiRoutingSummary(runtimeContext.cwd),
+                content: formatSfPiRoutingSummary(
+                  new Set(pi.getAllTools().map((tool) => tool.name)),
+                ),
               },
               {
                 customType: "sf-guardrail-prompt",

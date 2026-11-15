@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Added isolated native shared-auth smoke checks for credential updates, refresh-token redaction, auth-only configuration, local sessions, extension isolation, and broker cleanup.
 - Fixed SF Skills tracking and catalog discovery to consume native OMP command paths instead of upstream Pi `sourceInfo`; native smoke now loads a real skill command before checking its provenance.
 - Added launcher support for a repository-local JDK under `.runtime/toolchains/java`, without global Java registration or shell-profile changes, and documented isolated Salesforce prerequisites.
+- Fixed SF Brain prompting for unloaded extensions: the constitution now lists operating guides and `sf_docs`/`tldraw_canvas` routing only for extensions in the root `pi.extensions` manifest. The routing summary now reports packaged tool owners whose declared tools are not registered in the session, instead of reading Pi `settings.json` package filters that OMP ignores when loading (which could label a loaded extension disabled) and offering `/sf-pi enable` without the SF Pi Manager.
 
 ## [0.354.0](https://github.com/salesforce/sf-pi/compare/v0.353.0...v0.354.0) (2026-11-11)
 

@@ -9,6 +9,7 @@ import {
   type ActiveContextSession,
   shouldInjectOnce,
 } from "../../../lib/common/session/inject-once.ts";
+import { packagedExtensionIds } from "./packaged-extensions.ts";
 
 export const CONSTITUTION_OPEN_TAG = "<sf_engineering_constitution>";
 export const CONSTITUTION_CLOSE_TAG = "</sf_engineering_constitution>";
@@ -20,6 +21,8 @@ const BUNDLED_CONSTITUTION_PATH = path.resolve(
   "SF_CONSTITUTION.md",
 );
 const SF_PI_PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+// `{{if sf-x}}` keeps a line only when sf-x is loaded; `{{unless sf-x}}` only when it is not.
+const CONDITION_PATTERN = /^\{\{(if|unless) (sf-[a-z0-9-]+)\}\}/;
 
 export function constitutionAddendumPath(): string {
   return globalAgentPath("sf-brain", "SF_CONSTITUTION_APPEND.md");
@@ -47,8 +50,26 @@ export function renderGuidePaths(
   );
 }
 
-export function loadConstitution(options: { cliInstalled: boolean }): string {
-  let content = renderGuidePaths(readBundledConstitution());
+/** Bundled constitution with installed paths and lines for unloaded extensions resolved. */
+export function renderBundledConstitution(
+  availableExtensions: ReadonlySet<string> = packagedExtensionIds(),
+): string {
+  return renderGuidePaths(readBundledConstitution())
+    .split("\n")
+    .flatMap((line) => {
+      const condition = CONDITION_PATTERN.exec(line);
+      if (!condition) return [line];
+      const keep = (condition[1] === "if") === availableExtensions.has(condition[2]);
+      return keep ? [line.slice(condition[0].length)] : [];
+    })
+    .join("\n");
+}
+
+export function loadConstitution(options: {
+  cliInstalled: boolean;
+  availableExtensions?: ReadonlySet<string>;
+}): string {
+  let content = renderBundledConstitution(options.availableExtensions);
   if (!options.cliInstalled) {
     content += [
       "<sf_cli_status>",
@@ -71,8 +92,11 @@ export function loadConstitution(options: { cliInstalled: boolean }): string {
   return content;
 }
 
-export function shouldInjectConstitution(sessionManager: ActiveContextSession): boolean {
-  const bundled = renderGuidePaths(readBundledConstitution());
+export function shouldInjectConstitution(
+  sessionManager: ActiveContextSession,
+  availableExtensions?: ReadonlySet<string>,
+): boolean {
+  const bundled = renderBundledConstitution(availableExtensions);
   // Refresh a changed bundle after reload; keep session-dependent addenda stable.
   return shouldInjectOnce(
     sessionManager,
