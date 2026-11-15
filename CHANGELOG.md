@@ -9,12 +9,14 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### SF OMP integration
 
-- Added a repository-local OMP 18.17.0/Bun 1.4.4 launcher selecting ten Agentforce/Salesforce extensions, with separate configuration, profiles, native caches, and credentials under `.runtime/`.
+- Added a repository-local OMP 18.17.0/Bun 1.4.4 launcher selecting ten Agentforce/Salesforce extensions, with separate configuration, profiles, sessions, and native caches under `.runtime/`.
 - Ported AgentScript/Code Analyzer settle hooks, Flow final-message rewriting, Brain prompt injection, human-only widgets, canonical session projection, and asynchronous native skill configuration/loading.
 - Added a version-checked local CommonJS loader patch; global OMP is not patched.
 - Added real-runtime offline checks for AgentScript compilation, Apex plans/logs, LWC/Flow diagnostics, SOQL syntax, skill gating/rediscovery, and global configuration/install integrity. Live org operations and unprovisioned language servers remain explicitly unverified/blocked.
 - Replaced upstream release/publishing automation with the selected OMP integration's verification workflow.
 - Corrected native skill-settings labels and removed redundant Pi JSON path expansion; coverage and pruning use the shared YAML reader.
+- Shared existing global OMP provider auth and account policies through its native broker, including provider/MCP OAuth refresh, without importing global extensions/history or installing Salesforce extensions globally.
+- Added isolated native shared-auth smoke checks for credential updates, refresh-token redaction, auth-only configuration, local sessions, extension isolation, and broker cleanup.
 
 ## [0.354.0](https://github.com/salesforce/sf-pi/compare/v0.353.0...v0.354.0) (2026-11-11)
 

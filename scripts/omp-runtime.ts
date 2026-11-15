@@ -58,8 +58,21 @@ export function runtimeEnvironment(stateRoot?: string): NodeJS.ProcessEnv {
     env.XDG_STATE_HOME = path.join(state, "state");
     delete env.SF_STATE_FOLDER;
     delete env.SFDX_STATE_FOLDER;
+    for (const name of Object.keys(env)) {
+      if (name.startsWith("OMP_AUTH_BROKER_")) delete env[name];
+    }
+  } else {
+    env.OMP_AUTH_BROKER_SNAPSHOT_CACHE = path.join(cache, "auth-broker-snapshot.enc");
   }
-  for (const name of ["OMP_PROFILE", "PI_PROFILE", "PI_SESSION_DIR", "PI_COMPILED"])
+  // Global config overlays can include extensions; the auth bridge supplies
+  // only its own policy overlay explicitly, never the inherited whole config.
+  for (const name of [
+    "OMP_PROFILE",
+    "PI_PROFILE",
+    "PI_SESSION_DIR",
+    "PI_COMPILED",
+    "PI_CONFIG_FILES",
+  ])
     delete env[name];
   return env;
 }

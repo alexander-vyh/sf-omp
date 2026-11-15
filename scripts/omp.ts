@@ -1,29 +1,52 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
+import { connectGlobalAuth } from "./omp-auth.ts";
 import { localOmpCommand, ROOT, runtimeEnvironment } from "./omp-runtime.ts";
+
+let child: ChildProcess | undefined;
+let auth: Awaited<ReturnType<typeof connectGlobalAuth>> | undefined;
+const interrupt = () => {
+  if (child) child.kill("SIGINT");
+  else process.exit(130);
+};
+const terminate = () => {
+  if (child) {
+    child.kill("SIGTERM");
+    void auth?.close();
+  } else {
+    process.exit(143);
+  }
+};
+process.on("SIGINT", interrupt);
+process.on("SIGTERM", terminate);
+process.on("SIGHUP", terminate);
 
 try {
   const [executable, ...runtimeArgs] = localOmpCommand();
-  const child = spawn(
+  const environment = runtimeEnvironment();
+  auth = await connectGlobalAuth();
+  child = spawn(
     executable,
-    [...runtimeArgs, "--no-extensions", "-e", ROOT, ...process.argv.slice(2)],
+    [...runtimeArgs, "--no-extensions", "-e", ROOT, ...auth.args, ...process.argv.slice(2)],
     {
       cwd: process.cwd(),
-      env: runtimeEnvironment(),
+      env: { ...environment, ...auth.environment },
       stdio: "inherit",
     },
   );
-  child.on("error", (error) => {
-    console.error(`sf-omp: ${error.message}`);
-    process.exitCode = 1;
+  const finished = Promise.withResolvers<void>();
+  child.once("error", finished.reject);
+  child.once("close", (code, signal) => {
+    process.exitCode = code !== null && code >= 0 ? code : signal || code !== null ? 1 : 0;
+    finished.resolve();
   });
-  child.on("exit", (code, signal) => {
-    process.exitCode = code ?? (signal ? 1 : 0);
-  });
-  for (const signal of ["SIGINT", "SIGTERM"] as const) {
-    process.on(signal, () => child.kill(signal));
-  }
+  await finished.promise;
 } catch (error) {
   console.error(`sf-omp: ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;
+} finally {
+  await auth?.close();
+  process.removeListener("SIGINT", interrupt);
+  process.removeListener("SIGTERM", terminate);
+  process.removeListener("SIGHUP", terminate);
 }

@@ -48,6 +48,7 @@
     "start": "bun scripts/omp.ts",
     "omp": "bun scripts/omp.ts",
     "smoke:omp": "bun scripts/omp-smoke.ts",
+    "smoke:auth": "bun scripts/omp-auth-smoke.ts",
     "test:omp": "vitest run --maxWorkers=1 extensions/sf-agentscript/tests extensions/sf-apex/tests extensions/sf-soql/tests extensions/sf-lwc/tests extensions/sf-code-analyzer/tests extensions/sf-lsp/tests extensions/sf-brain/tests extensions/sf-guardrail/tests extensions/sf-skills/tests extensions/sf-flow/tests lib/common/tests",
     "generate-catalog": "node scripts/generate-catalog.mjs",
     "generate-catalog:check": "node scripts/generate-catalog.mjs --check",
