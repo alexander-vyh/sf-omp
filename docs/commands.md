@@ -15,9 +15,9 @@ subcommands, flags, and detailed behavior, see the linked extension README.
 See also:
 
 - [Bundled Extensions](./extensions.md) — generated user-facing extension inventory
-- [`catalog/index.json`](https://github.com/salesforce/sf-pi/blob/main/catalog/index.json) — machine-readable catalog
-- [`README.md`](https://github.com/salesforce/sf-pi/blob/main/README.md) — install, quick start, bundled extensions
-- [`ARCHITECTURE.md`](https://github.com/salesforce/sf-pi/blob/main/ARCHITECTURE.md) — repo structure and conventions
+- [`catalog/index.json`](https://github.com/alexander-vyh/sf-omp/blob/main/catalog/index.json) — machine-readable catalog
+- [`README.md`](https://github.com/alexander-vyh/sf-omp/blob/main/README.md) — install, quick start, bundled extensions
+- [`ARCHITECTURE.md`](https://github.com/alexander-vyh/sf-omp/blob/main/ARCHITECTURE.md) — repo structure and conventions
 
 ## Manager
 

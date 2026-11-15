@@ -1,13 +1,13 @@
 import { defineConfig } from "vitepress";
 import { extensionSidebarItems } from "./generated-extension-sidebar.ts";
 
-const repoUrl = "https://github.com/salesforce/sf-pi";
+const repoUrl = "https://github.com/alexander-vyh/sf-omp";
 
 export default defineConfig({
   lang: "en-US",
   title: "SF Pi",
   description: "Salesforce-focused extensions for the pi coding agent.",
-  base: "/sf-pi/",
+  base: "/sf-omp/",
   cleanUrls: true,
   lastUpdated: true,
   srcExclude: ["adr/**"],

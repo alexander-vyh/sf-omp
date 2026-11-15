@@ -4,7 +4,7 @@
 const DEFAULT_ATTEMPTS = 2;
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_RETRY_DELAY_MS = 750;
-const USER_AGENT = "sf-pi-external-link-report/1.0 (+https://github.com/salesforce/sf-pi)";
+const USER_AGENT = "sf-omp-external-link-report/1.0 (+https://github.com/alexander-vyh/sf-omp)";
 
 export function extractExternalLinks(entries) {
   const sourcesByUrl = new Map();

@@ -55,11 +55,11 @@ Open its Manager detail or change its package state with:
 
 ## For contributors
 
-- [Full extension README](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-slack/README.md)
-- [Source folder](https://github.com/salesforce/sf-pi/tree/main/extensions/sf-slack)
-- [Agent editing rules](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-slack/AGENTS.md)
-- [Agent operating guide](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-slack/AGENT_GUIDE.md)
+- [Full extension README](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-slack/README.md)
+- [Source folder](https://github.com/alexander-vyh/sf-omp/tree/main/extensions/sf-slack)
+- [Agent editing rules](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-slack/AGENTS.md)
+- [Agent operating guide](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-slack/AGENT_GUIDE.md)
 
 ## Troubleshooting
 
-See the [Troubleshooting section in the full README](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-slack/README.md#troubleshooting) for extension-specific recovery steps.
+See the [Troubleshooting section in the full README](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-slack/README.md#troubleshooting) for extension-specific recovery steps.

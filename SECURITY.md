@@ -1,13 +1,14 @@
 # Security
 
-Thank you for helping keep SF Pi and its users safe.
+Thank you for helping keep sf-omp and its users safe.
 
 ## Reporting a vulnerability
 
-Report suspected vulnerabilities through Salesforce's vulnerability reporting
-path:
-
-<https://www.sfdc.co/SubmitVuln>
+Report suspected vulnerabilities privately through
+[GitHub Security Advisories](https://github.com/alexander-vyh/sf-omp/security/advisories/new).
+sf-omp is an unofficial fork; vulnerabilities that also affect upstream SF Pi
+should additionally be reported through Salesforce's path:
+<https://www.sfdc.co/SubmitVuln>.
 
 Do not open a public GitHub issue for suspected vulnerabilities, leaked secrets,
 credential exposure, or bugs that could enable unintended high-value mutations.
@@ -17,9 +18,8 @@ through the owning system. Removing it from the current branch is not sufficient
 
 ## Supported versions
 
-Security fixes are made on `main` and released through normal release automation.
-Use the latest published SF Pi version and a Pi Runtime version allowed by
-`package.json`.
+Security fixes are made on `main`. Use the latest `main` with the pinned local
+OMP and Bun versions from `package.json`.
 
 ## Security model
 

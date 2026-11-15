@@ -9,8 +9,7 @@ in [`GOVERNANCE.md`](./GOVERNANCE.md); vulnerability reporting lives in
 
 ## Before starting
 
-Search existing [Issues](https://github.com/salesforce/sf-pi/issues) and
-[Discussions](https://github.com/salesforce/sf-pi/discussions). Open an issue for
+Search existing [Issues](https://github.com/alexander-vyh/sf-omp/issues). Open an issue for
 a substantial bug or feature before investing in a broad implementation. Small
 documentation corrections, focused tests, and obvious fixes can go directly to
 a pull request.
@@ -39,24 +38,25 @@ Runtime code and Behavior Proofs remain authoritative for implemented behavior.
 4. Push the branch and open a pull request against `main`.
 5. Complete the pull request template with tests, generated artifacts, security
    impact, and residual risks.
-6. Sign the Salesforce CLA when prompted.
+6. Respond to review feedback.
 
 Sync the fork before opening or updating the pull request. Avoid unrelated
 formatting or refactors.
 
-## CLA and license
+## License
 
-Contributions require the one-time
-[Salesforce CLA](https://cla.salesforce.com/sign-cla) and are accepted under the
-project's [Apache License 2.0](./LICENSE.txt).
+Contributions are accepted under the project's
+[Apache License 2.0](./LICENSE.txt). This fork is not a Salesforce project and
+does not use the Salesforce CLA; contributions intended for upstream SF Pi
+belong in [salesforce/sf-pi](https://github.com/salesforce/sf-pi), which does.
 
 ## Development setup
 
 ### Clone and install
 
 ```bash
-git clone https://github.com/salesforce/sf-pi.git
-cd sf-pi
+git clone https://github.com/alexander-vyh/sf-omp.git
+cd sf-omp
 npm install
 ```
 

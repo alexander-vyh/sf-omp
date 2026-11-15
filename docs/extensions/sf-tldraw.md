@@ -59,12 +59,12 @@ Open its Manager detail or change its package state with:
 
 ## For contributors
 
-- [Full extension README](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-tldraw/README.md)
-- [Source folder](https://github.com/salesforce/sf-pi/tree/main/extensions/sf-tldraw)
-- [Agent editing rules](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-tldraw/AGENTS.md)
-- [Agent operating guide](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-tldraw/AGENT_GUIDE.md)
-- [Reference index](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-tldraw/docs/README.md)
+- [Full extension README](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-tldraw/README.md)
+- [Source folder](https://github.com/alexander-vyh/sf-omp/tree/main/extensions/sf-tldraw)
+- [Agent editing rules](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-tldraw/AGENTS.md)
+- [Agent operating guide](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-tldraw/AGENT_GUIDE.md)
+- [Reference index](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-tldraw/docs/README.md)
 
 ## Troubleshooting
 
-See the [Troubleshooting section in the full README](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-tldraw/README.md#troubleshooting) for extension-specific recovery steps.
+See the [Troubleshooting section in the full README](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-tldraw/README.md#troubleshooting) for extension-specific recovery steps.

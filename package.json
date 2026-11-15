@@ -16,14 +16,20 @@
     "name": "Salesforce, Inc.",
     "url": "https://github.com/salesforce"
   },
+  "contributors": [
+    {
+      "name": "alexander-vyh",
+      "url": "https://github.com/alexander-vyh"
+    }
+  ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/alexanderv-sifi/sf-omp.git"
+    "url": "git+https://github.com/alexander-vyh/sf-omp.git"
   },
   "bugs": {
-    "url": "https://github.com/alexanderv-sifi/sf-omp/issues"
+    "url": "https://github.com/alexander-vyh/sf-omp/issues"
   },
-  "homepage": "https://github.com/alexanderv-sifi/sf-omp#readme",
+  "homepage": "https://github.com/alexander-vyh/sf-omp#readme",
   "engines": {
     "node": ">=22.19"
   },

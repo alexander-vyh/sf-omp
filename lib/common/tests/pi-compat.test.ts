@@ -51,7 +51,6 @@ describe("compareVersions", () => {
   });
 });
 
-
 describe("Pi compatibility policy", () => {
   it("distinguishes audited, forward-compatible, and blocked releases", () => {
     expect(MIN_PI_VERSION).toBe("1.5.1");

@@ -47,9 +47,9 @@ Open the extension from its primary command:
 
 ## For contributors
 
-- [Full extension README](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-pi-manager/README.md)
-- [Source folder](https://github.com/salesforce/sf-pi/tree/main/extensions/sf-pi-manager)
+- [Full extension README](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-pi-manager/README.md)
+- [Source folder](https://github.com/alexander-vyh/sf-omp/tree/main/extensions/sf-pi-manager)
 
 ## Troubleshooting
 
-See the [Troubleshooting section in the full README](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-pi-manager/README.md#troubleshooting) for extension-specific recovery steps.
+See the [Troubleshooting section in the full README](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-pi-manager/README.md#troubleshooting) for extension-specific recovery steps.

@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-REPO="${GITHUB_REPO:-salesforce/sf-pi}"
+REPO="${GITHUB_REPO:-alexander-vyh/sf-omp}"
 
 label() {
   local name="$1"

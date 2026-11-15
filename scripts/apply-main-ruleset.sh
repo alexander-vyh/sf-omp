@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/apply-main-ruleset.sh
 #
-# Apply the `main protection` branch Ruleset for salesforce/sf-pi.
+# Apply the `main protection` branch Ruleset for alexander-vyh/sf-omp.
 #
 # Uses GitHub's newer Rulesets API (the successor to classic branch
 # protection). Rulesets support bypass lists, so repo Admins can keep
@@ -43,7 +43,7 @@
 
 set -euo pipefail
 
-REPO="salesforce/sf-pi"
+REPO="alexander-vyh/sf-omp"
 RULESET_NAME="main protection"
 
 echo "==> Applying ruleset '${RULESET_NAME}' to ${REPO}..."

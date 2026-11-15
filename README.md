@@ -1,6 +1,8 @@
 # sf-omp
 
-Repository-local Salesforce Agentforce tooling for **OMP 18.17.0**, forked from [Salesforce SF Pi](https://github.com/salesforce/sf-pi) 0.352.1. Independent checkout: the original SF Pi repository and global OMP installation are not used as the runtime.
+Repository-local Salesforce Agentforce tooling for **OMP 18.17.0**, forked from [Salesforce SF Pi](https://github.com/salesforce/sf-pi) and rebased onto SF Pi 0.354.0. Independent checkout: the original SF Pi repository and global OMP installation are not used as the runtime.
+
+> **Unofficial.** sf-omp is a personal fork maintained by [@alexander-vyh](https://github.com/alexander-vyh). It is not a Salesforce product and is not affiliated with, endorsed by, or supported by Salesforce, Inc. Salesforce, Agentforce, and related marks are trademarks of Salesforce, Inc.
 
 ## Run
 

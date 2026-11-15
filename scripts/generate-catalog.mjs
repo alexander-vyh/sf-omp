@@ -65,7 +65,7 @@ const AGENT_ORIENTATION_DOC_PATH = path.join(DOCS_DIR, "agent-orientation.md");
 const ADR_DIR = path.join(DOCS_DIR, "adr");
 const ADR_INDEX_PATH = path.join(ADR_DIR, "README.md");
 const CHECK_ONLY = process.argv.includes("--check");
-const GITHUB_REPO_URL = "https://github.com/salesforce/sf-pi";
+const GITHUB_REPO_URL = "https://github.com/alexander-vyh/sf-omp";
 
 // Keep in sync with AnnouncementKind / AnnouncementSeverity in catalog/types.ts.
 const ANNOUNCEMENT_KINDS = new Set(["note", "update", "breaking", "deprecation"]);

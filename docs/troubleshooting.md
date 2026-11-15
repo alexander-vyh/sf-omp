@@ -301,4 +301,4 @@ Jump to an extension's Troubleshooting section to see the full fix. This index i
 
 - Command reference: [Commands](./commands.md)
 - Extension inventory: [Bundled Extensions](./extensions.md)
-- File an issue: [github.com/salesforce/sf-pi/issues](https://github.com/salesforce/sf-pi/issues)
+- File an issue: [github.com/alexander-vyh/sf-omp/issues](https://github.com/alexander-vyh/sf-omp/issues)

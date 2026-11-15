@@ -10,12 +10,12 @@ lives in the root repository documents rather than being copied into the site.
 
 ## Start here
 
-- [Contributing guide](https://github.com/salesforce/sf-pi/blob/main/CONTRIBUTING.md) — setup, scripts, testing, review, and release workflow.
-- [Architecture](https://github.com/salesforce/sf-pi/blob/main/ARCHITECTURE.md) — repository structure and stable contracts.
-- [Governance](https://github.com/salesforce/sf-pi/blob/main/GOVERNANCE.md) — project roles and decision-making.
-- [Security policy](https://github.com/salesforce/sf-pi/blob/main/SECURITY.md) — private vulnerability reporting and supported versions.
+- [Contributing guide](https://github.com/alexander-vyh/sf-omp/blob/main/CONTRIBUTING.md) — setup, scripts, testing, review, and release workflow.
+- [Architecture](https://github.com/alexander-vyh/sf-omp/blob/main/ARCHITECTURE.md) — repository structure and stable contracts.
+- [Governance](https://github.com/alexander-vyh/sf-omp/blob/main/GOVERNANCE.md) — project roles and decision-making.
+- [Security policy](https://github.com/alexander-vyh/sf-omp/blob/main/SECURITY.md) — private vulnerability reporting and supported versions.
 - [Agent orientation](./agent-orientation.md) — generated owner and agent-document map.
-- [ADRs](https://github.com/salesforce/sf-pi/tree/main/docs/adr) — current and historical architecture decisions.
+- [ADRs](https://github.com/alexander-vyh/sf-omp/tree/main/docs/adr) — current and historical architecture decisions.
 - [Public sanitization](./public-sanitization.md) — rules for public code, docs, tests, examples, and diagnostics.
 
 ## Common change paths

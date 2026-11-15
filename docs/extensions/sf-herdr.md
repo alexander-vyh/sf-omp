@@ -54,10 +54,10 @@ Open its Manager detail or change its package state with:
 
 ## For contributors
 
-- [Full extension README](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-herdr/README.md)
-- [Source folder](https://github.com/salesforce/sf-pi/tree/main/extensions/sf-herdr)
-- [Agent operating guide](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-herdr/AGENT_GUIDE.md)
+- [Full extension README](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-herdr/README.md)
+- [Source folder](https://github.com/alexander-vyh/sf-omp/tree/main/extensions/sf-herdr)
+- [Agent operating guide](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-herdr/AGENT_GUIDE.md)
 
 ## Troubleshooting
 
-See the [Troubleshooting section in the full README](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-herdr/README.md#troubleshooting) for extension-specific recovery steps.
+See the [Troubleshooting section in the full README](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-herdr/README.md#troubleshooting) for extension-specific recovery steps.

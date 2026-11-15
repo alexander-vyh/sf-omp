@@ -54,5 +54,5 @@ Open its Manager detail or change its package state with:
 
 ## For contributors
 
-- [Full extension README](https://github.com/salesforce/sf-pi/blob/main/extensions/sf-planreview/README.md)
-- [Source folder](https://github.com/salesforce/sf-pi/tree/main/extensions/sf-planreview)
+- [Full extension README](https://github.com/alexander-vyh/sf-omp/blob/main/extensions/sf-planreview/README.md)
+- [Source folder](https://github.com/alexander-vyh/sf-omp/tree/main/extensions/sf-planreview)

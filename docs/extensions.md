@@ -215,4 +215,4 @@ Each extension owns one focused Salesforce workflow. Pick an outcome, then open 
 ## Full reference
 
 The canonical machine-readable inventory is
-[`catalog/index.json`](https://github.com/salesforce/sf-pi/blob/main/catalog/index.json).
+[`catalog/index.json`](https://github.com/alexander-vyh/sf-omp/blob/main/catalog/index.json).
