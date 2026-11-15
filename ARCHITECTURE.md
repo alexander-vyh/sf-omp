@@ -14,13 +14,13 @@ suite. Read this first when onboarding, adding extensions, or troubleshooting.
 ```
 sf-pi/
 ├── .github/
-│   └── workflows/              ← CI, security scanners, release-please, sync, metrics
+│   └── workflows/              ← CI and security scanners
 ├── AGENTS.md                   ← Repo rules for agents and contributors
 ├── ARCHITECTURE.md             ← Repo structure and conventions (this file)
 ├── CONTRIBUTING.md             ← Human-friendly contributor workflow
 ├── README.md                   ← User-facing quick start
 ├── ROADMAP.md                  ← What's next, milestones, non-goals
-├── CHANGELOG.md                ← Release history (managed by release-please)
+├── CHANGELOG.md                ← Fork changes (Unreleased) plus upstream release history
 ├── extensions/                 ← All extensions live here (self-contained)
 │   ├── sf-agentscript/
 │   ├── sf-apex/

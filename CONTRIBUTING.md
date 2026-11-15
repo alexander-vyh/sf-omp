@@ -429,23 +429,18 @@ Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`,
 `build`, `ci`, `chore`, `revert`, `security`.
 
 Breaking changes include `!` after the type/scope, or a `BREAKING CHANGE:`
-footer. Both trigger a major version bump under `release-please`.
+footer.
 
 ## Maintainer fast path
 
 The PR workflow above is the default for external contributors. Maintainers
 may use the solo fast path documented in [`AGENTS.md`](./AGENTS.md): for
-low-risk changes, commit directly to `main` and let CI / release-please do the
-verification and release work. Use a PR instead for risky changes, public API
+low-risk changes, commit directly to `main` and let CI do the verification.
+Use a PR instead for risky changes, public API
 breaks, destructive migrations, or when a named reviewer is required.
 
 ## Releases
 
-Releases are automated via
-[release-please](./.github/workflows/release-please.yml):
-
-1. Conventional-Commit PRs merged to `main` trigger release-please.
-2. Release-please opens or updates a release PR with the next version +
-   CHANGELOG entry.
-3. Once CI is green on the release PR it gets squash-merged (automation
-   or maintainer) and the tag + GitHub Release are cut automatically.
+There is no release automation in this fork. Changes land on `main`; record
+fork-specific changes under `## Unreleased` in `CHANGELOG.md`. Upstream SF Pi
+release history below that section is retained as-is.

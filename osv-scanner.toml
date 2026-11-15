@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+# OSV-Scanner configuration (read by .github/workflows/osv-scanner.yml).
+
+[[IgnoredVulns]]
+id = "GHSA-mrhx-c7xc-m3w5"
+ignoreUntil = 2027-02-15
+reason = "zod 3.25.76 is a development-only transitive of the pinned OMP 18.17.0 runtime (puppeteer-core -> chromium-bidi 16, which declares zod ^3). No 3.x fix exists; forcing zod 4 would be an unsupported major override. Remove when an OMP upgrade brings chromium-bidi with zod >=4.6.6."

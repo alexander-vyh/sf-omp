@@ -4,7 +4,8 @@ updates:
   - package-ecosystem: npm
     directory: "/"
     schedule:
-      interval: daily
+      interval: weekly
+      day: monday
       time: "05:00"
       timezone: "America/Los_Angeles"
     open-pull-requests-limit: 10
@@ -40,6 +41,10 @@ updates:
     # audit-edge change. Ignore every update type, not just majors.
     ignore:
       - dependency-name: "@earendil-works/*"
+      # OMP and Bun are pinned for the local launcher; scripts/patch-local-omp.mjs
+      # refuses other OMP versions. Upgrade them together in a dedicated change.
+      - dependency-name: "@oh-my-pi/*"
+      - dependency-name: "bun"
       # typescript stays on 6.x for the typescript-eslint compiler API; the
       # native TypeScript 7 checker is tracked through @typescript/native.
       - dependency-name: "typescript"
@@ -49,7 +54,8 @@ updates:
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: daily
+      interval: weekly
+      day: monday
       time: "05:00"
       timezone: "America/Los_Angeles"
     open-pull-requests-limit: 5

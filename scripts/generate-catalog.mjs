@@ -1069,13 +1069,13 @@ function generateFolderLayout(manifests) {
     "```",
     "sf-pi/",
     "\u251c\u2500\u2500 .github/",
-    "\u2502   \u2514\u2500\u2500 workflows/              \u2190 CI, security scanners, release-please, sync, metrics", // see .github/workflows/ for the full list
+    "\u2502   \u2514\u2500\u2500 workflows/              \u2190 CI and security scanners", // see .github/workflows/ for the full list
     "\u251c\u2500\u2500 AGENTS.md                   \u2190 Repo rules for agents and contributors",
     "\u251c\u2500\u2500 ARCHITECTURE.md             \u2190 Repo structure and conventions (this file)",
     "\u251c\u2500\u2500 CONTRIBUTING.md             \u2190 Human-friendly contributor workflow",
     "\u251c\u2500\u2500 README.md                   \u2190 User-facing quick start",
     "\u251c\u2500\u2500 ROADMAP.md                  \u2190 What's next, milestones, non-goals",
-    "\u251c\u2500\u2500 CHANGELOG.md                \u2190 Release history (managed by release-please)",
+    "\u251c\u2500\u2500 CHANGELOG.md                \u2190 Fork changes (Unreleased) plus upstream release history",
     "\u251c\u2500\u2500 extensions/                 \u2190 All extensions live here (self-contained)",
   ];
 
