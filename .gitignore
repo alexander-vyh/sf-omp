@@ -4,6 +4,8 @@ dist/
 **/.DS_Store
 *.js
 !*.config.js
+# LWC component sources used by the OMP smoke's diagnostics fixtures.
+!scripts/fixtures/omp-smoke/force-app/**/lwc/**/*.js
 *.tsbuildinfo
 
 # catalog/registry.ts and catalog/index.json are generated but checked in

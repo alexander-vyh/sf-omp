@@ -28,6 +28,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Salesforce CLI is a documented prerequisite; environment, DevBar, and org
+      # checks exercise its real no-default-org behavior offline.
+      - name: Salesforce CLI
+        run: npm install --global @salesforce/cli@latest && sf --version
       - name: Generated catalog is current
         run: npm run generate-catalog:check
       - name: Documentation health
