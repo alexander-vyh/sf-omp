@@ -44,6 +44,15 @@ provision the JDK.
 /sf-skills defaults install global
 ```
 
+SF Browser page automation and SF tldraw rendering use pinned third-party
+runtimes, also installed under `.runtime/toolchains` and picked up by the
+launcher automatically:
+
+```sh
+bun scripts/provision-agent-browser.ts   # agent-browser + Chrome for Testing
+bun scripts/provision-tldraw-office.ts   # tldraw office (closed source; downloaded, never committed)
+```
+
 Here `global` means this launcher's isolated `.runtime/omp/agent`, **not**
 `~/.omp`. Use `project` to limit skill wiring to the current project's
 `.omp/config.yml`.
