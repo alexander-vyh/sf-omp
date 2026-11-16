@@ -15,7 +15,9 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: macos-latest
+    # Apple Silicon (macos-15-arm64). macos-latest now maps to the macos-26 arm64
+    # pool, which repeatedly failed to acquire a hosted runner for this fork.
+    runs-on: macos-15
     timeout-minutes: 45
     env:
       PI_NATIVES_DIR: ${{ github.workspace }}/.runtime/ci/natives

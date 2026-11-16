@@ -127,7 +127,7 @@ extension parity on every push and pull request.
 | Node.js `>=22.19` | `package.json` engines, preinstall check, and doctor diagnostics                     |
 | OMP runtime       | exact pinned dependency, `scripts/omp-runtime.ts` version check, and the parity gate |
 | npm client        | no independent engine/package-manager floor; CI uses the npm bundled by Node 24      |
-| Operating system  | macOS only; the required `validate` job runs on `macos-latest`                       |
+| Operating system  | macOS only; the required `validate` job runs on Apple Silicon (`macos-15`)           |
 
 ## Next step
 
