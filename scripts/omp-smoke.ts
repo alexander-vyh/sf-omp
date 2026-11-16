@@ -142,10 +142,12 @@ try {
   child.stdin.write(`${JSON.stringify({ id: "smoke-context-only", type: "get_state" })}\n`);
   await child.stdin.flush();
   let timedOut = false;
+  // Hang backstop only: cold transpile of every extension plus a real browser and
+  // tldraw launch took ~5 minutes on a loaded workstation; healthy CI runs take ~1.
   const timeout = setTimeout(() => {
     timedOut = true;
     child.kill("SIGKILL");
-  }, 300_000);
+  }, 600_000);
   let exited = false;
   void child.exited.then(() => {
     exited = true;
