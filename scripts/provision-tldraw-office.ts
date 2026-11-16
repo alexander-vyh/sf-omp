@@ -11,7 +11,6 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:
 import path from "node:path";
 import { tldrawOfficeToolchain } from "./omp-runtime.ts";
 
-const TEAM_ID = "T4G22CLJ2K"; // Developer ID Application: tldraw GB Ltd.
 const RELEASE = "https://github.com/tldraw/tldraw-office/releases/download";
 // sha256 digests published by the GitHub release API for v1.24.1 assets.
 const ASSETS: Record<string, { name: string; sha256: string }> = {
@@ -33,12 +32,15 @@ function run(command: string, args: string[]): string {
   return `${result.stdout}${result.stderr}`;
 }
 
+// The archive bytes are already pinned by sha256; the signature check confirms
+// the unpacked app is Developer ID-signed by tldraw and accepted by Gatekeeper.
 function verifySignature(app: string): void {
   run("codesign", ["--verify", "--deep", "--strict", app]);
   const details = run("codesign", ["-dv", "--verbose=2", app]);
-  if (!details.includes(`TeamIdentifier=${TEAM_ID}`)) {
-    throw new Error(`${app} is not signed by tldraw (team ${TEAM_ID}).`);
+  if (!details.includes("Authority=Developer ID Application: tldraw GB Ltd. (")) {
+    throw new Error(`${app} is not Developer ID-signed by tldraw GB Ltd.`);
   }
+  run("spctl", ["--assess", "--type", "execute", app]);
 }
 
 if (process.platform !== "darwin") throw new Error("tldraw office provisioning is macOS-only.");
