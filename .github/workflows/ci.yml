@@ -15,8 +15,10 @@ concurrency:
 
 jobs:
   validate:
-    # Apple Silicon (macos-26-arm64), pinned so the image only moves deliberately.
-    runs-on: macos-26
+    # Apple Silicon (macos-15-arm64). macos-26 passes, but its hosted pool often
+    # fails to acquire a runner during busy hours (github.com/orgs/community/discussions/211885).
+    # Move back to macos-26 once GitHub's macOS arm64 capacity is stable.
+    runs-on: macos-15
     timeout-minutes: 45
     env:
       PI_NATIVES_DIR: ${{ github.workspace }}/.runtime/ci/natives
