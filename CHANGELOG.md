@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - CI runs on macOS (the only supported platform) with the full unit suite, generated-catalog, docs-health, format, lint, smoke, auth smoke, and parity gates; Windows/Ubuntu support claims were removed.
 - Fixed SF SOQL `query.count` reporting "0 rows" for `COUNT()` queries: the summary now shows the server count, and capped runs show the total size alongside the rows fetched.
 - Fixed SF Apex `coverage.summary` hiding the org-wide percentage it retrieved: the tool text now includes it.
+- Fixed SF Pi doctor counting the same skill linked into several harness roots (for example `~/.claude/skills` and `~/.agents/skills` symlinked to one install) as skill collisions; only distinct files with the same name count now, so the startup notice no longer reports false collisions.
 
 ## [0.354.0](https://github.com/salesforce/sf-pi/compare/v0.353.0...v0.354.0) (2026-11-11)
 

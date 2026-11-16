@@ -5,7 +5,7 @@
  * Keep this module side-effect free. Command handlers and startup code use it
  * to decide what to display; repair code lives in fixes.ts.
  */
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { execFile, execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -371,13 +371,23 @@ export function findSkillCollisions(locations: SkillLocation[]): SkillCollision[
 
   const collisions: SkillCollision[] = [];
   for (const [name, matches] of [...byName.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    if (matches.length <= 1) continue;
+    // Harness roots often symlink one shared install (e.g. ~/.claude/skills/x and
+    // ~/.agents/skills/x -> one directory); the same file is not a competing copy.
+    if (new Set(matches.map((match) => realpathOrSelf(match.file))).size <= 1) continue;
     const sorted = [...matches].sort(compareSkillLocationPriority);
     const preferred = sorted[0];
     if (!preferred) continue;
     collisions.push({ name, locations: sorted, preferred, duplicates: sorted.slice(1) });
   }
   return collisions;
+}
+
+function realpathOrSelf(file: string): string {
+  try {
+    return realpathSync(file);
+  } catch {
+    return path.resolve(file);
+  }
 }
 
 function buildSkillRootCandidates(
