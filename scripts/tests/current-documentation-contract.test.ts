@@ -95,7 +95,7 @@ describe("current documentation authority", () => {
     // The macOS claim must stay tied to the blocking CI job that proves it.
     const ci = read(".github/workflows/ci.yml");
     expect(ci).toMatch(
-      /\n {2}validate:\n(?:\s+#.*\n)*\s+runs-on: macos-15\n(?!\s+continue-on-error)/,
+      /\n {2}validate:\n(?:\s+#.*\n)*\s+runs-on: macos-26\n(?!\s+continue-on-error)/,
     );
     expect(install).toMatch(/required `validate` CI job runs on macOS/);
   });
