@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Smoke-only adapter: forwards real registrations and native hooks, then calls real tools. */
 import { mkdir, readdir, readFile, realpath, writeFile } from "node:fs/promises";
-import { getAgentDir, getConfigRootDir } from "@oh-my-pi/pi-utils";
+import { getAgentDir, getConfigRootDir, resolveEquivalentPath } from "@oh-my-pi/pi-utils";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -389,17 +389,23 @@ export default async function smoke(pi: ExtensionAPI): Promise<void> {
         });
       }
       await run("skills.native.command-discovery", "sf-skills", async () => {
-        const skillPath = file(".omp/skills/sf-omp-startup-smoke/SKILL.md");
+        // OMP spells macOS /private/tmp paths as /tmp, so match the real location.
+        const skillPath = resolveEquivalentPath(file(".omp/skills/sf-omp-startup-smoke/SKILL.md"));
         const command = pi
           .getCommands()
-          .find((entry) => entry.source === "skill" && entry.path === skillPath);
+          .find(
+            (entry) =>
+              entry.source === "skill" &&
+              entry.path !== undefined &&
+              resolveEquivalentPath(entry.path) === skillPath,
+          );
         requireTrue(
-          command,
+          command?.path,
           `Native OMP did not expose the startup skill path: ${JSON.stringify(pi.getCommands())}`,
         );
         const inventory = buildSkillInventory(pi.getCommands(), workspace);
         requireTrue(
-          inventory.byFilePath.get(skillPath)?.commandName === command.name,
+          inventory.byFilePath.get(command.path)?.commandName === command.name,
           "Skill tracking did not retain native command provenance.",
         );
         return command;

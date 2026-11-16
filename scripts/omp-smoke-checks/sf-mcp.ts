@@ -8,7 +8,7 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { getAgentDir } from "@oh-my-pi/pi-utils";
+import { getAgentDir, resolveEquivalentPath } from "@oh-my-pi/pi-utils";
 import { clearCache } from "@oh-my-pi/pi-coding-agent/capability/fs";
 import { loadAllMCPConfigs } from "@oh-my-pi/pi-coding-agent/mcp/config";
 import type { SmokeApi } from "../omp-smoke-extension.ts";
@@ -75,11 +75,15 @@ export default async function mcpChecks(api: SmokeApi): Promise<void> {
   await api.run("mcp.tool.status.native-paths", EXTENSION, async () => {
     const global = await api.requireSuccess("sf_mcp", { action: "status" });
     const project = await api.requireSuccess("sf_mcp", { action: "status", scope: "project" });
-    const text = (result: unknown) => JSON.stringify(result);
+    // OMP spells macOS /private/tmp paths as /tmp, so compare real locations.
+    const nativeConfig = (result: unknown) => {
+      const match = /Native config: (\S+?)(?:\\n|")/.exec(JSON.stringify(result));
+      return match ? resolveEquivalentPath(match[1], { throughMissing: true }) : undefined;
+    };
+    const same = (file: string) => resolveEquivalentPath(file, { throughMissing: true });
     api.requireTrue(
-      text(global).includes(`Native config: ${globalFile}`) &&
-        text(project).includes(`Native config: ${projectFile}`),
-      `sf_mcp does not target OMP's native MCP files: ${text(global)} ${text(project)}`,
+      nativeConfig(global) === same(globalFile) && nativeConfig(project) === same(projectFile),
+      `sf_mcp does not target OMP's native MCP files: ${JSON.stringify(global)} ${JSON.stringify(project)}`,
     );
     const presets = api.details(global).presets as Array<{ status: string }>;
     api.requireTrue(
