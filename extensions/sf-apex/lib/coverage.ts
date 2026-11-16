@@ -73,7 +73,8 @@ export async function coverageSummary(conn: Connection, params: SfApexParams): P
         ? "warning"
         : "pass";
 
-  return ok(`Apex coverage summary: ${normalized.length} target(s).`, {
+  const orgWideText = orgWide ? ` Org-wide coverage: ${orgWide.percent_covered}%.` : "";
+  return ok(`Apex coverage summary: ${normalized.length} target(s).${orgWideText}`, {
     kind: "coverage_summary",
     targets: names,
     org_wide: orgWide,

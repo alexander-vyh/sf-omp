@@ -70,6 +70,34 @@ describe("sf-soql renderer", () => {
     expect(result.content[0]?.text).toContain("/tmp/result.raw.json");
   });
 
+  it("reports the server total for COUNT() and capped runs instead of only fetched rows", () => {
+    const count = toolResultFromDigest(
+      buildDigest({
+        action: "query.count",
+        status: "pass",
+        icon: "🧮",
+        title: "SOQL Count · Account",
+        query: { normalized: "SELECT COUNT() FROM Account" },
+        result: { total_size: 174334, rows_returned: 0, done: true },
+        sections: [],
+      }),
+    );
+    const capped = toolResultFromDigest(
+      buildDigest({
+        action: "query.run",
+        status: "pass",
+        icon: "⚡",
+        title: "SOQL Run · Contact",
+        result: { total_size: 5000, rows_returned: 200, done: false },
+        sections: [],
+      }),
+    );
+
+    expect(count.content[0]?.text).toContain("Total size: 174334");
+    expect(capped.content[0]?.text).toContain("Rows returned: 200");
+    expect(capped.content[0]?.text).toContain("Total size: 5000");
+  });
+
   it("includes schema field previews in tool text", () => {
     const result = toolResultFromDigest(
       buildDigest({

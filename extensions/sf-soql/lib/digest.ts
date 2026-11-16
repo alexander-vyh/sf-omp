@@ -53,6 +53,7 @@ export function textForDigest(digest: SoqlRunDigest): string {
   const findings =
     digest.validation?.findings?.filter((finding) => finding.severity !== "info").length ?? 0;
   const rows = digest.result?.rows_returned;
+  const total = digest.result?.total_size;
   const lines = [
     `${digest.status.toUpperCase()}: ${bits}`,
     digest.query?.normalized ? `Query: ${digest.query.normalized}` : undefined,
@@ -62,6 +63,8 @@ export function textForDigest(digest: SoqlRunDigest): string {
         }${digest.api_resolution.reason ? ` · ${digest.api_resolution.reason}` : ""}`
       : undefined,
     rows !== undefined ? `Rows returned: ${rows}` : undefined,
+    // COUNT() returns no records and capped runs fetch fewer than exist.
+    total !== undefined && total !== rows ? `Total size: ${total}` : undefined,
     findings ? `Findings: ${findings}` : undefined,
   ].filter((line): line is string => Boolean(line));
 

@@ -373,7 +373,10 @@ async function executeQuery(
       icon: operation === "count" ? "🧮" : operation === "queryAll" ? "🕰️" : "⚡",
       title: titleFor(action, operation, shape.primary_object),
       org: { alias: params.target_org, api_version: apiVersion(conn) },
-      meta: [apiMode.toUpperCase(), `${result.records.length} rows`],
+      meta: [
+        apiMode.toUpperCase(),
+        operation === "count" ? `count ${result.totalSize}` : `${result.records.length} rows`,
+      ],
       query: shape,
       result: {
         total_size: result.totalSize,

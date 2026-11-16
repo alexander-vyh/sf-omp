@@ -122,7 +122,7 @@
     "entry": "extensions/sf-apex/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 4706
+    "srcLoc": 4707
   },
   {
     "id": "sf-brain",
@@ -1408,7 +1408,7 @@
     "entry": "extensions/sf-soql/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 5436
+    "srcLoc": 5442
   },
   {
     "id": "sf-tldraw",

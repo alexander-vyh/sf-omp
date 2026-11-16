@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Added `npm run parity:omp`, which loads each extension alone in real OMP and compares registered commands, tools, providers, and events with its manifest against a ratcheting baseline. The offline smoke now loads every extension through OMP's real loader and runs per-extension check modules in `scripts/omp-smoke-checks/`.
 - The launcher sets `SF_DISABLE_LOG_FILE=true` (unless set) because `@salesforce/core`'s file-logger transport cannot resolve inside OMP's extension loader, and hermetic runs use `SF_USE_GENERIC_UNIX_KEYCHAIN=true` so they never reach the login keychain. Tests strip inherited launcher environment so they cannot write to the real `.runtime/omp/agent`.
 - CI runs on macOS (the only supported platform) with the full unit suite, generated-catalog, docs-health, format, lint, smoke, auth smoke, and parity gates; Windows/Ubuntu support claims were removed.
+- Fixed SF SOQL `query.count` reporting "0 rows" for `COUNT()` queries: the summary now shows the server count, and capped runs show the total size alongside the rows fetched.
+- Fixed SF Apex `coverage.summary` hiding the org-wide percentage it retrieved: the tool text now includes it.
 
 ## [0.354.0](https://github.com/salesforce/sf-pi/compare/v0.353.0...v0.354.0) (2026-11-11)
 
