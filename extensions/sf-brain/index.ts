@@ -48,6 +48,7 @@ import {
 } from "./lib/routing-summary.ts";
 import { buildSfBrainManagerActions } from "./lib/instruction-surface-manager.ts";
 import { applyGatewayGpt6ResponseStyle } from "./lib/response-style.ts";
+import { BUNDLED_EXTENSION_IDS, disabledExtensionIds } from "./lib/enabled-extensions.ts";
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SF_PI_VERSION = readPackageVersion();
@@ -89,7 +90,9 @@ export default function (pi: ExtensionAPI) {
   }));
 
   pi.on("before_agent_start", async (_event, ctx) => {
-    if (!shouldInjectConstitution(ctx.sessionManager)) return;
+    const disabled = disabledExtensionIds(pi, ctx.cwd);
+    const enabled = new Set([...BUNDLED_EXTENSION_IDS].filter((id) => !disabled.has(id)));
+    if (!shouldInjectConstitution(ctx.sessionManager, enabled)) return;
 
     // Prefer the already-populated shared cache. If nothing has run detection
     // yet in this process, fall through to a live detection. Either way the
@@ -99,7 +102,10 @@ export default function (pi: ExtensionAPI) {
       env = await getSharedSfEnvironment(exec, ctx.cwd);
     }
 
-    const constitution = loadConstitution({ cliInstalled: env.cli.installed });
+    const constitution = loadConstitution({
+      cliInstalled: env.cli.installed,
+      availableExtensions: enabled,
+    });
 
     return {
       message: {
@@ -124,7 +130,10 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("before_agent_start", async (_event, ctx) => {
-    const summary = formatSfPiRoutingSummary(new Set(pi.getAllTools().map((tool) => tool.name)));
+    const summary = formatSfPiRoutingSummary(
+      new Set(pi.getAllTools().map((tool) => tool.name)),
+      disabledExtensionIds(pi, ctx.cwd),
+    );
     if (!shouldInjectSfPiRoutingSummary(ctx.sessionManager, summary)) return;
 
     return {

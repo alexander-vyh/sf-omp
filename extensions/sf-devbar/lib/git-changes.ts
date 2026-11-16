@@ -85,6 +85,20 @@ export async function getGitChanges(exec: ExecFn, _cwd: string): Promise<GitChan
   }
 }
 
+/**
+ * Read the current branch name for hosts without a reactive branch feed.
+ * Returns null outside a repository, on detached HEAD, or when git fails.
+ */
+export async function getGitBranch(exec: ExecFn): Promise<string | null> {
+  try {
+    const result = await exec("git", ["branch", "--show-current"], { timeout: 5000 });
+    if (result.code !== 0) return null;
+    return result.stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 // -------------------------------------------------------------------------------------------------
 // Formatting
 // -------------------------------------------------------------------------------------------------

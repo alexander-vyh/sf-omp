@@ -5,5 +5,10 @@
  * Consumers (sf-skills HUD overlay, future datatable surfaces) should import
  * from this barrel rather than reaching into detection.ts directly.
  */
-export { buildSkillInventory, buildSkillsHudState, formatSkillsHudSummary } from "./detection.ts";
+export {
+  buildSkillInventory,
+  buildSkillsHudState,
+  formatSkillsHudSummary,
+  ompSkillPromptName,
+} from "./detection.ts";
 export type { SkillEvidence, SkillUsage, SkillsHudState } from "./detection.ts";

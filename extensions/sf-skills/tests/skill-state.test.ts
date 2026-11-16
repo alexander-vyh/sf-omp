@@ -119,6 +119,39 @@ describe("sf-skills skill state", () => {
     expect(state.live.map((skill) => skill.name)).toEqual(["sf-apex"]);
   });
 
+  it("marks OMP skill-prompt custom messages from /skill: as live and earlier", () => {
+    const entries = [
+      {
+        type: "custom_message",
+        id: "1",
+        parentId: null,
+        timestamp: "2026-01-01T00:00:01Z",
+        customType: "skill-prompt",
+        content: '[IMPORTANT: User invoked the "sf-apex" skill; follow its instructions.]',
+        display: true,
+        details: { name: "sf-apex", path: "/skills/sf-apex/SKILL.md", lineCount: 1 },
+      },
+    ] as unknown as SessionEntry[];
+    const commands = [skillCommand("sf-apex", "/skills/sf-apex/SKILL.md")];
+
+    const live = buildSkillsHudState({
+      branchEntries: entries,
+      sessionContext: buildSessionContext(entries),
+      commands,
+      cwd: CWD,
+    });
+    expect(live.live.map((skill) => skill.name)).toEqual(["sf-apex"]);
+
+    const earlier = buildSkillsHudState({
+      branchEntries: entries,
+      sessionContext: { messages: [] } as never,
+      commands,
+      cwd: CWD,
+    });
+    expect(earlier.live).toEqual([]);
+    expect(earlier.earlier.map((skill) => skill.name)).toEqual(["sf-apex"]);
+  });
+
   it("detects live skills from read(SKILL.md) tool calls", () => {
     const commands = [skillCommand("sf-testing", "/skills/testing-guidance/SKILL.md")];
     const entries: SessionEntry[] = [

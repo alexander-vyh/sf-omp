@@ -69,6 +69,31 @@ scoped field instead of copying a value.
 - Source screenshots must be regular JPEG/PNG files inside tldraw's dedicated
   temporary capture directory before private artifact copies are exposed.
 
+## Runtime
+
+SF tldraw renders through the tldraw desktop app (published as tldraw office;
+formerly tldraw offline) and its loopback Canvas API. It discovers the running
+app through `server.json` in the app's user-data directory
+(`~/Library/Application Support/tldraw/server.json` on macOS) or the path in
+`TLDRAW_SERVER_CONFIG`.
+
+For this repository's OMP smoke on macOS, provision a pinned copy without
+installing it system-wide:
+
+```sh
+bun scripts/provision-tldraw-office.ts
+```
+
+The script downloads the tldraw office release zip for your Mac architecture
+from the official GitHub releases, verifies its sha256 and the tldraw Developer
+ID signature, and extracts it under `.runtime/toolchains/tldraw-office/<version>`.
+`npm run smoke:omp` then launches that copy hidden, with its data directory and
+`server.json` inside the smoke run, renders the fixture specs, checks the
+report and screenshot artifacts, and stops the app. Without the toolchain, the
+live checks report `blocked` along with these steps. tldraw office is
+proprietary ("All rights reserved"). The repository never commits or
+redistributes the app; each developer downloads it from tldraw.
+
 ## References
 
 Use [`docs/README.md`](./docs/README.md) to choose the Spec v2 cheatsheet,

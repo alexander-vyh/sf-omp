@@ -14,6 +14,7 @@
  *   releases load with one process-wide forward-compatibility warning.
  */
 import * as PiRuntime from "@earendil-works/pi-coding-agent";
+import { isExtensionDisabledInOmpConfig } from "./sf-pi-extension-state.ts";
 
 /** Oldest Pi release whose public APIs satisfy every bundled extension. */
 export const MIN_PI_VERSION = "1.5.1";
@@ -110,6 +111,32 @@ function claimForwardCompatibilityWarning(): boolean {
 }
 
 /**
+ * True when running inside the native OMP host rather than Pi. Both OMP-only
+ * registration methods distinguish it from Pi regardless of which SDK module
+ * graph the caller imported (the launcher pins the audited OMP version), so
+ * extensions can branch on host API differences (provider registration shape,
+ * events) while unit tests on the Pi SDK keep the Pi path.
+ */
+export function isOmpHost(pi: unknown): boolean {
+  return (
+    pi !== null &&
+    typeof pi === "object" &&
+    "registerTranscriptPresenter" in pi &&
+    typeof pi.registerTranscriptPresenter === "function" &&
+    "registerFileWriteFallback" in pi &&
+    typeof pi.registerFileWriteFallback === "function"
+  );
+}
+
+/**
+ * Module-level OMP detection for helpers that receive no ExtensionAPI, such as
+ * status-only credential-store reads. Prefer `isOmpHost(pi)` when `pi` exists.
+ */
+export function isOmpRuntime(): boolean {
+  return getInstalledPiVersion() === "18.17.0";
+}
+
+/**
  * Gate each extension behind the hard runtime boundaries while allowing stable
  * future Pi 1.x releases to load in forward-compatibility mode.
  */
@@ -124,18 +151,9 @@ export function requirePiVersion(
   if (!installed) return true;
 
   // This fork audits OMP explicitly; never pretend its version is a Pi version.
-  // Both native registration methods distinguish OMP from an unrelated Pi major.
-  if (
-    installed === "18.17.0" &&
-    _pi !== null &&
-    typeof _pi === "object" &&
-    "registerTranscriptPresenter" in _pi &&
-    typeof _pi.registerTranscriptPresenter === "function" &&
-    "registerFileWriteFallback" in _pi &&
-    typeof _pi.registerFileWriteFallback === "function"
-  ) {
-    return true;
-  }
+  // OMP's explicit-only launch skips native `disabledExtensions`, so honour the
+  // SF Pi Manager's `extension-module:<id>` entries here (next OMP start).
+  if (isOmpHost(_pi)) return !isExtensionDisabledInOmpConfig(extensionName);
 
   const compatibility = classifyPiVersion(
     installed,

@@ -3,12 +3,7 @@
  * Shared command/tool operations for SF Browser.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import {
-  formatDimensionNote,
-  resizeImage,
-  type ExtensionAPI,
-  type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import {
   findLatestBrowserSnapshotSession,
@@ -23,6 +18,7 @@ import {
   imageContentFromFile,
   planEvidenceCapture,
 } from "./artifacts.ts";
+import { formatDimensionNote, resizeImage } from "./image-resize.ts";
 import { routeFromInput } from "./navigation-intent.ts";
 import { checkFinSecretSurface, FIN_SECRET_SURFACE_MESSAGE } from "./fin-admin-guard.ts";
 import { dismissAmbientOverlays } from "./overlay-dismissal.ts";

@@ -11,7 +11,9 @@ import type { DoctorIssue, DoctorReport } from "../../../lib/common/doctor/types
 import { writeCachedRuntimeDiagnostics } from "../../../lib/common/doctor/runtime-cache.ts";
 import {
   AUDITED_MAX_PI_VERSION_EXCLUSIVE,
+  getInstalledPiVersion,
   HARD_MAX_PI_VERSION_EXCLUSIVE,
+  isOmpRuntime,
 } from "../../../lib/common/pi-compat.ts";
 import { runPiWebAccessDoctor } from "./pi-web-access-doctor.ts";
 
@@ -175,6 +177,7 @@ function renderRuntimeReport(report: DoctorReport): string {
   const lines = [
     "sf-pi Runtime Doctor",
     "",
+    ...ompHostLines(),
     `Pi runtime:       ${runtime.piVersion ?? "unknown"}`,
     `Audited Pi:       >=${runtime.requiredPiVersion} <${AUDITED_MAX_PI_VERSION_EXCLUSIVE}`,
     `Loadable Pi:      stable >=${runtime.requiredPiVersion} <${HARD_MAX_PI_VERSION_EXCLUSIVE}`,
@@ -204,6 +207,7 @@ function renderDoctorReport(report: DoctorReport): string {
   const lines = [
     "sf-pi Doctor",
     "",
+    ...ompHostLines(),
     `Pi runtime:       ${report.piVersion ?? "unknown"}`,
     `Node.js:          ${report.nodeVersion}`,
     `Quiet startup:    ${report.quietStartup ? "yes" : "no"}`,
@@ -252,6 +256,13 @@ function renderDoctorReport(report: DoctorReport): string {
   lines.push("Recovery launch: SF_PI_SAFE_START=1 pi");
 
   return lines.join("\n");
+}
+
+/** On OMP the "Pi runtime" rows describe the Pi CLI on PATH, not the host. */
+function ompHostLines(): string[] {
+  return isOmpRuntime()
+    ? [`Host runtime:     OMP ${getInstalledPiVersion() ?? "unknown"} (audited sf-omp host)`]
+    : [];
 }
 
 function renderIssue(issue: DoctorIssue): string[] {

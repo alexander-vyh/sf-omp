@@ -60,14 +60,12 @@ function extensionDirs() {
     .sort((left, right) => left.localeCompare(right));
 }
 
-function checkReadmePiVersion() {
+function checkReadmeOmpVersion() {
   const pkg = readJson("package.json");
-  const floor = pkg.peerDependencies?.["@earendil-works/pi-coding-agent"];
-  if (!floor)
-    return fail("package.json", "Missing @earendil-works/pi-coding-agent peerDependency.");
-  const readme = readText("README.md");
-  if (!readme.includes(`currently\n\`${floor}\``) && !readme.includes(`currently ${floor}`)) {
-    fail("README.md", `Supported-platforms pi floor must match package.json (${floor}).`);
+  const omp = pkg.devDependencies?.["@oh-my-pi/pi-coding-agent"];
+  if (!omp) return fail("package.json", "Missing pinned @oh-my-pi/pi-coding-agent devDependency.");
+  if (!readText("README.md").includes(`OMP ${omp}`)) {
+    fail("README.md", `README must name the pinned OMP runtime (OMP ${omp}).`);
   }
 }
 
@@ -143,7 +141,7 @@ function escapeRegex(value) {
 }
 
 function run() {
-  checkReadmePiVersion();
+  checkReadmeOmpVersion();
   checkGeneratedFilesExist();
   checkExtensionReadmes();
   checkChangelog();

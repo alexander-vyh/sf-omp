@@ -44,7 +44,24 @@
       "./extensions/sf-lsp/index.ts",
       "./extensions/sf-agentscript/index.ts",
       "./extensions/sf-skills/index.ts",
-      "./extensions/sf-flow/index.ts"
+      "./extensions/sf-flow/index.ts",
+      "./extensions/sf-browser/index.ts",
+      "./extensions/sf-data-explorer/index.ts",
+      "./extensions/sf-data360/index.ts",
+      "./extensions/sf-devbar/index.ts",
+      "./extensions/sf-docs/index.ts",
+      "./extensions/sf-feedback/index.ts",
+      "./extensions/sf-fin/index.ts",
+      "./extensions/sf-herdr/index.ts",
+      "./extensions/sf-integrate/index.ts",
+      "./extensions/sf-mcp/index.ts",
+      "./extensions/sf-ohana-spinner/index.ts",
+      "./extensions/sf-pi-manager/index.ts",
+      "./extensions/sf-planreview/index.ts",
+      "./extensions/sf-slack/index.ts",
+      "./extensions/sf-tldraw/index.ts",
+      "./extensions/sf-welcome/index.ts",
+      "./extensions/sf-llm-gateway/index.ts"
     ],
     "themes": [
       "./themes"
@@ -132,7 +149,8 @@
     "visual-response:report": "node --experimental-strip-types scripts/visual-response-report.ts",
     "e2e:instruction-behavior": "node --experimental-strip-types scripts/e2e/instruction-behavior/run.ts",
     "check:runtime-imports": "node scripts/check-runtime-imports.mjs",
-    "check:git-install-load": "node scripts/check-git-install-load.mjs"
+    "check:git-install-load": "node scripts/check-git-install-load.mjs",
+    "parity:omp": "bun scripts/omp-parity.ts"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

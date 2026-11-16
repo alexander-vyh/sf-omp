@@ -121,6 +121,13 @@ import {
   asOptionalString,
   type SavedGatewayConfig,
 } from "./lib/config.ts";
+import {
+  asOmpModelRegistry,
+  credentialedRegistry,
+  getProviderAuthStatus,
+  type OmpModelRegistry,
+} from "./lib/host-registry.ts";
+import { registerOmpGatewayProvider, type OmpProviderHost } from "./lib/omp-provider.ts";
 
 /**
  * Since R1·Unify only one gateway provider is registered; every gateway
@@ -154,9 +161,12 @@ import {
   setDefaultModelSelection,
   writeSettings,
 } from "./lib/pi-settings.ts";
-import { gatewayProviderRuntime } from "./lib/provider.ts";
+import { gatewayProviderRuntime, type GatewayNativeDiscoveryState } from "./lib/provider.ts";
 import { handleGatewayCompaction } from "./lib/compaction.ts";
-import { handleGatewayRequestDiagnostics } from "./lib/request-diagnostics.ts";
+import {
+  handleGatewayRequestDiagnostics,
+  normalizeGatewayAssistantError,
+} from "./lib/request-diagnostics.ts";
 import { buildGatewayCompactionModelOptions } from "./lib/compaction-settings.ts";
 import { fetchGatewayDoctorReport, formatGatewayDoctorReport } from "./lib/doctor.ts";
 import {
@@ -233,7 +243,7 @@ import {
   createStaleUsageRefreshState,
   maybeAutoRefreshStaleUsage,
 } from "./lib/stale-usage-refresh.ts";
-import { requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { isOmpHost, requirePiVersion } from "../../lib/common/pi-compat.ts";
 import { markBootStep } from "../../lib/common/boot-timing.ts";
 import { globalAgentPath } from "../../lib/common/pi-paths.ts";
 import { handlePriorityCommand } from "./lib/priority-command.ts";
@@ -319,9 +329,22 @@ export default function sfLlmGatewayInternalExtension(pi: ExtensionAPI) {
   // refresher without leaking stale callbacks across reloads/resumes.
   let unregisterMonthlyUsage: (() => void) | null = null;
 
-  // Register one complete Pi Provider. Pi owns auth application, provider-scoped
+  // Register one complete Provider. The host owns auth application, provider-scoped
   // model persistence, refresh coordination, and API dispatch from this point on.
-  pi.registerProvider(gatewayProviderRuntime.provider);
+  // OMP registers providers by name + config instead of a Provider object.
+  if (isOmpHost(pi)) {
+    // isOmpHost proved the OMP ExtensionAPI; Pi's declarations type the other shape.
+    const ompHost = pi as unknown as OmpProviderHost;
+    registerOmpGatewayProvider(ompHost, gatewayProviderRuntime, {
+      // OMP ignores message_end rewrites, so normalize at the stream boundary.
+      normalizeError: async (message) => {
+        const cwd = gatewayProviderRuntime.authController.getActiveCwd();
+        return cwd ? normalizeGatewayAssistantError(message, cwd) : undefined;
+      },
+    });
+  } else {
+    pi.registerProvider(gatewayProviderRuntime.provider);
+  }
 
   pi.on("message_end", handleGatewayRequestDiagnostics);
   pi.on("session_before_compact", handleGatewayCompaction);
@@ -439,7 +462,13 @@ export default function sfLlmGatewayInternalExtension(pi: ExtensionAPI) {
     }
   });
 
-  pi.on("model_select", async (_event, ctx) => {
+  // Neither host shares a model-selection event, so repaint on the first turn
+  // after the active model changes.
+  let paintedModelKey: string | undefined;
+  pi.on("turn_start", async (_event, ctx) => {
+    const modelKey = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
+    if (modelKey === paintedModelKey) return;
+    paintedModelKey = modelKey;
     paintFooterStatus(ctx);
     publishGatewayCompactionStatus(
       ctx.cwd,
@@ -668,6 +697,8 @@ export async function refreshGatewayProvider(
   ctx: ExtensionCommandContext,
 ): Promise<ReturnType<typeof gatewayProviderRuntime.getLastDiscovery>> {
   bindGatewayProviderContext(ctx);
+  const omp = asOmpModelRegistry(ctx.modelRegistry);
+  if (omp) return refreshOmpGatewayProvider(ctx, omp);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   timeout.unref?.();
@@ -691,6 +722,30 @@ export async function refreshGatewayProvider(
     };
   }
   if (result.errors.has(PROVIDER_NAME) && !state.error) {
+    return {
+      ...state,
+      error:
+        "Gateway model refresh failed; last-known catalog state was retained. Run /sf-llm-gateway doctor.",
+    };
+  }
+  return state;
+}
+
+/** OMP: force an online pass of its runtime provider discovery (the Gateway fetcher). */
+async function refreshOmpGatewayProvider(
+  ctx: ExtensionCommandContext,
+  omp: OmpModelRegistry,
+): Promise<GatewayNativeDiscoveryState> {
+  const before = gatewayProviderRuntime.getLastDiscovery();
+  if (!(await gatewayProviderRuntime.authController.resolveRuntimeAuth(ctx.cwd))) {
+    return {
+      ...before,
+      error: `Gateway model refresh requires a configured root URL and API key. Run /login ${PROVIDER_NAME}.`,
+    };
+  }
+  await omp.refreshRuntimeProviders("online");
+  const state = gatewayProviderRuntime.getLastDiscovery();
+  if (!state.error && state.discoveredAt === before.discoveredAt) {
     return {
       ...state,
       error:
@@ -785,7 +840,7 @@ async function handleDoctorCommand(
 
     if (streamPlan.mode === "single") {
       const result = await runGatewayStreamProbe(
-        ctx.modelRegistry,
+        credentialedRegistry(ctx.modelRegistry),
         {
           modelId: streamPlan.modelId,
           thinkingLevel: streamPlan.thinkingLevel,
@@ -799,7 +854,7 @@ async function handleDoctorCommand(
       streamPassed = result.attempts.every((attempt) => attempt.status === "ok");
     } else if (streamPlan.mode === "canaries") {
       const results = await runGatewayStreamCanaries(
-        ctx.modelRegistry,
+        credentialedRegistry(ctx.modelRegistry),
         streamPlan.count,
         ctx.signal,
       );
@@ -2019,7 +2074,7 @@ async function disableGatewayOperation(
     .filter((model) => !isGatewayProvider(model.provider))
     .sort((a, b) => `${a.provider}/${a.id}`.localeCompare(`${b.provider}/${b.id}`));
   const configuredFallbacks = nonGatewayModels.filter(
-    (model) => ctx.modelRegistry.getProviderAuthStatus(model.provider).configured,
+    (model) => getProviderAuthStatus(ctx.modelRegistry, model.provider).configured,
   );
   const restoredModel = savedModel ?? configuredFallbacks[0] ?? nonGatewayModels[0];
   const restoredProvider = restoredModel?.provider;

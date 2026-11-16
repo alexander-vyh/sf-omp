@@ -97,28 +97,39 @@ export default function sfData360(pi: ExtensionAPI) {
     pendingTrace.length = 0;
   });
   pi.on("tool_result", (event) => captureData360Trace(event, pendingTrace));
-  pi.on("message_end", (event) => {
-    if (event.message.role !== "assistant" || pendingTrace.length === 0) return undefined;
-    if (event.message.content.some((part) => part.type === "toolCall")) return undefined;
+  function traceAppendix(message: {
+    role: string;
+    content: ReadonlyArray<{ type: string; text?: string }>;
+  }): string | undefined {
+    if (message.role !== "assistant" || pendingTrace.length === 0) return undefined;
+    if (message.content.some((part) => part.type === "toolCall")) return undefined;
     const trace = buildData360OrchestrationTrace(pendingTrace);
     pendingTrace.length = 0;
     if (!trace) return undefined;
-    const existingText = event.message.content
+    const existingText = message.content
       .filter((part) => part.type === "text")
-      .map((part) => part.text)
+      .map((part) => part.text ?? "")
       .join("\n");
     if (existingText.includes(trace.mermaid)) return undefined;
-    return {
-      message: {
-        ...event.message,
-        content: [
-          ...event.message.content,
-          { type: "text" as const, text: `\n\n${data360TraceMarkdown(trace)}` },
-        ],
-      },
-    };
+    return `\n\n${data360TraceMarkdown(trace)}`;
+  }
+  // OMP's assistant_message is the rewrite seam for the final assistant message
+  // (OMP ignores message_end results). The legacy Pi SDK typings lack it.
+  const onAssistantMessage = pi.on as unknown as (
+    event: "assistant_message",
+    handler: (event: {
+      message: { role: string; content: Array<{ type: string; text?: string }> };
+    }) => { content: unknown[] } | undefined,
+  ) => void;
+  onAssistantMessage("assistant_message", (event) => {
+    const appendix = traceAppendix(event.message);
+    if (!appendix) return undefined;
+    return { content: [...event.message.content, { type: "text", text: appendix }] };
   });
-  pi.on("agent_settled", () => {
+  // agent_end exists in both Pi and OMP (Pi-only agent_settled does not). OMP
+  // sets willContinue for retry/compaction/follow-up ends that are not settled.
+  pi.on("agent_end", (event) => {
+    if ("willContinue" in event && event.willContinue === true) return;
     pendingTrace.length = 0;
   });
 

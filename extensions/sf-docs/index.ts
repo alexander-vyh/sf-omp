@@ -16,6 +16,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { registerAuthOnlyProvider } from "../../lib/common/auth-only-provider.ts";
 import { requirePiVersion } from "../../lib/common/pi-compat.ts";
 import { withSafeCommandHandler } from "../../lib/common/safe-command-handler.ts";
 import {
@@ -65,7 +66,7 @@ import {
 export default function sfDocs(pi: ExtensionAPI) {
   if (!requirePiVersion(pi, "sf-docs")) return;
 
-  pi.registerProvider(sfDocsAuthController.provider);
+  registerAuthOnlyProvider(pi, sfDocsAuthController.provider);
   publishDocsConnection();
 
   pi.on("session_start", async (_event, ctx) => {
@@ -190,7 +191,7 @@ async function connect(ctx: ExtensionCommandContext, fromPanel: boolean): Promis
     prepared
       ? [
           `Prefilled /login ${PROVIDER_NAME}.`,
-          "Native login collects the docs endpoint URL, then uses SF Pi's fixed-mask access-token input. Pi owns persistence.",
+          "Native login collects the docs endpoint URL, then the access token in the host's masked prompt. The host stores both.",
           `${ENV_TOKEN} and ${ENV_ENDPOINT} remain available for automation and are never modified.`,
         ].join("\n")
       : `Run /login ${PROVIDER_NAME} in interactive TUI mode, or set ${ENV_TOKEN} and ${ENV_ENDPOINT} before starting Pi for automation.`,

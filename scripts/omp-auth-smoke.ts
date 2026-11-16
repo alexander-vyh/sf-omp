@@ -133,7 +133,7 @@ const checks: Record<string, boolean> = {
   liveApiKeyChangeObserved: false,
   liveOAuthChangeObserved: false,
   nativeHost: false,
-  tenSalesforceRegistrations: false,
+  salesforceRegistrations: false,
   localDatabaseAndSessions: false,
   accountPoliciesInherited: false,
   unrelatedGlobalSettingsExcluded: false,
@@ -365,7 +365,7 @@ try {
     host.apiKeyResolved === true &&
     host.oauthResolved === true &&
     host.noExternalRequests === true;
-  checks.tenSalesforceRegistrations = host.tenSalesforceRegistrations === true;
+  checks.salesforceRegistrations = host.salesforceRegistrations === true;
   checks.localDatabaseAndSessions =
     host.localDatabase === true &&
     host.localConfig === true &&
@@ -381,7 +381,7 @@ try {
   ).exists());
   requireTrue(
     checks.nativeHost &&
-      checks.tenSalesforceRegistrations &&
+      checks.salesforceRegistrations &&
       checks.localDatabaseAndSessions &&
       checks.accountPoliciesInherited &&
       checks.unrelatedGlobalSettingsExcluded &&

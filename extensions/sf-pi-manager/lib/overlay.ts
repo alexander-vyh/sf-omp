@@ -857,8 +857,8 @@ export class SfPiOverlayComponent implements Focusable {
         label: ext.enabled ? "Disable extension" : "Enable extension",
         group: "Lifecycle",
         description: ext.enabled
-          ? "Add this extension to the disabled package filters."
-          : "Remove this extension from the disabled package filters.",
+          ? "Add this extension to the disabled extension list (Pi package filters or OMP disabledExtensions)."
+          : "Remove this extension from the disabled extension list.",
       });
     }
     actions.push({

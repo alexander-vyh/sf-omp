@@ -8,7 +8,7 @@
   "configurable": true,
   "commands": ["/sf-herdr"],
   "tools": ["sf_herdr_plan"],
-  "events": ["session_start", "tool_result"],
+  "events": ["session_start", "session_switch", "session_tree", "tool_result"],
   "docs": {
     "intentGroup": "Work safely",
     "agentGuide": "AGENT_GUIDE.md",

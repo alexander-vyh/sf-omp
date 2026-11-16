@@ -9,7 +9,7 @@ import {
   type ActiveContextSession,
   shouldInjectOnce,
 } from "../../../lib/common/session/inject-once.ts";
-import { packagedExtensionIds } from "./packaged-extensions.ts";
+import { BUNDLED_EXTENSION_IDS } from "./enabled-extensions.ts";
 
 export const CONSTITUTION_OPEN_TAG = "<sf_engineering_constitution>";
 export const CONSTITUTION_CLOSE_TAG = "</sf_engineering_constitution>";
@@ -21,7 +21,7 @@ const BUNDLED_CONSTITUTION_PATH = path.resolve(
   "SF_CONSTITUTION.md",
 );
 const SF_PI_PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-// `{{if sf-x}}` keeps a line only when sf-x is loaded; `{{unless sf-x}}` only when it is not.
+// `{{if sf-x}}` keeps a line only when sf-x is enabled; `{{unless sf-x}}` only when it is not.
 const CONDITION_PATTERN = /^\{\{(if|unless) (sf-[a-z0-9-]+)\}\}/;
 
 export function constitutionAddendumPath(): string {
@@ -50,9 +50,9 @@ export function renderGuidePaths(
   );
 }
 
-/** Bundled constitution with installed paths and lines for unloaded extensions resolved. */
+/** Bundled constitution with installed paths and lines for disabled extensions resolved. */
 export function renderBundledConstitution(
-  availableExtensions: ReadonlySet<string> = packagedExtensionIds(),
+  availableExtensions: ReadonlySet<string> = BUNDLED_EXTENSION_IDS,
 ): string {
   return renderGuidePaths(readBundledConstitution())
     .split("\n")

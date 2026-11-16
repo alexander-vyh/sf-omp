@@ -11,7 +11,9 @@
  *   region (proven).
  * - Intercom MCP sign-in: a read-only `list_articles` call returns records
  *   carrying `workspace_id` (proven when the workspace has an article;
- *   otherwise "signed in, workspace not proven").
+ *   otherwise "signed in, workspace not proven"). OMP gives extensions no way
+ *   to call another tool, so there the connection is "connected" when OMP
+ *   exposes its `list_articles` tool, and the workspace is not provable.
  * - Fin Agent API key: the Agent API exposes no workspace id, and `/me`
  *   rejects the key, so it is reported as "access verified, workspace not
  *   provable" rather than claimed to match.
@@ -32,7 +34,11 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
 };
 
 export type McpIdentity =
-  { state: "not_configured" } | { state: "signed_out" } | { state: "signed_in"; appId?: string };
+  | { state: "not_configured" }
+  | { state: "signed_out" }
+  | { state: "signed_in"; appId?: string }
+  /** OMP exposes the connection's tools; sign-in and workspace cannot be probed. */
+  | { state: "connected" };
 
 export interface SetupFacts {
   workspace: WorkspaceProfile;
@@ -85,7 +91,9 @@ export function evaluateSetup(facts: SetupFacts, wanted: Capability[]): SetupRep
   const agentGranted = facts.agent.state === "checked" && facts.agent.access.state === "granted";
   const ready: Record<Capability, boolean> = {
     build: facts.cliInstalled && personalOk && mismatches.length === 0,
-    operator: facts.mcp.state === "signed_in" && mismatches.length === 0,
+    operator:
+      (facts.mcp.state === "signed_in" || facts.mcp.state === "connected") &&
+      mismatches.length === 0,
     test: agentGranted,
   };
 
@@ -107,14 +115,18 @@ export function evaluateSetup(facts: SetupFacts, wanted: Capability[]): SetupRep
         command: `/login ${p.personal}`,
       });
   }
-  if (wanted.includes("operator") && facts.mcp.state !== "signed_in") {
+  if (
+    wanted.includes("operator") &&
+    facts.mcp.state !== "signed_in" &&
+    facts.mcp.state !== "connected"
+  ) {
     steps.push({
       capability: "operator",
       text:
         facts.mcp.state === "not_configured"
           ? `Add the Intercom MCP connection ${p.mcpConnection} (sf_mcp preset intercom), then sign in.`
           : `Sign in to the Intercom MCP connection ${p.mcpConnection}.`,
-      command: `/mcp login ${p.mcpConnection}`,
+      command: `/mcp reauth ${p.mcpConnection}`,
     });
   }
   if (wanted.includes("test") && !agentGranted) {
@@ -148,15 +160,19 @@ export function evaluateSetup(facts: SetupFacts, wanted: Capability[]): SetupRep
     `Intercom MCP (${p.mcpConnection}) | ${
       facts.mcp.state === "signed_in"
         ? "✅ signed in"
-        : facts.mcp.state === "signed_out"
-          ? "— signed out"
-          : "— not configured"
+        : facts.mcp.state === "connected"
+          ? "✅ connected (tools available)"
+          : facts.mcp.state === "signed_out"
+            ? "— signed out"
+            : "— not configured"
     } | ${
       facts.mcp.state === "signed_in"
         ? facts.mcp.appId
           ? `app ${facts.mcp.appId} (proven)`
           : "not provable yet (no workspace data to read)"
-        : "—"
+        : facts.mcp.state === "connected"
+          ? "not provable here (OMP extensions cannot call MCP tools)"
+          : "—"
     }`,
     `Fin Agent API key (/login ${p.agent}) | ${
       facts.agent.state === "missing"

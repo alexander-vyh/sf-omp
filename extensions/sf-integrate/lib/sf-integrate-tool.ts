@@ -19,6 +19,7 @@ import {
   applyOutboundSetup,
   authorizeOutboundOAuth,
   designOutboundPlan,
+  outboundProbeApexArguments,
   populateOutboundSecretOperation,
   testOutboundConnection,
   verifyOutboundSetup,
@@ -257,18 +258,18 @@ export function registerSfIntegrateTool(
                 ? verifyInboundSetup(params, session, state)
                 : verifySetup(params, session);
           case "connection.test":
-            return testOutboundConnection(params, session, (body) =>
-              ctx.executeTool(
-                "sf_apex",
-                {
-                  action: "anon.run",
-                  target_org: params.target_org,
-                  body,
-                  allow_mutation: false,
-                  output_mode: "summary",
-                },
-                { signal },
-              ),
+            // OMP's ExtensionContext has no nested tool execution; the operation then hands off.
+            return testOutboundConnection(
+              params,
+              session,
+              typeof ctx.executeTool === "function"
+                ? (body) =>
+                    ctx.executeTool(
+                      "sf_apex",
+                      outboundProbeApexArguments(params.target_org, body),
+                      { signal },
+                    )
+                : undefined,
             );
           case "mcp.handoff":
             return mcpHandoff(params, session);

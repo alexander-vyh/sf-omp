@@ -3,6 +3,7 @@
 import { createHash } from "node:crypto";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { isOmpHost } from "../../../lib/common/pi-compat.ts";
 import { Type } from "typebox";
 import {
   hostedConnectionName,
@@ -218,6 +219,18 @@ export function registerSfMcpTool(
 ): void {
   const plans = new Map<string, SfMcpPlan>();
   const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
+  const omp = isOmpHost(pi);
+  /** OMP mints `mcp__<server>_<tool>`; its tool metadata is the only exact mapping. */
+  const registeredMcpTool = (serverName: string, toolName: string): string | undefined =>
+    pi
+      .getAllTools()
+      .find(
+        (tool) =>
+          "mcpServerName" in tool &&
+          tool.mcpServerName === serverName &&
+          "mcpToolName" in tool &&
+          tool.mcpToolName === toolName,
+      )?.name;
 
   pi.registerTool<typeof Params>({
     name: "sf_mcp",
@@ -294,11 +307,23 @@ export function registerSfMcpTool(
             return applyDisablePlan(plans, plan);
           }
           case "login.handoff":
-            return loginHandoffResult(ctx.cwd, scope, params);
-          case "identity.verify":
-            return await identityVerifyResult(ctx.cwd, scope, params, (name, args) =>
-              ctx.executeTool(name, args, { signal }),
+            return loginHandoffResult(ctx.cwd, scope, params, omp);
+          case "identity.verify": {
+            // OMP has no cross-tool execution API; Pi delegates through ctx.executeTool.
+            const hostContext: { executeTool?: unknown } = ctx;
+            const executeTool =
+              typeof hostContext.executeTool === "function"
+                ? (name: string, args: Record<string, unknown>) =>
+                    ctx.executeTool(name, args, { signal })
+                : undefined;
+            return await identityVerifyResult(
+              ctx.cwd,
+              scope,
+              params,
+              executeTool,
+              registeredMcpTool,
             );
+          }
           default:
             throw new Error(`Unsupported sf_mcp action: ${String(params.action)}`);
         }
@@ -948,7 +973,7 @@ function applyDisablePlan(plans: Map<string, SfMcpPlan>, plan: DisablePlan) {
   });
 }
 
-function loginHandoffResult(cwd: string, scope: SfMcpScope, params: SfMcpParams) {
+function loginHandoffResult(cwd: string, scope: SfMcpScope, params: SfMcpParams, omp: boolean) {
   const preset = requiredPreset(params);
   const connectionName = resolveExistingConnectionName(cwd, scope, preset, params.connection_name);
   const state = inspectPresetRuntime(cwd, scope, preset, connectionName);
@@ -960,14 +985,18 @@ function loginHandoffResult(cwd: string, scope: SfMcpScope, params: SfMcpParams)
   if (preset.transport !== "http") {
     throw new Error(`${preset.label} doesn't use OAuth login through Pi's native MCP runtime.`);
   }
-  const command = `/mcp login ${state.managed.configuredName}`;
+  const name = state.managed.configuredName;
+  // OMP's /mcp has no `login`: `reauth` runs the OAuth flow and `reload` rediscovers config.
+  const command = omp ? `/mcp reauth ${name}` : `/mcp login ${name}`;
   const exposedTools = exposedToolCount(state.managed.config);
   const quarantined = zeroExposure(state.managed.status, exposedTools);
   return successResult(
     [
       `READY: ${preset.label} native MCP login handoff.`,
-      `Reload Pi if configuration changed, then run: ${command}`,
-      "Pi owns token storage and refresh. Browser approval remains human OAuth consent.",
+      omp
+        ? `Run /mcp reload if configuration changed, then run: ${command}`
+        : `Reload Pi if configuration changed, then run: ${command}`,
+      `${omp ? "OMP" : "Pi"} owns token storage and refresh. Browser approval remains human OAuth consent.`,
       ...(quarantined
         ? [
             `⚠ 0 tools are exposed. Signing in alone makes no tool callable; run tools.plan then tools.apply for ${preset.id} (recommended profile).`,
@@ -991,7 +1020,8 @@ async function identityVerifyResult(
   cwd: string,
   scope: SfMcpScope,
   params: SfMcpParams,
-  executeTool: (name: string, args: Record<string, unknown>) => Promise<unknown>,
+  executeTool: ((name: string, args: Record<string, unknown>) => Promise<unknown>) | undefined,
+  registeredMcpTool: (serverName: string, toolName: string) => string | undefined,
 ) {
   const preset = requiredPreset(params);
   if (preset.id !== "headless-360") {
@@ -1010,12 +1040,25 @@ async function identityVerifyResult(
       "Apply the recommended or read-only tool profile before identity.verify so dispatch_readonly is callable.",
     );
   }
-  const toolName = `mcp__${canonicalMcpServerName(connectionName)}__dispatch_readonly`;
-  const result = await executeTool(toolName, {
+  const request = {
     url: `${binding.authorizationIssuer}/services/oauth2/userinfo`,
     method: "GET",
     headers: { Accept: "application/json" },
-  });
+  };
+  if (!executeTool) {
+    const nativeTool = registeredMcpTool(connectionName, "dispatch_readonly");
+    throw new Error(
+      [
+        "identity.verify cannot call MCP tools in this runtime (no host tool delegation); the identity is NOT verified.",
+        nativeTool
+          ? `Verify it yourself: call ${nativeTool} with ${JSON.stringify(request)}`
+          : `Connect ${connectionName} first (/mcp reauth ${connectionName}), then call its dispatch_readonly tool with ${JSON.stringify(request)}`,
+        `and confirm the returned organization id equals ${binding.orgId} for ${binding.alias ?? binding.targetOrg}.`,
+      ].join(" "),
+    );
+  }
+  const toolName = `mcp__${canonicalMcpServerName(connectionName)}__dispatch_readonly`;
+  const result = await executeTool(toolName, request);
   const evidence = JSON.stringify(result);
   if (!evidence.includes(binding.orgId)) {
     throw new Error(

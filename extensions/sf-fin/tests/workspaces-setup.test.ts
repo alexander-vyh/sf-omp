@@ -159,7 +159,7 @@ describe("setup evaluation", () => {
     const all = evaluateSetup(base, ["build", "operator", "test"]);
     expect(all.steps.map((s) => s.command)).toEqual([
       "/login sf-fin",
-      "/mcp login intercom",
+      "/mcp reauth intercom",
       "/login sf-fin-agent",
     ]);
   });
@@ -205,6 +205,15 @@ describe("setup evaluation", () => {
   it("reads workspace_id from untrusted MCP article text", () => {
     expect(workspaceIdFromMcpText('{"articles":[{"workspace_id":"abc123"}]}')).toBe("abc123");
     expect(workspaceIdFromMcpText("no articles")).toBeUndefined();
+  });
+
+  it("treats an OMP-exposed MCP connection as ready but its workspace as unproven", () => {
+    const report = evaluateSetup({ ...base, mcp: { state: "connected" } }, ["operator"]);
+    expect(report.ready.operator).toBe(true);
+    expect(report.steps).toEqual([]);
+    expect(report.lines.join("\n")).toContain(
+      "Intercom MCP (intercom) | ✅ connected (tools available) | not provable here",
+    );
   });
 });
 
@@ -329,5 +338,33 @@ describe("service.setup", () => {
     expect(agent.text).toContain("/login sf-fin-agent-staging");
     const unknown = await service.sdk(ctx as never, "manifest", "nope");
     expect(unknown).toMatchObject({ ok: false, details: { phase: "workspace" } });
+  });
+
+  it("detects the Intercom MCP from the host tool inventory when tools cannot be run", async () => {
+    const service = (
+      tools: Array<{ name: string; mcpServerName?: string; mcpToolName?: string }>,
+    ) =>
+      createFinService({
+        exec: vi.fn(async () => ({ code: 0, stdout: "", stderr: "" })) as never,
+        workspaceStore: store(),
+        listTools: () => tools,
+      });
+    const { executeTool: _omitted, ...ompCtx } = ctxWith({});
+    const connected = await service([
+      {
+        name: "mcp__intercom_list_articles",
+        mcpServerName: "intercom",
+        mcpToolName: "list_articles",
+      },
+    ]).setup(ompCtx as never, { wants: ["operator"] });
+    expect(connected.details.ready).toMatchObject({ operator: true });
+    expect(connected.text).toContain("✅ connected (tools available)");
+
+    const other = await service([
+      { name: "mcp__other_list_articles", mcpServerName: "other", mcpToolName: "list_articles" },
+    ]).setup(ompCtx as never, { wants: ["operator"] });
+    expect(other.details.ready).toMatchObject({ operator: false });
+    expect(other.text).toContain("— not configured");
+    expect(other.text).toContain("/mcp reauth intercom");
   });
 });

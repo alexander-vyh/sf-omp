@@ -104,7 +104,7 @@ class SfPiManagerConfigPanel implements Focusable {
     lines.push(pad(`    ${t.fg("muted", "Last run:")} ${autoStatus.lastRunAt ?? "never"}`));
     lines.push(pad(`    ${t.fg("muted", "Last result:")} ${autoStatus.lastResult ?? "—"}`));
     if (autoStatus.pending) {
-      lines.push(pad(`    ${t.fg("muted", "Pending:")} waiting for agent_settled`));
+      lines.push(pad(`    ${t.fg("muted", "Pending:")} waiting for a settled agent turn`));
     }
     lines.push(pad(`    ${t.fg("muted", "Machine scope:")} global settings`));
     lines.push(pad(""));

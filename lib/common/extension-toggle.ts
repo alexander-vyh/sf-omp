@@ -21,11 +21,19 @@
  * - {@link performToggleExtension}: flips the disabled set in the
  *   appropriate scope (project > global, mirroring
  *   {@link resolveEffectiveScope}), notifies the user, and triggers a
- *   reload so the change takes effect.
+ *   reload so the change takes effect. Under OMP the state lives in
+ *   OMP-native `disabledExtensions` YAML and applies on the next OMP start
+ *   (see ./omp-extension-state.ts).
  */
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SF_PI_REGISTRY } from "../../catalog/registry.ts";
-import { isSfPiExtensionEnabled } from "./sf-pi-extension-state.ts";
+import { isExtensionDisabledInOmpConfig, isSfPiExtensionEnabled } from "./sf-pi-extension-state.ts";
+import { isOmpRuntime } from "./pi-compat.ts";
+import {
+  readOmpDisabledExtensionFiles,
+  resolveOmpConfigScope,
+  writeOmpDisabledExtensionFiles,
+} from "./omp-extension-state.ts";
 import type { CommandPanelAction } from "./command-panel.ts";
 import {
   applyExtensionState,
@@ -89,13 +97,17 @@ export function buildToggleExtensionAction(
   if (!ext) return null;
   if (ext.alwaysActive) return null;
 
-  const enabled = isSfPiExtensionEnabled(options.cwd, ext.id);
+  const omp = isOmpRuntime();
+  const enabled = omp
+    ? !isExtensionDisabledInOmpConfig(ext.id, options.cwd)
+    : isSfPiExtensionEnabled(options.cwd, ext.id);
+  const where = omp ? "OMP config and restart OMP" : "sf-pi settings and reload";
   return {
     value: "lifecycle.toggle",
     label: enabled ? "Disable this extension" : "Enable this extension",
     description: enabled
-      ? `Add an exclusion for ${ext.id} to your sf-pi settings and reload. Re-enable later with /sf-pi enable ${ext.id}.`
-      : `Remove the exclusion for ${ext.id} from your sf-pi settings and reload so its tools, skills, and commands return.`,
+      ? `Add an exclusion for ${ext.id} to your ${where}. Re-enable later with /sf-pi enable ${ext.id}.`
+      : `Remove the exclusion for ${ext.id} from your ${where} so its tools, skills, and commands return.`,
     group: LIFECYCLE_GROUP,
   };
 }
@@ -123,6 +135,22 @@ export async function performToggleExtension(
   }
   if (ext.alwaysActive) {
     ctx.ui.notify(`${ext.name} is always active and cannot be toggled.`, "warning");
+    return;
+  }
+
+  if (isOmpRuntime()) {
+    // OMP never rebinds extension factories on ctx.reload(); the
+    // requirePiVersion gate applies the change on the next OMP start.
+    const scope = resolveOmpConfigScope(ctx.cwd);
+    const disabledFiles = readOmpDisabledExtensionFiles(ctx.cwd, scope);
+    const wasEnabled = !disabledFiles.has(ext.file);
+    if (wasEnabled) disabledFiles.add(ext.file);
+    else disabledFiles.delete(ext.file);
+    const configPath = writeOmpDisabledExtensionFiles(ctx.cwd, scope, disabledFiles);
+    ctx.ui.notify(
+      `${ext.name} ${wasEnabled ? "disabled" : "enabled"} in ${configPath}. Restart OMP to apply.`,
+      "info",
+    );
     return;
   }
 

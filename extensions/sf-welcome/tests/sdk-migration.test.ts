@@ -12,9 +12,10 @@
  * used process.cwd() internally now requires an explicit cwd parameter.
  */
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 vi.mock("node:child_process", () => ({
   execFileSync: vi.fn(() => ""),
@@ -31,7 +32,12 @@ beforeEach(() => {
   previousAgentDir = process.env[PI_AGENT_ENV];
   previousHome = process.env.HOME;
   previousUserProfile = process.env.USERPROFILE;
-  isolatedAgentDir = mkdtempSync(path.join(tmpdir(), "sdk-migration-agent-"));
+  // Native skill settings refuse agent directories outside this checkout's .runtime.
+  const runtimeTestRoot = fileURLToPath(
+    new URL("../../../.runtime/welcome-tests/", import.meta.url),
+  );
+  mkdirSync(runtimeTestRoot, { recursive: true });
+  isolatedAgentDir = mkdtempSync(path.join(runtimeTestRoot, "sdk-migration-agent-"));
   isolatedHomeDir = mkdtempSync(path.join(tmpdir(), "sdk-migration-home-"));
   process.env[PI_AGENT_ENV] = isolatedAgentDir;
   process.env.HOME = isolatedHomeDir;

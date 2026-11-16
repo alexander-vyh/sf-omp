@@ -305,10 +305,10 @@ export function registerSfFinTool(
       }
 
       if (input.action === "setup") {
-        const result = await service.setup(
-          { ...ctx, executeTool: (name, args) => ctx.executeTool(name, args) },
-          { workspace, wants: input.wants },
-        );
+        // Pass the host context itself: OMP scopes handler contexts through
+        // prototypes (a spread drops modelRegistry) and has no `executeTool`,
+        // which the MCP identity probe then reports as not configured.
+        const result = await service.setup(ctx, { workspace, wants: input.wants });
         return {
           content: [{ type: "text", text: result.text }],
           details: { action: "setup", ok: result.ok, ...result.details },

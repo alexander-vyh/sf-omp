@@ -19,8 +19,7 @@ import type {
   OAuthCredentials,
   ProviderAuthInteraction,
 } from "@earendil-works/pi-ai";
-import { readStoredCredential } from "@earendil-works/pi-coding-agent";
-import { getPiAuthStorePath } from "../../../lib/common/pi-auth-status.ts";
+import { readPiAuthCredential } from "../../../lib/common/pi-auth-status.ts";
 import { createAuthOnlyProvider } from "../../../lib/common/auth-only-provider.ts";
 import {
   finAdminLocation,
@@ -303,8 +302,7 @@ export function signinExpired(extra: FinSigninExtra, nowS = Date.now() / 1000): 
 /** Reads the stored sign-in from Pi's credential store (read-only). */
 export function readStoredSignin(
   workspace: string,
-  read: (providerId: string) => unknown = (providerId) =>
-    readStoredCredential(providerId, getPiAuthStorePath()),
+  read: (providerId: string) => unknown = (providerId) => readPiAuthCredential(providerId),
 ): FinSigninExtra | undefined {
   return readSigninCredential(read(browserSigninProviderId(workspace)));
 }

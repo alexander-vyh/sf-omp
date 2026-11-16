@@ -144,6 +144,26 @@ export async function handleGatewayRequestDiagnostics(
 ): Promise<{ message: MessageEndEvent["message"] } | undefined> {
   const message = event.message;
   if (message.role !== "assistant" || message.stopReason !== "error") return undefined;
+  const normalized = await normalizeGatewayAssistantError(message, ctx.cwd, dependencies);
+  if (!normalized) return undefined;
+
+  return {
+    message: {
+      ...message,
+      errorMessage: normalized,
+    },
+  };
+}
+
+/**
+ * Bounded replacement for a recognized Gateway assistant error, or undefined to
+ * keep the original. Shared by Pi's `message_end` rewrite and OMP's stream path.
+ */
+export async function normalizeGatewayAssistantError(
+  message: { provider: string; model: string; errorMessage?: string },
+  cwd: string,
+  dependencies: GatewayRequestDiagnosticsDependencies = {},
+): Promise<string | undefined> {
   if (message.provider !== PROVIDER_NAME || !message.errorMessage) return undefined;
 
   const rawError = message.errorMessage;
@@ -167,7 +187,7 @@ export async function handleGatewayRequestDiagnostics(
   let baseUrlConfigured = true;
   let credentialConfigured = true;
   if (isGenericUnconfigured) {
-    const config = (dependencies.getConfig ?? getGatewayConfig)(ctx.cwd);
+    const config = (dependencies.getConfig ?? getGatewayConfig)(cwd);
     enabled = config.enabled;
     baseUrlConfigured = Boolean(config.baseUrl);
     try {
@@ -188,12 +208,5 @@ export async function handleGatewayRequestDiagnostics(
     credentialConfigured,
     modelId: message.model,
   });
-  if (!normalized || normalized === rawError) return undefined;
-
-  return {
-    message: {
-      ...message,
-      errorMessage: normalized,
-    },
-  };
+  return normalized && normalized !== rawError ? normalized : undefined;
 }

@@ -82,7 +82,7 @@ _One Pi-native Data 360 SDK tool with discover, connect, prepare, harmonize, seg
 
 ### [SF Docs](./extensions/sf-docs)
 
-_Salesforce documentation lookup for agents and humans, with Pi-native bearer authentication, cited results, and a Manager settings surface._
+_Salesforce documentation lookup for agents and humans, with host-native `/login` bearer authentication, cited results, and a Manager settings surface._
 
 - Default: **on**
 - Commands: `/sf-docs`
@@ -91,7 +91,7 @@ _Salesforce documentation lookup for agents and humans, with Pi-native bearer au
 
 ### [SF Fin](./extensions/sf-fin)
 
-_Connect SF Pi to a Fin (formerly Intercom) workspace: Pi-owned masked credentials, Guardrail-mediated Fin CLI install, doctor and debug, Fin-as-code authoring (procedures, simulations, guidance, data connectors), a CLI vs MCP surface comparison, and a Fin Agent API test harness._
+_Connect SF Pi to a Fin (formerly Intercom) workspace: OMP-stored masked credentials, Guardrail-mediated Fin CLI install, doctor and debug, Fin-as-code authoring (procedures, simulations, guidance, data connectors), a CLI vs MCP surface comparison, and a Fin Agent API test harness._
 
 - Default: **on**
 - Commands: `/sf-fin`

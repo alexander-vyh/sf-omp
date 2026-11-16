@@ -60,7 +60,7 @@ Open its Manager detail or change its package state with:
 - **Commands:** `/sf-llm-gateway`
 - **LLM tools:** _none_
 - **Providers:** `sf-llm-gateway`
-- **Events/hooks:** `session_start`, `message_end`, `session_before_compact`, `turn_end`, `model_select`, `after_provider_response`, `session_shutdown`
+- **Events/hooks:** `session_start`, `session_switch`, `session_tree`, `message_end`, `session_before_compact`, `turn_start`, `turn_end`, `after_provider_response`, `session_shutdown`
 
 </details>
 

@@ -338,6 +338,82 @@ describe("sf_mcp tool", () => {
     );
   });
 
+  it("hands identity verification back when the host cannot delegate tool calls", async () => {
+    const cwd = workspace();
+    const binding = {
+      targetOrg: "OrgA",
+      alias: "OrgA",
+      orgId: "example-org-a",
+      orgType: "developer" as const,
+      hostKey: "orga.develop",
+      serverUrl: "https://api.salesforce.com/platform/mcp/v1/d/orga.develop/platform/headless-360",
+      authorizationIssuer: "https://orga.develop.my.salesforce.com",
+    };
+    const registerTool = vi.fn();
+    // OMP's ToolInfo names MCP tools `mcp__<server>_<tool>` and carries their identity.
+    const getAllTools = () => [
+      {
+        name: "mcp__salesforce_headless_360_orga_dispatch_readonly",
+        mcpServerName: "salesforce-headless-360-orga",
+        mcpToolName: "dispatch_readonly",
+      },
+    ];
+    registerSfMcpTool({ registerTool, getAllTools } as unknown as ExtensionAPI, {
+      resolveHostedOrgBinding: vi.fn(async () => binding),
+    });
+    const tool = registerTool.mock.calls[0]![0];
+    const run = (params: Record<string, unknown>) =>
+      tool.execute("call-1", params, undefined, undefined, {
+        cwd,
+        isProjectTrusted: () => true,
+      });
+    const connection = await run({
+      action: "connection.plan",
+      scope: "global",
+      preset_id: "headless-360",
+      target_org: "OrgA",
+      oauth_client_id: "public-client",
+    });
+    await run({
+      action: "connection.apply",
+      scope: "global",
+      preset_id: "headless-360",
+      connection_name: connection.details.connectionName,
+      plan_id: connection.details.planId,
+      plan_hash: connection.details.planHash,
+      allow_mutation: true,
+    });
+    const tools = await run({
+      action: "tools.plan",
+      scope: "global",
+      preset_id: "headless-360",
+      connection_name: connection.details.connectionName,
+      tool_profile: "recommended",
+    });
+    await run({
+      action: "tools.apply",
+      scope: "global",
+      preset_id: "headless-360",
+      connection_name: connection.details.connectionName,
+      plan_id: tools.details.planId,
+      plan_hash: tools.details.planHash,
+      allow_mutation: true,
+    });
+
+    const result = await run({
+      action: "identity.verify",
+      scope: "global",
+      preset_id: "headless-360",
+      connection_name: connection.details.connectionName,
+    });
+
+    expect(result.details).toMatchObject({ ok: false, action: "identity.verify" });
+    const text = result.content[0].text;
+    expect(text).toContain("the identity is NOT verified");
+    expect(text).toContain("call mcp__salesforce_headless_360_orga_dispatch_readonly with");
+    expect(text).toContain("organization id equals example-org-a");
+  });
+
   it("refuses an org-bound plan when OAuth discovery changes before apply", async () => {
     const cwd = workspace();
     let calls = 0;

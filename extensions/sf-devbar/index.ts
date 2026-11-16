@@ -4,21 +4,22 @@
  *
  * Bespoke Salesforce developer status bar with two rendering surfaces:
  *   - Top bar (widget above editor): model, thinking, folder, git, context window
- *   - Bottom bar (custom footer): default org, monthly budget, extensions
+ *   - Bottom bar (custom footer on Pi; widget below the editor on OMP, whose
+ *     setFooter is a no-op and which renders extension statuses natively)
  *
  * All data sources are async and non-blocking. Bars render immediately with
- * cached/partial data and fill in as results arrive.
+ * cached/partial data and fill in as results arrive. The top bar re-reads the
+ * model, thinking level, session name, and context usage on every host render,
+ * so host repaints after model/thinking/session-name changes stay accurate
+ * without host-specific change events.
  *
  * Behavior matrix:
  *
  *   Event/Trigger         | Result
  *   ----------------------|------------------------------------------------------------
  *   session_start         | Activate both bars, load cached org, start async checks
- *   session_shutdown      | Clear custom footer + widget
- *   model_select          | Update model name, detect SF LLM Gateway, refresh bars
- *   session_compact       | Repaint context usage from Pi's post-compaction state
- *   session_info_changed  | Repaint the optional Pi session-name segment
- *   thinking_level_select | Repaint top bar immediately on thinking-level change
+ *   session_shutdown      | Clear custom footer + widgets
+ *   session_compact       | Repaint context usage from the post-compaction state
  *   turn_end              | Refresh git changes, update context bar, trigger footer repaint
  *   agent_end             | Final git refresh + footer repaint
  *   /sf-devbar            | Open SF DevBar in the SF Pi Manager
@@ -28,13 +29,12 @@
  *
  * Pi SDK features used:
  *   setWidget, setFooter, setTitle
- *   session_start, session_shutdown, model_select, session_compact, session_info_changed
- *   turn_end, agent_end
+ *   session_start, session_shutdown, session_compact, turn_end, agent_end
  *   before_agent_start (with systemPromptOptions)
  *   registerCommand, registerShortcut, registerFlag
  *   getThinkingLevel, getSessionName, getContextUsage, ctx.model, ctx.cwd, ctx.hasUI
  *   pi.exec()
- *   footerData (getGitBranch, onBranchChange, getExtensionStatuses)
+ *   footerData (getGitBranch, onBranchChange, getExtensionStatuses) on Pi
  *   theme.fg, theme.bold
  */
 import type {
@@ -67,12 +67,12 @@ import {
   extractSfEnvironmentEntries,
   selectDisplayOrgEnvironment,
 } from "../../lib/common/sf-environment/display-fallback.ts";
-import { getGitChanges, type GitChanges } from "./lib/git-changes.ts";
+import { getGitBranch, getGitChanges, type GitChanges } from "./lib/git-changes.ts";
 import { formatImageWidthPill, readDevbarRuntimeSettings } from "./lib/settings-reader.ts";
 import { DEFAULT_DEVBAR_COLORS, type DevbarColors } from "./lib/colors.ts";
 import { buildExecFn } from "../../lib/common/exec-adapter.ts";
 import { basename } from "node:path";
-import { requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { isOmpHost, requirePiVersion } from "../../lib/common/pi-compat.ts";
 import { filterEnabledExtensionStatuses } from "../../lib/common/sf-pi-extension-state.ts";
 
 import { getFirstTokenCompletions } from "../../lib/common/command-actions.ts";
@@ -90,6 +90,7 @@ import {
 // -------------------------------------------------------------------------------------------------
 
 const WIDGET_KEY = "sf-devbar";
+const FOOTER_WIDGET_KEY = "sf-devbar-footer";
 const COMMAND_NAME = "sf-devbar";
 const FLAG_NAME = "no-devbar";
 
@@ -141,6 +142,13 @@ export default function sfDevBar(pi: ExtensionAPI) {
   // Reference to the top-bar component's requestRender. The factory keeps
   // rendering width-aware so long session/model/project facts stay bounded.
   let requestTopBarRender: (() => void) | null = null;
+  // Mount the top bar once per session: re-mounting on every update would
+  // reorder it against other extensions' above-editor widgets on OMP.
+  let topBarMounted = false;
+
+  // OMP's setFooter is a no-op and it has no footerData branch feed: the
+  // bottom bar mounts as a below-editor widget and git supplies the branch.
+  const ompHost = isOmpHost(pi);
 
   // Use the shared exec adapter instead of a per-extension wrapper
   const exec = buildExecFn(pi);
@@ -243,13 +251,14 @@ export default function sfDevBar(pi: ExtensionAPI) {
   function updateTopBar(ctx: ExtensionContext, gitBranch?: string | null) {
     if (!enabled || !ctx.hasUI || !isActiveSession(ctx)) return;
     if (gitBranch !== undefined) topBarBranchHint = gitBranch;
-    mountTopBarWidget(ctx);
+    if (!topBarMounted) mountTopBarWidget(ctx);
     requestTopBarRender?.();
   }
 
   /** Mount a width-aware top-bar component so resize truncation stays correct. */
   function mountTopBarWidget(ctx: ExtensionContext): void {
     if (!ctx.hasUI) return;
+    topBarMounted = true;
     ctx.ui.setWidget(WIDGET_KEY, (tui, theme) => {
       requestTopBarRender = () => tui.requestRender();
 
@@ -263,6 +272,7 @@ export default function sfDevBar(pi: ExtensionAPI) {
         invalidate() {},
         dispose() {
           requestTopBarRender = null;
+          topBarMounted = false;
         },
       };
     });
@@ -291,11 +301,19 @@ export default function sfDevBar(pi: ExtensionAPI) {
     generation: number = activeSessionGeneration,
   ): Promise<void> {
     try {
-      const changes = await getGitChanges(exec, ctx.cwd);
+      const [changes, branch] = await Promise.all([
+        getGitChanges(exec, ctx.cwd),
+        ompHost ? getGitBranch(exec) : undefined,
+      ]);
       if (!isActiveSession(ctx, generation)) return;
       gitChanges = changes;
       // Use the explicitly passed branch, or fall back to the latest known branch
-      updateTopBar(ctx, gitBranch !== undefined ? gitBranch : latestGitBranch);
+      let resolvedBranch = gitBranch !== undefined ? gitBranch : latestGitBranch;
+      if (branch !== undefined) {
+        latestGitBranch = branch;
+        resolvedBranch = branch;
+      }
+      updateTopBar(ctx, resolvedBranch);
       requestFooterRender?.();
     } catch {
       // Silently ignore — git may not be available
@@ -375,13 +393,42 @@ export default function sfDevBar(pi: ExtensionAPI) {
 
     // Reset per-session state
     gitChanges = null;
+    topBarMounted = false;
     refreshDevbarSettings(ctx.cwd);
 
     // Set terminal title
     updateTitle(ctx);
 
-    // Render initial top bar (without git branch — footer callback provides it)
+    // Render initial top bar (without git branch — footer callback or git read provides it)
     updateTopBar(ctx);
+    scheduleGitRefresh(ctx, generation);
+
+    if (ompHost) {
+      // OMP lists extension statuses natively, so its bar carries only DevBar-owned facts.
+      ctx.ui.setWidget(
+        FOOTER_WIDGET_KEY,
+        (tui, theme) => {
+          requestFooterRender = () => {
+            if (isActiveSession(ctx, generation)) tui.requestRender();
+          };
+          return {
+            dispose: () => {
+              if (isActiveSession(ctx, generation)) requestFooterRender = null;
+            },
+            invalidate() {},
+            render(width: number): string[] {
+              if (!enabled || !isActiveSession(ctx, generation)) return [];
+              const { left, right } = renderBottomBarParts(buildBottomBarState(ctx), theme);
+              if (!left && !right) return [];
+              const pad = " ".repeat(Math.max(1, width - visibleWidth(left) - visibleWidth(right)));
+              return [truncateToWidth(left + pad + right, width)];
+            },
+          };
+        },
+        { placement: "belowEditor" },
+      );
+      return;
+    }
 
     // Activate the custom footer
     ctx.ui.setFooter((tui, theme, footerData) => {
@@ -436,9 +483,10 @@ export default function sfDevBar(pi: ExtensionAPI) {
         },
       };
     });
+  });
 
-    // Fire-and-forget: async git changes, delayed so `git status` does not
-    // join the first-paint boot storm.
+  /** Fire-and-forget git refresh, delayed so `git status` does not join the first-paint boot storm. */
+  function scheduleGitRefresh(ctx: ExtensionContext, generation: number): void {
     const gitTimer = setTimeout(() => {
       if (!isActiveSession(ctx, generation)) return;
       void markBootStep("sf-devbar.git-status (deferred)", () =>
@@ -446,7 +494,7 @@ export default function sfDevBar(pi: ExtensionAPI) {
       ).catch(() => undefined);
     }, 1_500);
     gitTimer.unref?.();
-  });
+  }
 
   // --- Session shutdown: clean exit ---
   // Always clear DevBar-owned UI surfaces. Reload-driven settings changes can
@@ -456,36 +504,14 @@ export default function sfDevBar(pi: ExtensionAPI) {
     if (!ctx.hasUI) return;
     displayEnv = null;
     displayOrgStale = false;
-    ctx.ui.setFooter(undefined);
+    topBarMounted = false;
+    if (ompHost) ctx.ui.setWidget(FOOTER_WIDGET_KEY, undefined);
+    else ctx.ui.setFooter(undefined);
     ctx.ui.setWidget(WIDGET_KEY, undefined);
-  });
-
-  // --- Model select: update model display ---
-  pi.on("model_select", async (_event, ctx) => {
-    if (!enabled || !ctx.hasUI || !isActiveSession(ctx)) return;
-    updateTopBar(ctx);
-    requestFooterRender?.();
   });
 
   // --- Successful compaction: replace stale pre-compaction usage immediately ---
   pi.on("session_compact", async (_event, ctx) => {
-    if (!enabled || !ctx.hasUI || !isActiveSession(ctx)) return;
-    updateTopBar(ctx);
-  });
-
-  // --- Session name change: repaint from Pi's public getter ---
-  pi.on("session_info_changed", async (_event, ctx) => {
-    if (!enabled || !ctx.hasUI || !isActiveSession(ctx)) return;
-    updateTopBar(ctx);
-  });
-
-  // --- Thinking level change: repaint the rainbow badge instantly ---
-  //
-  // pi emits `thinking_level_select` whenever the user flips thinking
-  // level (shortcut, settings, or model clamp). Without this, the devbar only
-  // re-reads `pi.getThinkingLevel()` on the next turn boundary, leaving the
-  // badge stale while idle.
-  pi.on("thinking_level_select", async (_event, ctx) => {
     if (!enabled || !ctx.hasUI || !isActiveSession(ctx)) return;
     updateTopBar(ctx);
   });

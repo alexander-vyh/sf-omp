@@ -141,18 +141,18 @@ export function computeGrantedRequestedScopeCount(
  * `X-OAuth-Scopes` from that response. Reusing the captured header avoids a
  * second redundant `auth.test` while preserving first-turn tool gating.
  */
-export function gateToolsFromGrantedScopes(
+export async function gateToolsFromGrantedScopes(
   pi: ExtensionAPI,
   requestedScopes: string[] = [],
   tokenType: SlackTokenType = "user",
-): ProbeResult {
+): Promise<ProbeResult> {
   const granted = getGrantedScopes();
   const registeredTools = pi.getAllTools().map((tool) => tool.name);
 
   const gatedTools = computeGatedTools(granted, registeredTools, tokenType);
   const missingGrantedScopes = computeMissingGrantedScopes(granted, requestedScopes);
 
-  if (granted) applyScopeGate(pi, gatedTools);
+  if (granted) await applyScopeGate(pi, gatedTools);
 
   return {
     gatedTools,
@@ -161,21 +161,53 @@ export function gateToolsFromGrantedScopes(
   };
 }
 
-/** Hide every Slack-owned tool while preserving non-Slack active tools. */
-const scopeGateBaselineByPi = new WeakMap<ExtensionAPI, string[]>();
-
-export function deactivateSlackTools(pi: ExtensionAPI): void {
-  scopeGateBaselineByPi.delete(pi);
-  const activeTools = pi
-    .getActiveTools()
-    .filter(
-      (toolName) =>
-        !ALL_SLACK_TOOL_NAMES.includes(toolName as (typeof ALL_SLACK_TOOL_NAMES)[number]),
-    );
-  pi.setActiveTools(activeTools);
+/**
+ * Pi applies `setActiveTools` synchronously; OMP returns a promise that runs
+ * on its serialized tool-registry queue. Awaiting covers both hosts.
+ */
+async function setActiveTools(pi: ExtensionAPI, toolNames: string[]): Promise<void> {
+  const applied: void | Promise<void> = pi.setActiveTools(toolNames);
+  await applied;
 }
 
-function applyScopeGate(pi: ExtensionAPI, gatedTools: string[]): void {
+/**
+ * Wait until freshly registered Slack tools are live before gating them.
+ *
+ * OMP installs registrations made after startup through the same serialized
+ * queue as `setActiveTools`, so `getAllTools()` does not list them until that
+ * queue drains. Queueing the set the host would activate anyway (current tools
+ * plus the new Slack tools) returns only after those installs; on Pi the
+ * tools are already live and the call is a no-op.
+ */
+export async function settleSlackToolRegistration(pi: ExtensionAPI): Promise<void> {
+  await setActiveTools(pi, [...new Set([...pi.getActiveTools(), ...ALL_SLACK_TOOL_NAMES])]);
+}
+
+/**
+ * Slack tools the host selected before gating first touched them, per API.
+ * Gating restores only these, so a later login re-enables exactly the Slack
+ * tools Pi/OMP had selected rather than everything registered.
+ */
+const scopeGateBaselineByPi = new WeakMap<ExtensionAPI, string[]>();
+
+/** Hide every Slack-owned tool while preserving non-Slack active tools. */
+export async function deactivateSlackTools(pi: ExtensionAPI): Promise<void> {
+  const activeTools = pi.getActiveTools();
+  const activeSlack = activeTools.filter((toolName) =>
+    ALL_SLACK_TOOL_NAMES.includes(toolName as (typeof ALL_SLACK_TOOL_NAMES)[number]),
+  );
+  // Keep (or first record) the baseline so logout -> login in one session,
+  // or a new session in the same process, restores the selected Slack tools.
+  if (!scopeGateBaselineByPi.has(pi) && activeSlack.length > 0) {
+    scopeGateBaselineByPi.set(pi, activeSlack);
+  }
+  await setActiveTools(
+    pi,
+    activeTools.filter((toolName) => !activeSlack.includes(toolName)),
+  );
+}
+
+async function applyScopeGate(pi: ExtensionAPI, gatedTools: string[]): Promise<void> {
   const registeredTools = pi.getAllTools().map((tool) => tool.name);
   const registeredToolSet = new Set(registeredTools);
   const activeNonSlack = pi
@@ -188,7 +220,7 @@ function applyScopeGate(pi: ExtensionAPI, gatedTools: string[]): void {
   const activeSlack = baselineSlack.filter(
     (toolName) => registeredToolSet.has(toolName) && !gatedTools.includes(toolName),
   );
-  pi.setActiveTools([...activeNonSlack, ...activeSlack]);
+  await setActiveTools(pi, [...activeNonSlack, ...activeSlack]);
 }
 
 function getScopeGateBaseline(pi: ExtensionAPI, registeredTools: ReadonlySet<string>): string[] {
@@ -217,5 +249,5 @@ export async function probeAndGateTools(
   // via the X-OAuth-Scopes response header (captured inside slackApi).
   await slackApi<AuthTestResponse>("auth.test", token, {}, signal);
 
-  return gateToolsFromGrantedScopes(pi, requestedScopes, tokenType);
+  return await gateToolsFromGrantedScopes(pi, requestedScopes, tokenType);
 }

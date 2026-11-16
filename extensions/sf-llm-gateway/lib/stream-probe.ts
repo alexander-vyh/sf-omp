@@ -2,7 +2,6 @@
 /** Explicit, bounded, content-free model-stream health probes for Gateway doctor. */
 import {
   normalizeContext,
-  uuidv7,
   type Api,
   type AssistantMessage,
   type AssistantMessageEvent,
@@ -14,6 +13,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { PROVIDER_NAME } from "./config.ts";
+import { uuidv7 } from "./host-compat.ts";
 
 const DEFAULT_STREAM_PROBE_TIMEOUT_MS = 15_000;
 const MAX_STREAM_PROBE_COUNT = 3;

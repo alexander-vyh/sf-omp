@@ -115,6 +115,53 @@ describe("Agent-Settled Update Coordinator", () => {
     );
   });
 
+  it("waits in the background for idleness after a settled turn, without blocking", async () => {
+    writeAutoUpdateEnabled(true);
+    const calls: string[] = [];
+    const pi = {
+      exec: vi.fn(async (command: string, args: string[]) => {
+        calls.push([command, ...args].join(" "));
+        return { stdout: "ok", stderr: "", code: 0, killed: false };
+      }),
+      appendEntry: vi.fn(),
+    } as unknown as ExtensionAPI;
+    const coordinator = makeCoordinator(pi);
+    let idle = false;
+    const ctx = { ...context(), isIdle: () => idle } as ExtensionContext;
+
+    coordinator.onSessionStart("startup", ctx);
+    await coordinator.onAgentSettled(ctx);
+    expect(calls).toEqual([]);
+
+    idle = true;
+    await vi.waitFor(() => expect(calls).toContain("sf update stable"));
+  });
+
+  it("drops the background idle wait when a new agent run starts", async () => {
+    writeAutoUpdateEnabled(true);
+    const pi = {
+      exec: vi.fn(async () => ({ stdout: "ok", stderr: "", code: 0, killed: false })),
+      appendEntry: vi.fn(),
+    } as unknown as ExtensionAPI;
+    const coordinator = makeCoordinator(pi);
+    let idle = false;
+    const ctx = { ...context(), isIdle: () => idle } as ExtensionContext;
+
+    vi.useFakeTimers();
+    try {
+      coordinator.onSessionStart("startup", ctx);
+      await coordinator.onAgentSettled(ctx);
+      coordinator.onAgentStart();
+      idle = true;
+      await vi.runAllTimersAsync();
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(pi.exec).not.toHaveBeenCalled();
+    expect(readAutoUpdateStatus()).toMatchObject({ pending: true, running: false });
+  });
+
   it("defers pending automatic work after an aborted settlement", async () => {
     writeAutoUpdateEnabled(true);
     const pi = {

@@ -12,6 +12,10 @@
  *   - sfPi.welcome.mode="header" (default) → Non-blocking header above input
  *   - sfPi.welcome.mode="off"              → No automatic SF Welcome surface
  *
+ * On OMP, whose setHeader is a no-op, the same component mounts as a widget
+ * above the editor; OMP's session_start carries no reason, so a session that
+ * already holds messages counts as a resume.
+ *
  * Pi's quietStartup setting independently controls Pi's native startup output.
  *
  * Dismissal triggers:
@@ -89,7 +93,7 @@ import {
 } from "../../lib/common/doctor/diagnostics.ts";
 
 import { buildExecFn } from "../../lib/common/exec-adapter.ts";
-import { requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { isOmpHost, requirePiVersion } from "../../lib/common/pi-compat.ts";
 import {
   getMonthlyUsageState,
   refreshMonthlyUsage,
@@ -125,6 +129,18 @@ const MONTHLY_BUDGET_FALLBACK = 3000;
 const HEADER_FRAME_MS = 400;
 const HEADER_ANIMATION_DURATION_MS = 8_000;
 const HEADER_ANIMATION_FRAMES = Math.ceil(HEADER_ANIMATION_DURATION_MS / HEADER_FRAME_MS);
+const SPLASH_WIDGET_KEY = "sf-welcome";
+
+/**
+ * Pi labels why a session started. OMP's session_start has no reason and fires
+ * only on initial load (switches emit session_switch), so prior messages mean resume.
+ */
+function sessionStartReason(event: { reason?: string }, ctx: ExtensionContext): string {
+  if (event.reason) return event.reason;
+  return ctx.sessionManager.getBranch().some((entry) => entry.type === "message")
+    ? "resume"
+    : "startup";
+}
 
 function isReducedMotionRequested(): boolean {
   return process.env.SF_PI_REDUCED_MOTION === "1" || process.env.SF_PI_REDUCED_MOTION === "true";
@@ -136,6 +152,13 @@ function isReducedMotionRequested(): boolean {
 
 export default function sfWelcome(pi: ExtensionAPI) {
   if (!requirePiVersion(pi, "sf-welcome")) return;
+  // OMP ignores setHeader; the splash mounts as an above-editor widget there.
+  const ompHost = isOmpHost(pi);
+
+  function clearSplash(ctx: ExtensionContext): void {
+    if (ompHost) ctx.ui.setWidget(SPLASH_WIDGET_KEY, undefined);
+    else ctx.ui.setHeader(undefined);
+  }
 
   let headerActive = false;
   let activeHeader: SfWelcomeHeader | null = null;
@@ -314,7 +337,7 @@ export default function sfWelcome(pi: ExtensionAPI) {
     if (headerActive) {
       headerActive = false;
       resetHeaderAnimation();
-      ctx.ui.setHeader(undefined);
+      clearSplash(ctx);
     }
     markAnnouncementsSeen();
     // Subscription lifetime matches the splash lifetime — once the splash
@@ -345,7 +368,7 @@ export default function sfWelcome(pi: ExtensionAPI) {
     if (!ctx.hasUI) return;
 
     // Only show the splash on initial startup — not on resume, reload, fork, etc.
-    if (event.reason !== "startup") return;
+    if (sessionStartReason(event, ctx) !== "startup") return;
 
     const modelName = ctx.model?.name || ctx.model?.id || "No model";
     const providerName = ctx.model?.provider || "Unknown provider";
@@ -862,7 +885,7 @@ export default function sfWelcome(pi: ExtensionAPI) {
     resetBootTiming();
 
     if (headerActive && ctx.hasUI) {
-      ctx.ui.setHeader(undefined);
+      clearSplash(ctx);
     }
     headerActive = false;
     resetHeaderAnimation();
@@ -1466,7 +1489,7 @@ export default function sfWelcome(pi: ExtensionAPI) {
     header.setHeaderOffset(headerOffset);
     headerActive = true;
 
-    ctx.ui.setHeader((tui) => {
+    const factory: NonNullable<Parameters<ExtensionContext["ui"]["setHeader"]>[0]> = (tui) => {
       activeHeader = header;
       headerRequestRender = (force = false) => tui.requestRender(force);
       startHeaderAnimation(ctx, generation);
@@ -1487,7 +1510,9 @@ export default function sfWelcome(pi: ExtensionAPI) {
           }
         },
       };
-    });
+    };
+    if (ompHost) ctx.ui.setWidget(SPLASH_WIDGET_KEY, factory, { placement: "aboveEditor" });
+    else ctx.ui.setHeader(factory);
 
     // Pi paints one default frame before extensions bind. Force a full repaint
     // immediately after installing the header so the default editor frame is

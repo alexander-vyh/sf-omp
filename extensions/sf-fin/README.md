@@ -6,9 +6,10 @@ SF Fin connects SF Pi to a Fin (formerly Intercom) workspace. It owns one
 credential, the workspace **personal API token**, and manages the Fin CLI
 (`@intercom/cli`) it uses to reach the workspace.
 
-- `/login sf-fin` asks for the workspace hosting region, then collects the token
-  through SF Pi's fixed-mask input. Pi persists it; you stay connected across
-  sessions until you log out or the token is revoked.
+- `/login sf-fin` collects the token in OMP's masked login prompt and detects
+  the workspace hosting region. OMP stores it in its credential store
+  (`agent.db`); you stay connected across sessions until you log out or the
+  token is revoked.
 - `/sf-fin install` installs or updates the Fin CLI with global npm after
   confirmation, pinned to an exact version.
 - `/sf-fin doctor` runs live read-only checks: Node, Fin CLI presence and
@@ -64,7 +65,11 @@ SF Guardrail (see below).
    detects the region (US, EU, or AU) by asking each regional API who the token
    belongs to; it asks you only if none of them can be reached.
 4. Run `/sf-fin setup` to see what each saved credential unlocks, whether they
-   all point at the same workspace, and only what is still missing.
+   all point at the same workspace, and only what is still missing. In OMP the
+   Intercom MCP connection counts as connected when OMP exposes its
+   `list_articles` tool; OMP gives extensions no way to call that tool, so its
+   sign-in and workspace are reported as not provable. Sign in with
+   `/mcp reauth <connection>`.
 
 ### Workspaces
 
@@ -124,9 +129,10 @@ app. It refuses if it lands somewhere else.
 
 ## Safety and Data Boundaries
 
-- Pi alone persists the token under provider id `sf-fin`; `/logout sf-fin`
-  removes it. SF Fin writes no other secret store.
-- The Fin admin sign-in (`sf-fin-browser`) is two Fin cookies saved by Pi. SF
+- OMP alone stores the token, under provider id `sf-fin` in its credential
+  store (`agent.db`); `/logout sf-fin` removes it. SF Fin writes no other
+  secret store.
+- The Fin admin sign-in (`sf-fin-browser`) is two Fin cookies stored by OMP. SF
   Fin puts them into the shared browser only for the length of one admin
   action, and removes them on every path, so the browser's own saved-state file
   never holds a Fin sign-in. Cookie values go to the browser on stdin, never on
@@ -172,9 +178,9 @@ app. It refuses if it lands somewhere else.
   an exact SF Guardrail mutation that is never session-approved. Data
   connectors upload only as drafts, and publishing them stays in the Intercom
   web UI.
-- The Fin Agent API key is a separate Pi credential (`sf-fin-agent`). Pi alone
-  persists it, in `~/.pi/agent/auth.json` (owner-only), and SF Fin writes no
-  second copy.
+- The Fin Agent API key is a separate credential (`sf-fin-agent`). OMP alone
+  stores it, in its owner-only credential store (`agent.db`), and SF Fin writes
+  no second copy.
   - Login trims the key. It rejects empty, multi-line, `Bearer`-prefixed, or
     too-short values, and the personal token. Comparisons are constant-time.
   - Before every request, SF Fin refuses a key equal to the personal token,

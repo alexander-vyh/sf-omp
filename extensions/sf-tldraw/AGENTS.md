@@ -27,6 +27,8 @@ Start from `index.ts`, the relevant implementation module below, and its focused
 - Treat the app as the sole owner of the `tldraw-offline` Pi skill. Read its managed marker/manifest for status, but never package, copy, extract, or rewrite the skill.
 - `create_document` accepts only a plain name, uses tldraw's default Documents directory, and never runs implicitly from a render action.
 - Advertise the three Salesforce render actions. Validate Spec v2 at execute through the three family schemas; do not embed the Spec v2 union in the public `tldraw_canvas` parameters.
+- Build Spec v2 schemas from `typebox/type`, never the bare `typebox` or `StringEnum` from `pi-ai`: OMP's legacy Pi loader remaps those to a facade whose schemas `typebox/value` does not enforce (unknown fields and `pattern` pass).
+- Headless command output goes through `emitHumanOnlyCommandOutput`; never write plain text to stdout outside print mode (RPC/JSON stdout is the protocol channel).
 - Reject unknown fields, product marks, source positions, endpoint anchors, and layout mode.
 - Never guess Salesforce facts. Every semantic element cites a declared source id; artifact evidence is provenance, not an independent fact-verification claim.
 - Enforce render privacy on every user-visible string and never persist execution-only `target_org`.

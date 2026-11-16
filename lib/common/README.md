@@ -68,6 +68,7 @@ This complete top-level inventory is generated from `lib/common/`. Directory cou
 | `manager-deep-link.ts`         | module    |                     1 |               0 |
 | `monthly-usage/`               | directory |                     2 |               0 |
 | `npm-release-age-policy.ts`    | module    |                     1 |               0 |
+| `omp-extension-state.ts`       | module    |                     1 |               0 |
 | `open-external.ts`             | module    |                     1 |               0 |
 | `pi-auth-status.ts`            | module    |                     1 |               0 |
 | `pi-compat.ts`                 | module    |                     1 |               0 |
@@ -97,7 +98,7 @@ This complete top-level inventory is generated from `lib/common/`. Directory cou
 | `slack-status/`                | directory |                     1 |               0 |
 | `state-store.ts`               | module    |                     1 |               0 |
 | `test-fixtures.ts`             | module    |                     1 |               0 |
-| `tests/`                       | directory |                     0 |              50 |
+| `tests/`                       | directory |                     0 |              51 |
 | `tldraw-status/`               | directory |                     1 |               0 |
 | `ui-glyphs.ts`                 | module    |                     1 |               0 |
 | `windows-spawn.ts`             | module    |                     1 |               0 |

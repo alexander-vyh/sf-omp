@@ -1,12 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Complete-Provider authentication and session-scoped configuration for the Gateway. */
-import {
-  defaultProviderAuthContext,
-  type ApiKeyAuth,
-  type ApiKeyCredential,
-  type AuthContext,
-  type AuthResult,
-} from "@earendil-works/pi-ai";
+import type { ApiKeyAuth, ApiKeyCredential, AuthContext, AuthResult } from "@earendil-works/pi-ai";
+import { defaultProviderAuthContext } from "./host-compat.ts";
 import type {
   ExtensionContext,
   ExtensionUIContext,
@@ -18,9 +13,13 @@ import {
   PROVIDER_NAME,
   getGatewayConfig,
   getGlobalOnlyGatewayConfig,
+  globalGatewayConfigPath,
   normalizeBaseUrl,
+  readGatewaySavedConfig,
+  writeGatewaySavedConfig,
   type ConfigSource,
 } from "./config.ts";
+import { asOmpModelRegistry, getProviderAuthStatus } from "./host-registry.ts";
 import { toGatewayRootBaseUrl } from "./gateway-url.ts";
 import {
   createSecureCredentialPromptBridge,
@@ -42,6 +41,18 @@ export interface GatewayProviderAuthConfig {
 export interface GatewayProviderAuthDependencies {
   promptBridge: SecureCredentialPromptBridge;
   getConfig(cwd: string | undefined): GatewayProviderAuthConfig;
+  /** Persist the non-secret root URL entered during OMP `/login`. */
+  saveGlobalBaseUrl?(baseUrl: string): void;
+}
+
+/** OMP `/login` prompt callbacks; `secret` requests masked entry. */
+export interface OmpLoginCallbacks {
+  onPrompt?(prompt: {
+    message: string;
+    placeholder?: string;
+    allowEmpty?: boolean;
+    secret?: boolean;
+  }): Promise<string>;
 }
 
 export interface ResolvedGatewayRuntimeAuth {
@@ -62,6 +73,13 @@ export interface GatewayProviderAuthController {
   getActiveCwd(): string | undefined;
   hasConfiguredCredential(): Promise<boolean>;
   resolveRuntimeAuth(cwd?: string): Promise<ResolvedGatewayRuntimeAuth | undefined>;
+  /** Effective configured Gateway root, or undefined when disabled or unset. */
+  resolveConfiguredRoot(cwd?: string): string | undefined;
+  /**
+   * OMP `/login`: save the non-secret root URL to extension config and return
+   * the key for OMP's credential store. Nothing secret is written here.
+   */
+  ompLogin(callbacks: OmpLoginCallbacks): Promise<string>;
 }
 
 type ResolvedCredential = {
@@ -74,6 +92,10 @@ function createDefaultDependencies(): GatewayProviderAuthDependencies {
     promptBridge: createSecureCredentialPromptBridge({ title: "SF LLM Gateway credential" }),
     getConfig(cwd) {
       return cwd ? getGatewayConfig(cwd) : getGlobalOnlyGatewayConfig();
+    },
+    saveGlobalBaseUrl(baseUrl) {
+      const filePath = globalGatewayConfigPath();
+      writeGatewaySavedConfig(filePath, { ...readGatewaySavedConfig(filePath), baseUrl });
     },
   };
 }
@@ -126,6 +148,11 @@ export function createGatewayProviderAuth(
     };
   };
 
+  const resolveConfiguredRoot = (cwd: string | undefined): string | undefined => {
+    const config = dependencies.getConfig(cwd);
+    return config.enabled && config.baseUrl ? toGatewayRootBaseUrl(config.baseUrl) : undefined;
+  };
+
   return {
     auth: {
       name: "SF LLM Gateway API key",
@@ -174,11 +201,26 @@ export function createGatewayProviderAuth(
     },
 
     async hasConfiguredCredential() {
-      if (activeModelRegistry?.getProviderAuthStatus(PROVIDER_NAME).configured) return true;
+      if (
+        activeModelRegistry &&
+        getProviderAuthStatus(activeModelRegistry, PROVIDER_NAME).configured
+      )
+        return true;
       return Boolean(await resolveCredential(defaultProviderAuthContext(), undefined));
     },
 
     async resolveRuntimeAuth(cwd = activeCwd) {
+      const omp = asOmpModelRegistry(activeModelRegistry);
+      if (omp) {
+        // OMP stores only the key; the root URL comes from saved/env config.
+        const baseUrl = resolveConfiguredRoot(cwd);
+        const apiKey = baseUrl
+          ? nonEmpty(await omp.getApiKeyForProvider(PROVIDER_NAME))
+          : undefined;
+        return baseUrl && apiKey
+          ? { apiKey, baseUrl, source: "OMP provider credential" }
+          : undefined;
+      }
       const result = activeModelRegistry
         ? await activeModelRegistry.getProviderAuth(PROVIDER_NAME)
         : await resolveForCwd(cwd, defaultProviderAuthContext(), undefined);
@@ -190,6 +232,32 @@ export function createGatewayProviderAuth(
         baseUrl: toGatewayRootBaseUrl(baseUrl),
         source: result.source ?? "configured Gateway credential",
       };
+    },
+
+    resolveConfiguredRoot(cwd = activeCwd) {
+      return resolveConfiguredRoot(cwd);
+    },
+
+    async ompLogin(callbacks) {
+      if (!callbacks.onPrompt)
+        throw new Error("SF LLM Gateway login requires an interactive prompt.");
+      const config = dependencies.getConfig(activeCwd);
+      const currentBaseUrl = config.baseUrl ? normalizeBaseUrl(config.baseUrl) : undefined;
+      const entered = await callbacks.onPrompt({
+        message: currentBaseUrl
+          ? "SF LLM Gateway root URL (press Enter to keep current)"
+          : "SF LLM Gateway root URL",
+        placeholder: currentBaseUrl ?? "https://gateway.example.com",
+        allowEmpty: Boolean(currentBaseUrl),
+      });
+      const baseUrl = normalizeBaseUrl(entered.trim() || currentBaseUrl);
+      if (!baseUrl) throw new Error("A valid http:// or https:// Gateway URL is required.");
+      const apiKey = nonEmpty(
+        await callbacks.onPrompt({ message: "SF LLM Gateway API key", secret: true }),
+      );
+      if (!apiKey) throw new Error("An SF LLM Gateway API key is required.");
+      if (baseUrl !== currentBaseUrl) dependencies.saveGlobalBaseUrl?.(baseUrl);
+      return apiKey;
     },
   };
 }

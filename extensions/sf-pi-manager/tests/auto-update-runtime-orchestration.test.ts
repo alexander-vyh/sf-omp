@@ -67,7 +67,7 @@ function context(): ExtensionContext {
 }
 
 describe("Auto Update through the real SF Pi Manager factory", () => {
-  it("waits for agent_settled, emits the plan, and then runs compatible targets", async () => {
+  it("waits for a terminal agent_end, emits the plan, and then runs compatible targets", async () => {
     const handlers = new Map<string, Handler>();
     const calls: string[] = [];
     const appendEntry = vi.fn();
@@ -100,7 +100,14 @@ describe("Auto Update through the real SF Pi Manager factory", () => {
     await handlers.get("session_start")?.({ reason: "startup" }, ctx);
     expect(calls).toEqual([]);
 
-    await handlers.get("agent_settled")?.({ type: "agent_settled" }, ctx);
+    // OMP marks non-terminal ends (retry, compaction, follow-up) with willContinue.
+    await handlers.get("agent_end")?.({ type: "agent_end", messages: [], willContinue: true }, ctx);
+    expect(calls).toEqual([]);
+
+    await handlers.get("agent_end")?.(
+      { type: "agent_end", messages: [{ role: "assistant", stopReason: "stop" }] },
+      ctx,
+    );
 
     expect(calls).toEqual([
       "npm view @ogulcancelik/pi-herdr@latest version peerDependencies engines --json",
@@ -122,7 +129,7 @@ describe("Auto Update through the real SF Pi Manager factory", () => {
     await handlers.get("session_shutdown")?.({ reason: "quit" }, ctx);
   });
 
-  it("defers pending updates when agent_settled reports an aborted run", async () => {
+  it("defers pending updates when agent_end ends on an aborted assistant message", async () => {
     const handlers = new Map<string, Handler>();
     const calls: string[] = [];
     const exec = vi.fn(async (command: string, args: string[]) => {
@@ -152,12 +159,24 @@ describe("Auto Update through the real SF Pi Manager factory", () => {
     const ctx = context();
 
     await handlers.get("session_start")?.({ reason: "startup" }, ctx);
-    await handlers.get("agent_settled")?.({ type: "agent_settled", aborted: true }, ctx);
+    await handlers.get("agent_end")?.(
+      {
+        type: "agent_end",
+        messages: [
+          { role: "assistant", stopReason: "aborted" },
+          { role: "toolResult", toolName: "bash" },
+        ],
+      },
+      ctx,
+    );
 
     expect(calls).toEqual([]);
     expect(readAutoUpdateStatus()).toMatchObject({ pending: true, running: false });
 
-    await handlers.get("agent_settled")?.({ type: "agent_settled", aborted: false }, ctx);
+    await handlers.get("agent_end")?.(
+      { type: "agent_end", messages: [{ role: "assistant", stopReason: "stop" }] },
+      ctx,
+    );
     expect(calls).toEqual([
       "npm view @ogulcancelik/pi-herdr@latest version peerDependencies engines --json",
       "pi update --extension npm:@ogulcancelik/pi-herdr --no-approve",

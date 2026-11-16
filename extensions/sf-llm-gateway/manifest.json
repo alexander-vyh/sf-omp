@@ -10,10 +10,12 @@
   "providers": ["sf-llm-gateway"],
   "events": [
     "session_start",
+    "session_switch",
+    "session_tree",
     "message_end",
     "session_before_compact",
+    "turn_start",
     "turn_end",
-    "model_select",
     "after_provider_response",
     "session_shutdown"
   ],

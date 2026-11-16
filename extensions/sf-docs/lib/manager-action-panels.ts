@@ -62,7 +62,7 @@ class SfDocsConnectPanel implements Focusable {
     }
 
     const guidance = [
-      "Native login collects a docs endpoint URL, then uses SF Pi's fixed-mask credential input. Pi owns persistence.",
+      "Native login collects a docs endpoint URL, then the access token in the host's masked prompt. The host stores both.",
       "SF_DOCS_MCP_TOKEN and SF_DOCS_MCP_ENDPOINT remain the automation and CI fallbacks.",
     ];
     return [

@@ -24,6 +24,8 @@ export default tseslint.config(
       "docs/.vitepress/dist/**",
       "catalog/registry.ts", // generated
       "**/*.d.ts",
+      // Repository-local OMP state: downloaded skills, toolchains, smoke workspaces.
+      ".runtime/**",
     ],
   },
 

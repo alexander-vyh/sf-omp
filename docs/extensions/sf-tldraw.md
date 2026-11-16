@@ -53,7 +53,7 @@ Open its Manager detail or change its package state with:
 - **Commands:** `/sf-tldraw`
 - **LLM tools:** `tldraw_canvas`
 - **Providers:** _none_
-- **Events/hooks:** `session_start`, `session_shutdown`
+- **Events/hooks:** `session_start`, `session_shutdown`, `session_switch`, `session_tree`
 
 </details>
 

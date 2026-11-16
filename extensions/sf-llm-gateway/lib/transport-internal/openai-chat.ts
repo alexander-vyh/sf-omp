@@ -7,10 +7,7 @@ import {
   type SimpleStreamOptions,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import {
-  streamOpenAICompletions,
-  streamSimpleOpenAICompletions,
-} from "@earendil-works/pi-ai/compat";
+import { streamOpenAICompletions, streamSimpleOpenAICompletions } from "../host-compat.ts";
 import { omitGatewayPromptCacheKey } from "./prompt-cache-key.ts";
 
 export interface GatewayOpenAIFullTestHooks {

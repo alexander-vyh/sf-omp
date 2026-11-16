@@ -7,11 +7,8 @@
  * screenshots or raw accessibility trees into the transcript.
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import {
-  resizeImage,
-  type ExtensionAPI,
-  type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { resizeImage } from "./image-resize.ts";
 import { commitEvidenceCapture, planEvidenceCapture } from "./artifacts.ts";
 import { runAgentBrowser } from "./agent-browser.ts";
 import { checkFinSecretSurface } from "./fin-admin-guard.ts";

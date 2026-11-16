@@ -21,6 +21,7 @@ import {
   type Focusable,
   type TUI,
 } from "@earendil-works/pi-tui";
+import { hostMasksSecretPrompts } from "./auth-only-provider.ts";
 
 const CANCELLED_MESSAGE = "Login cancelled";
 const UNAVAILABLE_MESSAGE = "Secure credential entry is only available in interactive TUI mode.";
@@ -149,6 +150,8 @@ export class MaskedCredentialInput implements Component, Focusable {
 type ExtensionMode = ExtensionContext["mode"];
 
 export interface SecureCredentialPromptBridge {
+  /** Prompt title, reused as the host-native secret prompt message. */
+  readonly title?: string;
   bind(ui: ExtensionUIContext, mode: ExtensionMode): void;
   clear(): void;
   prompt(signal?: AbortSignal): Promise<string>;
@@ -169,6 +172,15 @@ export async function loginWithSecureCredentialPrompt(
   bridge: SecureCredentialPromptBridge,
   interaction: AuthInteraction,
 ): Promise<ApiKeyCredential> {
+  // OMP's login dialog masks secret prompts itself and owns focus while open,
+  // so a second custom component would compete with it.
+  if (hostMasksSecretPrompts(interaction)) {
+    const key = await interaction.prompt({
+      type: "secret",
+      message: bridge.title ?? "Secure credential",
+    });
+    return { type: "api_key", key };
+  }
   return {
     type: "api_key",
     key: await bridge.prompt(interaction.signal),
@@ -189,6 +201,7 @@ export function createSecureCredentialPromptBridge(
   };
 
   return {
+    title: options.title,
     bind(ui, mode) {
       generation += 1;
       cancelActivePrompt();

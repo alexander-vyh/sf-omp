@@ -47,6 +47,47 @@ describe("outbound connection test", () => {
     expect(body).not.toMatch(/setMethod\('(POST|PUT|PATCH|DELETE)'\)/u);
   });
 
+  it("hands off the exact sf_apex probe without claiming a pass when nested execution is absent", async () => {
+    const result = await testOutboundConnection(
+      {
+        action: "connection.test",
+        target_org: "IntegrationDev",
+        direction: "outbound",
+        named_credential_name: "ExampleNC",
+        test_path: "/health",
+      },
+      session,
+      undefined,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(result.details).toMatchObject({
+      ok: false,
+      action: "connection.test",
+      tested: false,
+      handoff: {
+        tool: "sf_apex",
+        arguments: {
+          action: "anon.run",
+          target_org: "IntegrationDev",
+          allow_mutation: false,
+          output_mode: "summary",
+        },
+      },
+    });
+    expect(result.details.card?.status).toBe("warning");
+    const text = result.content[0]?.text ?? "";
+    expect(text).toMatch(/^NOT RUN:/u);
+    expect(text).not.toMatch(/^PASS:/mu);
+    expect(result.details.handoff).toMatchObject({
+      arguments: {
+        body: expect.stringContaining("request.setEndpoint('callout:ExampleNC/health');"),
+      },
+    });
+    expect(text).toContain("request.setEndpoint('callout:ExampleNC/health');");
+    expect(text).toContain("request.setMethod('GET');");
+  });
+
   it("refuses absolute or protocol-relative test targets", async () => {
     const execute = vi.fn();
     await expect(

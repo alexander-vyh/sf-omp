@@ -7,7 +7,10 @@ import {
   readPiAuthProviderEnv,
   readPiAuthProviderStatus,
 } from "../../../lib/common/pi-auth-status.ts";
-import { createAuthOnlyProvider } from "../../../lib/common/auth-only-provider.ts";
+import {
+  createAuthOnlyProvider,
+  resolveAuthOnlyProviderAuth,
+} from "../../../lib/common/auth-only-provider.ts";
 import {
   createSecureCredentialPromptBridge,
   loginWithSecureCredentialPrompt,
@@ -167,10 +170,8 @@ export async function getDocsToken(
 async function readEndpointFromProviderAuth(
   ctx: ExtensionContext,
 ): Promise<EndpointResolution | null> {
-  const getProviderAuth = ctx.modelRegistry.getProviderAuth;
-  if (typeof getProviderAuth !== "function") return null;
   try {
-    const result = await getProviderAuth.call(ctx.modelRegistry, PROVIDER_NAME);
+    const result = await resolveAuthOnlyProviderAuth(ctx, PROVIDER_NAME);
     const raw = result?.env?.[ENV_ENDPOINT] ?? result?.auth?.baseUrl;
     if (!raw?.trim()) return null;
     const parsed = normalizeEndpoint(raw);

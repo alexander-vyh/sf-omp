@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### SF OMP integration
 
-- Added a repository-local OMP 18.17.0/Bun 1.4.4 launcher selecting ten Agentforce/Salesforce extensions, with separate configuration, profiles, sessions, and native caches under `.runtime/`.
+- Added a repository-local OMP 18.17.0/Bun 1.4.4 launcher loading the root-manifest Agentforce/Salesforce extensions, with separate configuration, profiles, sessions, and native caches under `.runtime/`.
 - Ported AgentScript/Code Analyzer settle hooks, Flow final-message rewriting, Brain prompt injection, human-only widgets, canonical session projection, and asynchronous native skill configuration/loading.
 - Added a version-checked local CommonJS loader patch; global OMP is not patched.
 - Added real-runtime offline checks for AgentScript compilation, Apex plans/logs, LWC/Flow diagnostics, SOQL syntax, skill gating/rediscovery, and global configuration/install integrity. Live org operations and unprovisioned language servers remain explicitly unverified/blocked.
@@ -19,7 +19,15 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Added isolated native shared-auth smoke checks for credential updates, refresh-token redaction, auth-only configuration, local sessions, extension isolation, and broker cleanup.
 - Fixed SF Skills tracking and catalog discovery to consume native OMP command paths instead of upstream Pi `sourceInfo`; native smoke now loads a real skill command before checking its provenance.
 - Added launcher support for a repository-local JDK under `.runtime/toolchains/java`, without global Java registration or shell-profile changes, and documented isolated Salesforce prerequisites.
-- Fixed SF Brain prompting for unloaded extensions: the constitution now lists operating guides and `sf_docs`/`tldraw_canvas` routing only for extensions in the root `pi.extensions` manifest. The routing summary now reports packaged tool owners whose declared tools are not registered in the session, instead of reading Pi `settings.json` package filters that OMP ignores when loading (which could label a loaded extension disabled) and offering `/sf-pi enable` without the SF Pi Manager.
+- SF Brain now drops constitution guidance and routing for extensions the user disabled, read from the running host's own configuration (OMP `disabledExtensions`), and labels disabled tool owners with their `/sf-pi enable` path separately from owners whose tools did not register.
+
+### Full SF Pi parity in OMP
+
+- All 27 bundled SF Pi extensions now load and run in OMP. Pi-only APIs were ported to OMP equivalents: auth-only providers and `/login` storage (sf-docs, sf-fin, sf-slack), a native OMP model provider with custom stream APIs (sf-llm-gateway), host image resizing (sf-browser), widget-based DevBar/welcome UI and the Ohana working indicator, `agent_end` in place of `agent_settled`, `assistant_message` for final-message rewrites, and OMP-native MCP configuration and tool exposure (sf-mcp).
+- `/sf-pi` and every bare extension command open working Manager pages in the OMP TUI. `/sf-pi enable|disable` persists to OMP's `disabledExtensions` and takes effect on the next start; Auto Update updates the sf-omp git checkout (`git pull --ff-only` + `npm ci`) instead of `pi update`; recommended Pi packages are reported as unsupported because the launcher loads only the root manifest.
+- Added `npm run parity:omp`, which loads each extension alone in real OMP and compares registered commands, tools, providers, and events with its manifest against a ratcheting baseline. The offline smoke now loads every extension through OMP's real loader and runs per-extension check modules in `scripts/omp-smoke-checks/`.
+- The launcher sets `SF_DISABLE_LOG_FILE=true` (unless set) because `@salesforce/core`'s file-logger transport cannot resolve inside OMP's extension loader, and hermetic runs use `SF_USE_GENERIC_UNIX_KEYCHAIN=true` so they never reach the login keychain. Tests strip inherited launcher environment so they cannot write to the real `.runtime/omp/agent`.
+- CI runs on macOS (the only supported platform) with the full unit suite, generated-catalog, docs-health, format, lint, smoke, auth smoke, and parity gates; Windows/Ubuntu support claims were removed.
 
 ## [0.354.0](https://github.com/salesforce/sf-pi/compare/v0.353.0...v0.354.0) (2026-11-11)
 

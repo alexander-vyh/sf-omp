@@ -175,7 +175,7 @@
     "entry": "extensions/sf-brain/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 1773
+    "srcLoc": 1775
   },
   {
     "id": "sf-browser",
@@ -256,7 +256,7 @@
     "entry": "extensions/sf-browser/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 9475
+    "srcLoc": 9552
   },
   {
     "id": "sf-code-analyzer",
@@ -369,8 +369,8 @@
       "session_shutdown",
       "resources_discover",
       "tool_result",
-      "message_end",
-      "agent_settled"
+      "assistant_message",
+      "agent_end"
     ],
     "docs": {
       "intentGroup": "Work with Data Cloud",
@@ -410,7 +410,7 @@
     "entry": "extensions/sf-data360/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 11163
+    "srcLoc": 11174
   },
   {
     "id": "sf-devbar",
@@ -430,10 +430,7 @@
     "events": [
       "session_start",
       "session_shutdown",
-      "model_select",
       "session_compact",
-      "session_info_changed",
-      "thinking_level_select",
       "turn_end",
       "agent_end",
       "before_agent_start",
@@ -453,12 +450,12 @@
     "entry": "extensions/sf-devbar/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 2396
+    "srcLoc": 2436
   },
   {
     "id": "sf-docs",
     "name": "SF Docs",
-    "description": "Salesforce documentation lookup for agents and humans, with Pi-native bearer authentication, cited results, and a Manager settings surface.",
+    "description": "Salesforce documentation lookup for agents and humans, with host-native `/login` bearer authentication, cited results, and a Manager settings surface.",
     "category": "agent-tool",
     "maturity": "experimental",
     "defaultEnabled": true,
@@ -481,7 +478,7 @@
       "intentGroup": "Build agents",
       "editingRules": "AGENTS.md",
       "agentGuide": "AGENT_GUIDE.md",
-      "summary": "Provides one `sf_docs` family tool with explicit deterministic grounding, literal search/fetch primitives, cited answers, single-document explanations, collection discovery, status, and a lazy cheatsheet. Ground records bounded catalog, search, fallback, and fetch steps while explicit collection values remain authoritative. The extension talks directly to an internally supplied Salesforce Docs MCP-over-HTTP endpoint; Pi-native `/login sf-docs` stores a masked bearer token with the endpoint URL, and no default endpoint is shipped.",
+      "summary": "Provides one `sf_docs` family tool with explicit deterministic grounding, literal search/fetch primitives, cited answers, single-document explanations, collection discovery, status, and a lazy cheatsheet. Ground records bounded catalog, search, fallback, and fetch steps while explicit collection values remain authoritative. The extension talks directly to an internally supplied Salesforce Docs MCP-over-HTTP endpoint; native OMP `/login sf-docs` stores the bearer token, entered in OMP's masked prompt, with the endpoint URL in OMP's credential store, and no default endpoint is shipped.",
       "primaryFiles": [
         "index.ts",
         "lib/sf_docs-tool.ts",
@@ -493,7 +490,7 @@
         "lib/render.ts"
       ],
       "stateFiles": [
-        "~/.pi/agent/auth.json entry: sf-docs (Pi-owned API key plus credential.env.SF_DOCS_MCP_ENDPOINT)",
+        "<agentDir>/agent.db (OMP credential store) entry: sf-docs (bearer token plus env.SF_DOCS_MCP_ENDPOINT, written by /login sf-docs)",
         "<globalAgentDir>/sf-pi/sf-docs/catalog-cache.json",
         "<global|project Pi settings>.sfPi.docs"
       ],
@@ -502,7 +499,7 @@
         "SF_DOCS_MCP_ENDPOINT"
       ],
       "safety": [
-        "Interactive `/login sf-docs` collects an internally supplied endpoint URL, masks the bearer token through SF Pi's shared credential input, and returns both to Pi under provider id `sf-docs`; the extension ships with no default endpoint or token.",
+        "Interactive `/login sf-docs` collects an internally supplied endpoint URL, then the bearer token in OMP's masked login prompt, and OMP stores both under provider id `sf-docs`; `/logout sf-docs` removes them, and the extension ships with no default endpoint or token.",
         "Uses native fetch plus a small local SSE parser; no MCP server, MCP SDK, or extra runtime dependency is required.",
         "Caches only the collection catalog, scopes it by a one-way endpoint identity without persisting the endpoint URL, and never caches search results, answer text, fetched document bodies, prompts, or citations.",
         "Tool output keeps source URLs and always-on answer/explain citations visible, bounds model-facing text, distinguishes partial or failed retrieval from truncation, records deterministic ground steps, and keeps the configured service endpoint and bearer token out of model-visible output."
@@ -518,7 +515,7 @@
     "entry": "extensions/sf-docs/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 4861
+    "srcLoc": 4863
   },
   {
     "id": "sf-feedback",
@@ -534,7 +531,11 @@
     ],
     "providers": [],
     "tools": [],
-    "events": [],
+    "events": [
+      "session_start",
+      "session_switch",
+      "session_tree"
+    ],
     "docs": {
       "intentGroup": "Collaborate and improve",
       "summary": "Guided GitHub feedback flow with sanitized diagnostics for SF Pi issues.",
@@ -554,12 +555,12 @@
     "entry": "extensions/sf-feedback/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 1538
+    "srcLoc": 1551
   },
   {
     "id": "sf-fin",
     "name": "SF Fin",
-    "description": "Connect SF Pi to a Fin (formerly Intercom) workspace: Pi-owned masked credentials, Guardrail-mediated Fin CLI install, doctor and debug, Fin-as-code authoring (procedures, simulations, guidance, data connectors), a CLI vs MCP surface comparison, and a Fin Agent API test harness.",
+    "description": "Connect SF Pi to a Fin (formerly Intercom) workspace: OMP-stored masked credentials, Guardrail-mediated Fin CLI install, doctor and debug, Fin-as-code authoring (procedures, simulations, guidance, data connectors), a CLI vs MCP surface comparison, and a Fin Agent API test harness.",
     "category": "agent-tool",
     "maturity": "experimental",
     "defaultEnabled": true,
@@ -584,7 +585,7 @@
       "intentGroup": "Build agents",
       "editingRules": "AGENTS.md",
       "agentGuide": "AGENT_GUIDE.md",
-      "summary": "Provides Pi-native `/login sf-fin`, which asks for the workspace hosting region and collects a Fin personal API token through SF Pi's shared fixed-mask input. Pi alone persists it. The `sf_fin` family tool and `/sf-fin` command expose cached status; a live read-only doctor (Node, Fin CLI presence and version freshness, credential, workspace identity through `intercom me`); Fin CLI install/update through exactly pinned global npm (TUI confirmation for humans, SF Guardrail mediation in the `fin` Power Tool family for the agent); and a redacted debug bundle with optional one-shot verbose traces. The CLI always runs with the token in the child-process environment only and an SF Pi-private CLI config directory. `/sf-pi doctor` receives cached-only checks.",
+      "summary": "Provides native OMP `/login sf-fin`, which collects a Fin personal API token in OMP's masked login prompt, detects the workspace hosting region (asking only when the Fin API cannot be reached), and stores both in OMP's credential store. The `sf_fin` family tool and `/sf-fin` command expose cached status; a live read-only doctor (Node, Fin CLI presence and version freshness, credential, workspace identity through `intercom me`); Fin CLI install/update through exactly pinned global npm (TUI confirmation for humans, SF Guardrail mediation in the `fin` Power Tool family for the agent); and a redacted debug bundle with optional one-shot verbose traces. The CLI always runs with the token in the child-process environment only and an SF Pi-private CLI config directory. `/sf-pi doctor` receives cached-only checks.",
       "primaryFiles": [
         "index.ts",
         "lib/service.ts",
@@ -596,7 +597,7 @@
         "lib/sf_fin-tool.ts"
       ],
       "stateFiles": [
-        "~/.pi/agent/auth.json entries: sf-fin / sf-fin-<workspace> (personal API token plus credential.env.INTERCOM_REGION), sf-fin-agent / sf-fin-agent-<workspace> (Fin Agent API key), and sf-fin-browser / sf-fin-browser-<workspace> (Fin admin sign-in cookies)",
+        "<agentDir>/agent.db (OMP credential store) entries written by /login: sf-fin / sf-fin-<workspace> (personal API token plus env.INTERCOM_REGION), sf-fin-agent / sf-fin-agent-<workspace> (Fin Agent API key), and sf-fin-browser / sf-fin-browser-<workspace> (Fin admin sign-in cookies)",
         "<globalAgentDir>/sf-pi/sf-fin/workspaces.json (named workspace profiles: kind, verified app id and region; shared read-only with SF Guardrail; no credentials)",
         "<globalAgentDir>/sf-pi/sf-fin/status.json",
         "<globalAgentDir>/sf-pi/sf-fin/agent-api-status.json (last Fin Agent API access outcome; no key material)",
@@ -613,7 +614,7 @@
         "FIN_AGENT_API_KEY"
       ],
       "safety": [
-        "Interactive `/login sf-fin` masks the personal API token through SF Pi's shared credential input and returns it to Pi under provider id `sf-fin`; SF Fin writes no second secret store.",
+        "Interactive `/login sf-fin` collects the personal API token in OMP's masked login prompt and OMP stores it under provider id `sf-fin`; `/logout sf-fin` removes it, and SF Fin writes no second secret store.",
         "The token reaches the Fin CLI only through an allowlisted child-process environment, never argv, and the child uses an SF Pi-private `INTERCOM_CONFIG_DIR`, so the user's own CLI keychain entry and `~/.intercom` files are never read or written.",
         "CLI output is scrubbed of the token before it reaches status, tool results, or logs; status files store only non-secret workspace identity and install readiness.",
         "Doctor runs `intercom --version` and `intercom me` only; Fin SDK actions enable the SDK by default on first use through an explicit probe → POST /fin-sdk/enable → verify sequence before any `fin …` CLI call, so the CLI's silent auto-enable never fires; the `/sf-pi doctor` provider reads cached state only.",
@@ -632,7 +633,7 @@
     "entry": "extensions/sf-fin/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 7951
+    "srcLoc": 7984
   },
   {
     "id": "sf-flow",
@@ -778,6 +779,8 @@
     ],
     "events": [
       "session_start",
+      "session_switch",
+      "session_tree",
       "tool_result"
     ],
     "docs": {
@@ -807,7 +810,7 @@
     "entry": "extensions/sf-herdr/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 647
+    "srcLoc": 656
   },
   {
     "id": "sf-integrate",
@@ -865,7 +868,7 @@
     "entry": "extensions/sf-integrate/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 4853
+    "srcLoc": 4934
   },
   {
     "id": "sf-llm-gateway",
@@ -885,10 +888,12 @@
     "tools": [],
     "events": [
       "session_start",
+      "session_switch",
+      "session_tree",
       "message_end",
       "session_before_compact",
+      "turn_start",
       "turn_end",
-      "model_select",
       "after_provider_response",
       "session_shutdown"
     ],
@@ -935,7 +940,7 @@
     "entry": "extensions/sf-llm-gateway/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 11502
+    "srcLoc": 12334
   },
   {
     "id": "sf-lsp",
@@ -1044,7 +1049,10 @@
     ],
     "events": [
       "session_start",
-      "before_agent_start"
+      "session_switch",
+      "session_tree",
+      "before_agent_start",
+      "tool_call"
     ],
     "docs": {
       "intentGroup": "Personalize pi",
@@ -1054,14 +1062,14 @@
         "index.ts",
         "lib/sf-mcp-tool.ts",
         "lib/hosted-org-binding.ts",
-        "lib/config-panel.ts",
-        "lib/presets.ts",
         "lib/service.ts",
         "lib/tool-conflicts.ts",
-        "lib/tool-policy.ts"
+        "lib/tool-policy.ts",
+        "lib/mcp-config.ts",
+        "lib/native-exposure.ts"
       ],
       "stateFiles": [
-        "~/.pi/agent/mcp.json or <cwd>/.pi/mcp.json (Pi-native MCP configuration)",
+        "<globalAgentDir>/mcp.json or <cwd>/.omp/mcp.json (host-native MCP configuration; .pi/mcp.json on Pi)",
         "<globalAgentDir>/sf-pi/sf-mcp/managed-presets.json",
         "<cwd>/.pi/sf-mcp/managed-presets.json"
       ],
@@ -1084,6 +1092,7 @@
         "Headless 360 target_org planning succeeds only when protected-resource and OpenID discovery resolve to the explicit org's trusted My Domain. The org identity, endpoint proof, and per-org server name are source-bound and privately persisted with the managed fingerprint.",
         "Multiple instances can share one reviewed preset without sharing Pi OAuth credentials. Ambiguous instance actions require connection_name and legacy singleton entries remain unbound until explicitly verified.",
         "Exact tool conflict recommendations change only MCP exposure; SF MCP never disables an SF Pi capability owner automatically.",
+        "OMP loads native mcp.json entries but ignores Pi exposure fields, so SF MCP itself removes policy-hidden MCP tools from the active set and blocks their tool calls.",
         "Observed additions remain locked hidden until a reviewed preset revision approves them; removed documented tools are unavailable and can be repaired to Hidden on unchanged managed entries.",
         "Agentforce Sales is sandbox-only and experimental in SF Pi; its secret is an environment reference and every operation remains Guardrail-mediated and fail-closed without exact OAuth-org identity.",
         "Standalone Tableau uses Pi-native OAuth against Tableau's managed endpoint; Trailhead uses its published no-auth, read-only public-content endpoint.",
@@ -1098,7 +1107,7 @@
     "entry": "extensions/sf-mcp/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 10267
+    "srcLoc": 10553
   },
   {
     "id": "sf-ohana-spinner",
@@ -1132,7 +1141,7 @@
     "entry": "extensions/sf-ohana-spinner/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 377
+    "srcLoc": 382
   },
   {
     "id": "sf-pi-manager",
@@ -1151,12 +1160,14 @@
     "events": [
       "session_start",
       "agent_start",
-      "agent_settled",
+      "agent_end",
+      "session_switch",
+      "session_tree",
       "session_shutdown"
     ],
     "docs": {
       "intentGroup": "Personalize pi",
-      "summary": "Core manager for the sf-pi package. Provides /sf-pi list/enable/disable/status/display/recommended/announcements/skills/doctor/auto-update commands plus the interactive TUI overlay and settings panel. Doctor includes a bounded, read-only synthetic-DNS compatibility check for the recommended pi-web-access package without changing third-party security configuration. Pi runtime updates remain user-managed, with newer stable 1.x releases loading in forward-compatibility mode. Opt-in Auto Update waits for a non-aborted agent_settled boundary, updates only declared-compatible unpinned global npm Pi packages through Pi, and runs the independent Salesforce CLI stable update. alwaysActive: enable/disable is mediated through this extension only.",
+      "summary": "Core manager for the sf-pi package. Provides /sf-pi list/enable/disable/status/display/recommended/announcements/skills/doctor/auto-update commands plus the interactive TUI overlay and settings panel. Doctor includes a bounded, read-only synthetic-DNS compatibility check for the recommended pi-web-access package without changing third-party security configuration. Pi runtime updates remain user-managed, with newer stable 1.x releases loading in forward-compatibility mode. Opt-in Auto Update waits for a non-aborted terminal agent_end (settled turn), updates only declared-compatible unpinned global npm Pi packages through Pi, and runs the independent Salesforce CLI stable update. Under OMP it instead fast-forwards the sf-omp git checkout (git pull --ff-only + npm ci, only when cleanly behind its upstream) and reports recommended Pi packages as unsupported because the launcher loads extensions explicit-only. alwaysActive: enable/disable is mediated through this extension only; under OMP it is stored as native disabledExtensions in OMP YAML config and applies on the next OMP start.",
       "primaryFiles": [
         "index.ts",
         "lib/overlay.ts",
@@ -1167,7 +1178,8 @@
         "lib/config-panel.ts"
       ],
       "stateFiles": [
-        "~/.pi/agent/settings.json (sf-pi package filter list)",
+        "~/.pi/agent/settings.json (sf-pi package filter list, Pi host)",
+        "<agentDir>/config.yml or <cwd>/.omp/config.yml disabledExtensions (OMP host)",
         "<globalAgentDir>/state/sf-pi/recommendations.json",
         "<globalAgentDir>/state/sf-pi/announcements.json",
         "<globalAgentDir>/sf-pi/auto-update/status.json",
@@ -1178,13 +1190,14 @@
         "Auto Update is opt-in, interactive-session only, deferred after aborted settlements, machine-locked, abortable, and output-redacted; it never performs an unbounded Pi self-update.",
         "Recommended-package compatibility diagnostics are explicit-command, bounded, and read-only; they never weaken or rewrite third-party security settings.",
         "Package automation is limited to outdated unpinned global npm packages with declared active Pi/Node compatibility; pinned, local, git, project, incompatible, and unverifiable packages are skipped.",
+        "On OMP, checkout automation only fast-forwards a clean, attached branch strictly behind its upstream; dirty, detached, ahead, diverged, and upstream-less checkouts are left untouched, and no pi or plugin installer runs.",
         "alwaysActive cannot be disabled through the standard toggle action."
       ]
     },
     "entry": "extensions/sf-pi-manager/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 4961
+    "srcLoc": 5450
   },
   {
     "id": "sf-planreview",
@@ -1272,7 +1285,7 @@
     "entry": "extensions/sf-skills/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 5975
+    "srcLoc": 5988
   },
   {
     "id": "sf-slack",
@@ -1340,7 +1353,7 @@
     "entry": "extensions/sf-slack/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 12425
+    "srcLoc": 12465
   },
   {
     "id": "sf-soql",
@@ -1415,7 +1428,9 @@
     ],
     "events": [
       "session_start",
-      "session_shutdown"
+      "session_shutdown",
+      "session_switch",
+      "session_tree"
     ],
     "docs": {
       "intentGroup": "Build apps",
@@ -1462,7 +1477,7 @@
     "entry": "extensions/sf-tldraw/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 4617
+    "srcLoc": 4636
   },
   {
     "id": "sf-welcome",
@@ -1508,6 +1523,6 @@
     "entry": "extensions/sf-welcome/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 6462
+    "srcLoc": 6486
   }
 ]

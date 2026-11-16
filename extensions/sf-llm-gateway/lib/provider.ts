@@ -1,15 +1,13 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Complete Pi Provider runtime for SF LLM Gateway. */
-import {
-  createProvider,
-  lazyStream,
-  type Api,
-  type AssistantMessageEventStream,
-  type Model,
-  type Provider,
-  type ProviderStreams,
-  type RefreshModelsContext,
-  type StreamOptions,
+import type {
+  Api,
+  AssistantMessageEventStream,
+  Model,
+  Provider,
+  ProviderStreams,
+  RefreshModelsContext,
+  StreamOptions,
 } from "@earendil-works/pi-ai";
 import type {
   ExtensionContext,
@@ -40,6 +38,8 @@ import {
   GatewayModelDiscoveryError,
   type GatewayModelIdDiscovery,
 } from "./models-internal/fetchers.ts";
+import { createProvider, lazyStream } from "./host-compat.ts";
+import { asOmpModelRegistry } from "./host-registry.ts";
 import {
   GATEWAY_RESOLVED_ROOT_ENV,
   createGatewayProviderAuth,
@@ -97,8 +97,13 @@ export interface GatewayProviderDependencies {
 }
 
 export interface GatewayProviderRuntime {
-  provider: Provider<GatewayApi>;
+  /** Pi complete Provider; created on first access and unavailable on OMP. */
+  readonly provider: Provider<GatewayApi>;
   authController: GatewayProviderAuthController;
+  /** Policy-guarded, endpoint-routed streams per real Gateway API. */
+  apiStreams: Record<GatewayApi, ProviderStreams>;
+  /** Authenticated discovery with exact catalog admission; records diagnostics. */
+  discoverModels(apiKey: string, root: string, signal?: AbortSignal): Promise<Model<GatewayApi>[]>;
   bind(
     cwd: string,
     ui: ExtensionUIContext,
@@ -181,11 +186,11 @@ function guardStreams(streams: ProviderStreams): ProviderStreams {
 function createApiMap(
   streams: GatewayStreamImplementations,
   priorityEnabled: () => boolean,
-): Partial<Record<GatewayApi, ProviderStreams>> {
+): Record<GatewayApi, ProviderStreams> {
   const map = createRoutedApiMap(streams, priorityEnabled);
   return Object.fromEntries(
     Object.entries(map).map(([api, apiStreams]) => [api, guardStreams(apiStreams)]),
-  ) as Partial<Record<GatewayApi, ProviderStreams>>;
+  ) as Record<GatewayApi, ProviderStreams>;
 }
 
 function createRoutedApiMap(
@@ -270,16 +275,17 @@ export function createGatewayProviderRuntime(
     modelIds: [],
     source: "empty",
   };
-  const fetchModels = async (
-    context: RefreshModelsContext,
-  ): Promise<readonly Model<GatewayApi>[]> => {
-    const { apiKey, root } = requireRefreshConfig(context);
+  const discoverModels = async (
+    apiKey: string,
+    root: string,
+    signal?: AbortSignal,
+  ): Promise<Model<GatewayApi>[]> => {
     try {
       const [modelIdDiscovery, detailedModelInfo] = await Promise.all([
-        fetchers.modelIds(root, apiKey, context.signal),
-        fetchers.modelInfo(root, apiKey, context.signal),
+        fetchers.modelIds(root, apiKey, signal),
+        fetchers.modelInfo(root, apiKey, signal),
       ]);
-      if (context.signal?.aborted) throw new Error("Gateway model refresh aborted.");
+      if (signal?.aborted) throw new Error("Gateway model refresh aborted.");
       const modelInfo = mergeGatewayModelInfoMaps(modelIdDiscovery.modelInfo, detailedModelInfo);
       const callableIds = filterCallableDiscoveredModelIds(modelIdDiscovery.ids);
       const catalogBackedIds = callableIds.filter(
@@ -333,7 +339,7 @@ export function createGatewayProviderRuntime(
       };
       return models;
     } catch (error) {
-      if (context.signal?.aborted) throw error;
+      if (signal?.aborted) throw error;
       const sanitized = sanitizedRefreshError(error);
       lastDiscovery = {
         ...lastDiscovery,
@@ -343,6 +349,12 @@ export function createGatewayProviderRuntime(
       // eslint-disable-next-line preserve-caught-error -- redaction intentionally drops the cause.
       throw new Error(sanitized);
     }
+  };
+  const fetchModels = async (
+    context: RefreshModelsContext,
+  ): Promise<readonly Model<GatewayApi>[]> => {
+    const { apiKey, root } = requireRefreshConfig(context);
+    return discoverModels(apiKey, root, context.signal);
   };
 
   let activeCwd: string | undefined;
@@ -354,14 +366,7 @@ export function createGatewayProviderRuntime(
       Boolean(activeCwd) && projectTrusted(),
     ).enabled;
 
-  const nativeProvider = createProvider<GatewayApi>({
-    id: PROVIDER_NAME,
-    name: PROVIDER_DISPLAY_NAME,
-    auth: { apiKey: authController.auth },
-    models: baseline,
-    fetchModels,
-    api: createApiMap(streams, priorityEnabled),
-  });
+  const apiStreams = createApiMap(streams, priorityEnabled);
   const admitted = <TModel extends { id: string; api: string; compat?: object }>(
     models: readonly TModel[],
   ): TModel[] =>
@@ -373,23 +378,55 @@ export function createGatewayProviderRuntime(
           ? { ...model, compat: { ...model.compat, ...portableCompat } }
           : model;
       });
-  const provider: Provider<GatewayApi> = {
-    ...nativeProvider,
-    // Pi restores the last persisted dynamic catalog before network refresh.
-    // Apply the same admission policy to restored entries so retired or
-    // deployment-only IDs disappear immediately, including offline startup.
-    // Pi composes a models.json overlay from getAllModels(), so both views
-    // must apply the policy.
-    getModels() {
-      return admitted(nativeProvider.getModels());
-    },
-    getAllModels() {
-      return admitted(nativeProvider.getAllModels?.() ?? nativeProvider.getModels());
-    },
+  let piProvider: Provider<GatewayApi> | undefined;
+  const getPiProvider = (): Provider<GatewayApi> => {
+    if (piProvider) return piProvider;
+    if (!createProvider) throw new Error("This host registers the Gateway by provider config.");
+    const nativeProvider = createProvider<GatewayApi>({
+      id: PROVIDER_NAME,
+      name: PROVIDER_DISPLAY_NAME,
+      auth: { apiKey: authController.auth },
+      models: baseline,
+      fetchModels,
+      api: apiStreams,
+    });
+    piProvider = {
+      ...nativeProvider,
+      // Pi restores the last persisted dynamic catalog before network refresh.
+      // Apply the same admission policy to restored entries so retired or
+      // deployment-only IDs disappear immediately, including offline startup.
+      // Pi composes a models.json overlay from getAllModels(), so both views
+      // must apply the policy.
+      getModels() {
+        return admitted(nativeProvider.getModels());
+      },
+      getAllModels() {
+        return admitted(nativeProvider.getAllModels?.() ?? nativeProvider.getModels());
+      },
+    };
+    return piProvider;
+  };
+
+  // OMP owns the restored/discovered catalog; read the bound session registry.
+  let boundRegistry: ModelRegistry | undefined;
+  const currentModelIds = (): string[] => {
+    if (createProvider)
+      return getPiProvider()
+        .getModels()
+        .map((model) => model.id);
+    const models = asOmpModelRegistry(boundRegistry)?.getAll() ?? [];
+    return models
+      .filter(
+        (model) =>
+          model.provider === PROVIDER_NAME &&
+          isGatewayModelIdAllowed(model.id) &&
+          isCatalogBackedModelId(model.id),
+      )
+      .map((model) => model.id);
   };
 
   const resetSessionDiagnostics = () => {
-    const currentIds = provider.getModels().map((model) => model.id);
+    const currentIds = currentModelIds();
     lastDiscovery = {
       modelIds: currentIds,
       source: currentIds.length === 0 ? "empty" : "cache",
@@ -397,22 +434,28 @@ export function createGatewayProviderRuntime(
   };
 
   return {
-    provider,
+    get provider() {
+      return getPiProvider();
+    },
+    apiStreams,
+    discoverModels,
     authController,
     bind(cwd, ui, mode, modelRegistry, isProjectTrusted = () => false) {
       activeCwd = cwd;
       projectTrusted = isProjectTrusted;
+      boundRegistry = modelRegistry;
       resetSessionDiagnostics();
       authController.bind(cwd, ui, mode, modelRegistry);
     },
     clear() {
       activeCwd = undefined;
       projectTrusted = () => false;
+      boundRegistry = undefined;
       authController.clear();
       resetSessionDiagnostics();
     },
     getLastDiscovery() {
-      const currentIds = provider.getModels().map((model) => model.id);
+      const currentIds = currentModelIds();
       const source =
         lastDiscovery.source === "empty" && currentIds.length > 0 ? "cache" : lastDiscovery.source;
       return {

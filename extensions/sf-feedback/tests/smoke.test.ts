@@ -48,7 +48,7 @@ describe("sf-feedback", () => {
     expect(typeof mod.default).toBe("function");
   });
 
-  it("registers human-only entry rendering instead of message rendering", async () => {
+  it("restores human-only output through session hooks, never transcript renderers", async () => {
     const mod = await import("../index.ts");
     const pi = {
       events: eventBus(),
@@ -60,7 +60,13 @@ describe("sf-feedback", () => {
 
     mod.default(pi as never);
 
-    expect(pi.registerEntryRenderer).toHaveBeenCalledWith("sf-feedback", expect.any(Function));
+    // OMP has no entry renderers: the shared helper re-shows the last report as a widget.
+    expect(pi.on.mock.calls.map(([event]) => event)).toEqual([
+      "session_start",
+      "session_switch",
+      "session_tree",
+    ]);
+    expect(pi.registerEntryRenderer).not.toHaveBeenCalled();
     expect(pi.registerMessageRenderer).not.toHaveBeenCalled();
   });
 

@@ -31,6 +31,7 @@ import type {
 } from "./monthly-usage.ts";
 import { formatProviderSignalBadge, getActiveProviderSignal } from "./provider-telemetry.ts";
 import { glyph, resolveGlyphMode } from "../../../lib/common/glyph-policy.ts";
+import { getProviderAuthStatus } from "./host-registry.ts";
 
 // Re-exported so callers outside the gateway extension (and tests) can import
 // the badge formatter from the status surface without reaching into the
@@ -89,7 +90,7 @@ export function buildStatusReport(
   const activeModel = getActiveModelDefinition(ctx.model?.id, state.discovery?.modelIds);
   const contextUsage = ctx.getContextUsage();
   const discovery = state.discovery;
-  const authStatus = ctx.modelRegistry.getProviderAuthStatus(PROVIDER_NAME);
+  const authStatus = getProviderAuthStatus(ctx.modelRegistry, PROVIDER_NAME);
   const authDescription = authStatus.configured
     ? `configured (${authStatus.label ?? authStatus.source ?? "provider auth"})`
     : "missing";

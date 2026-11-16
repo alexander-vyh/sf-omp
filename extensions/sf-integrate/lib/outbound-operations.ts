@@ -338,14 +338,33 @@ export async function verifyOutboundSetup(
   );
 }
 
+/** Exact `sf_apex` arguments for the bounded GET probe; shared by delegation and handoff. */
+export function outboundProbeApexArguments(targetOrg: string | undefined, body: string) {
+  return {
+    action: "anon.run",
+    target_org: targetOrg,
+    body,
+    allow_mutation: false,
+    output_mode: "summary",
+  } as const;
+}
+
+/**
+ * Run the bounded GET probe through `executeApex`. Hosts without nested tool
+ * execution (OMP) pass `undefined`; the result is then an untested handoff of
+ * the exact `sf_apex` call for the agent to run, so SF Guardrail still mediates it.
+ */
 export async function testOutboundConnection(
   params: SfIntegrateParams,
   session: SalesforceSession,
-  executeApex: (body: string) => Promise<unknown>,
+  executeApex: ((body: string) => Promise<unknown>) | undefined,
 ): Promise<ToolResult> {
   const namedCredentialName = requireApiName(params.named_credential_name, "named_credential_name");
   const testPath = requireTestPath(params.test_path ?? "/");
   const body = safeGetProbeBody(namedCredentialName, testPath);
+  if (!executeApex) {
+    return outboundProbeHandoff(params, session, namedCredentialName, testPath, body);
+  }
   const nested = (await executeApex(body)) as {
     isError?: boolean;
     details?: { ok?: unknown };
@@ -397,6 +416,69 @@ export async function testOutboundConnection(
     },
     { direction: "outbound", named_credential_name: namedCredentialName, test_path: testPath },
   );
+}
+
+function outboundProbeHandoff(
+  params: SfIntegrateParams,
+  session: SalesforceSession,
+  namedCredentialName: string,
+  testPath: string,
+  body: string,
+): ToolResult {
+  const target = `callout:${namedCredentialName}${testPath}`;
+  const handoff = {
+    tool: "sf_apex",
+    arguments: outboundProbeApexArguments(params.target_org, body),
+  };
+  const card: SfPiResultCard = {
+    tool: TOOL,
+    title: "Outbound Connection Test · handoff",
+    status: "warning",
+    summary: "Not run: this host cannot call sf_apex from sf_integrate.",
+    scope: [
+      ...orgScope(session),
+      { label: "named cred", value: namedCredentialName, tone: "info" },
+      { label: "path", value: testPath },
+    ],
+    rails: [
+      { label: "API", items: [{ verb: "GET", target, detail: "sf_apex handoff · not run" }] },
+    ],
+    sections: [
+      {
+        icon: "🛡️",
+        title: "Boundaries",
+        rows: [
+          { label: "Method", value: "GET only", tone: "success" },
+          { label: "Result", value: "untested", tone: "warning" },
+        ],
+      },
+    ],
+    next: [
+      "Run sf_apex with details.handoff.arguments; the test passes only if that call succeeds.",
+    ],
+  };
+  return {
+    content: [
+      {
+        type: "text",
+        text: [
+          `NOT RUN: the GET probe through ${target} was not executed because this host cannot call sf_apex from sf_integrate.`,
+          "To test the connection, call sf_apex with exactly these arguments; it passes only if that call succeeds:",
+          JSON.stringify(handoff.arguments, null, 2),
+        ].join("\n"),
+      },
+    ],
+    details: {
+      ok: false,
+      action: "connection.test",
+      card,
+      tested: false,
+      handoff,
+      direction: "outbound",
+      named_credential_name: namedCredentialName,
+      test_path: testPath,
+    },
+  };
 }
 
 function currentPlan(

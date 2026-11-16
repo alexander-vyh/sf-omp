@@ -40,6 +40,8 @@ import {
   recordDecision,
   type RecommendationsState,
 } from "../../../lib/common/catalog-state/recommendations-state.ts";
+import { isOmpHost } from "../../../lib/common/pi-compat.ts";
+import { OMP_UNSUPPORTED_REASON, renderOmpRecommendations } from "./omp-recommendations.ts";
 
 export type RecommendedSubcommand = "overlay" | "list" | "install" | "remove" | "status";
 
@@ -99,13 +101,26 @@ export function parseRecommendedArgs(raw: string): RecommendedArgs {
 // -------------------------------------------------------------------------------------------------
 
 export async function handleRecommended(
-  _pi: ExtensionAPI,
+  pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
   packageVersion: string,
   packageRoot: string,
   args: RecommendedArgs,
 ): Promise<void> {
   const manifest = loadRecommendationsManifest(packageRoot);
+
+  if (isOmpHost(pi)) {
+    // Nothing the Manager can install would load under the sf-omp launcher.
+    if (args.subcommand === "install" || args.subcommand === "remove") {
+      ctx.ui.notify(
+        `/sf-pi recommended ${args.subcommand} is not supported under sf-omp. ${OMP_UNSUPPORTED_REASON}\n\n${renderOmpRecommendations(manifest)}`,
+        "warning",
+      );
+      return;
+    }
+    ctx.ui.notify(renderOmpRecommendations(manifest), "info");
+    return;
+  }
 
   switch (args.subcommand) {
     case "overlay":
@@ -187,7 +202,8 @@ async function handleOverlay(
   const configuredSources = collectSettingsPackageSources(ctx.cwd);
   const rows = buildRecommendationRows(manifest, state, configuredSources);
 
-  ctx.ui.setWorkingVisible(false);
+  // OMP's UI context has no setWorkingVisible; Pi hides its loader row here.
+  ctx.ui.setWorkingVisible?.(false);
   let result: RecommendationsOverlayResult | undefined;
   try {
     result = await ctx.ui.custom<RecommendationsOverlayResult | undefined>(
@@ -203,7 +219,7 @@ async function handleOverlay(
       },
     );
   } finally {
-    ctx.ui.setWorkingVisible(true);
+    ctx.ui.setWorkingVisible?.(true);
   }
 
   // Always mark the revision as seen once the overlay opened, even on cancel.

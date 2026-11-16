@@ -12,6 +12,7 @@ import {
   type AutoUpdateStatus,
 } from "../../../lib/common/auto-update/store.ts";
 import { runNativeAutoUpdate } from "./auto-update-runner.ts";
+import { isOmpRuntime } from "../../../lib/common/pi-compat.ts";
 
 export { runNativeAutoUpdate } from "./auto-update-runner.ts";
 
@@ -64,13 +65,22 @@ export async function handleAutoUpdate(
       [
         "Usage: /sf-pi auto-update [status|on|off|run]",
         "",
-        "Native Auto Update is opt-in. Due work waits for Pi's next agent_settled boundary.",
+        "Native Auto Update is opt-in. Due work waits for the next terminal agent_end (settled turn).",
         "First-party targets:",
-        "  1. Pi runtime updates remain user-managed; stable pre-2.0 releases are loadable",
-        "  2. compatibility preflight + pi update --extension <source> --no-approve",
-        "  3. sf update stable",
-        "Outdated, compatible, unpinned global npm packages such as Herdr are eligible.",
-        "Pinned, local, git, project, incompatible, and unverifiable packages remain untouched.",
+        ...(isOmpRuntime()
+          ? [
+              "  1. OMP runtime is pinned by the sf-omp checkout lockfile",
+              "  2. sf-omp checkout: git fetch upstream; when cleanly behind, git pull --ff-only + npm ci",
+              "  3. sf update stable",
+              "Dirty, detached, ahead, diverged, or upstream-less checkouts are reported and left untouched.",
+            ]
+          : [
+              "  1. Pi runtime updates remain user-managed; stable pre-2.0 releases are loadable",
+              "  2. compatibility preflight + pi update --extension <source> --no-approve",
+              "  3. sf update stable",
+              "Outdated, compatible, unpinned global npm packages such as Herdr are eligible.",
+              "Pinned, local, git, project, incompatible, and unverifiable packages remain untouched.",
+            ]),
       ].join("\n"),
       "info",
     );
@@ -89,7 +99,7 @@ export function renderAutoUpdateStatus(
     `Auto Update: ${enabled ? "on" : "off"}`,
     `Last run: ${status.lastRunAt ?? "never"}`,
     `Last result: ${status.lastResult ?? "—"}`,
-    status.pending ? "Pending: waiting for agent_settled" : undefined,
+    status.pending ? "Pending: waiting for a settled agent turn" : undefined,
     status.running ? `Running: ${status.currentTarget ?? "update"}` : undefined,
     status.restartRecommended ? "Restart recommended: yes" : undefined,
     status.message ? `Message: ${status.message}` : undefined,

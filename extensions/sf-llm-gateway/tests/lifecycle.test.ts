@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type * as PiCompatModule from "../../../lib/common/pi-compat.ts";
 
 const monthlyUsageMock = vi.hoisted(() => {
   const unregisters: Array<ReturnType<typeof vi.fn>> = [];
@@ -89,6 +90,12 @@ const providerTelemetryMock = vi.hoisted(() => ({
 }));
 vi.mock("../lib/provider-telemetry.ts", () => providerTelemetryMock);
 
+const hostMock = vi.hoisted(() => ({ omp: false }));
+vi.mock("../../../lib/common/pi-compat.ts", async (importOriginal) => {
+  const original = await importOriginal<typeof PiCompatModule>();
+  return { ...original, isOmpHost: () => hostMock.omp };
+});
+
 interface FakePi {
   events: EventEmitter;
   handlers: Record<string, Array<(event: unknown, ctx: ExtensionContext) => Promise<void> | void>>;
@@ -133,9 +140,15 @@ function makeCtx(cwd: string): ExtensionContext {
       getAvailable: vi.fn(() => []),
       refresh: vi.fn(async () => undefined),
     },
+    sessionManager: { getBranch: vi.fn(() => []) },
     isProjectTrusted: () => true,
-    ui: { notify: vi.fn(), setStatus: vi.fn() },
+    ui: { notify: vi.fn(), setStatus: vi.fn(), setWidget: vi.fn() },
   } as unknown as ExtensionContext;
+}
+
+/** Run every handler the extension registered for an event, in registration order. */
+async function emit(pi: FakePi, event: string, payload: unknown, ctx: ExtensionContext) {
+  for (const handler of pi.handlers[event] ?? []) await handler(payload, ctx);
 }
 
 describe("gateway extension lifecycle", () => {
@@ -182,14 +195,46 @@ describe("gateway extension lifecycle", () => {
     expect(pi.unregisterProvider).not.toHaveBeenCalled();
   });
 
-  it("registers human-only entry rendering instead of message rendering", async () => {
+  it("registers by provider name and config on OMP", async () => {
+    hostMock.omp = true;
+    try {
+      const { default: extension } = await import("../index.ts");
+      const pi = makeFakePi();
+
+      extension(pi as never);
+
+      const calls = pi.registerProvider.mock.calls as Array<[string, Record<string, unknown>]>;
+      expect(calls.map(([name]) => name)).toEqual(Array(4).fill("sf-llm-gateway"));
+      expect(calls.slice(0, 3).map(([, config]) => config.api)).toEqual([
+        "sf-llm-gateway-anthropic-messages",
+        "sf-llm-gateway-openai-completions",
+        "sf-llm-gateway-openai-responses",
+      ]);
+      const [, main] = calls[3] ?? [];
+      expect(main).toMatchObject({
+        oauth: { name: "SF LLM Gateway API key" },
+        fetchDynamicModels: expect.any(Function),
+      });
+      expect(pi.registerProvider).not.toHaveBeenCalledWith(providerRuntimeMock.provider);
+    } finally {
+      hostMock.omp = false;
+    }
+  });
+
+  it("restores human-only command output on session events instead of message rendering", async () => {
     const { default: extension } = await import("../index.ts");
     const pi = makeFakePi();
 
     extension(pi as never);
 
-    expect(pi.registerEntryRenderer).toHaveBeenCalledWith("sf-llm-gateway", expect.any(Function));
+    expect(pi.handlers.session_switch).toHaveLength(1);
+    expect(pi.handlers.session_tree).toHaveLength(1);
     expect(pi.registerMessageRenderer).not.toHaveBeenCalled();
+
+    const ctx = makeCtx(mkdtempSync(join(tmpdir(), "sf-pi-gateway-human-output-")));
+    await emit(pi, "session_switch", { type: "session_switch" }, ctx);
+    expect(ctx.sessionManager.getBranch).toHaveBeenCalled();
+    expect(ctx.ui.setWidget).toHaveBeenCalledWith("sf-llm-gateway", undefined);
   });
 
   it("does not register a Gateway-owned beta header hook", async () => {
@@ -255,7 +300,7 @@ describe("gateway extension lifecycle", () => {
       id: "example-model",
     };
 
-    await pi.handlers.session_start?.[0]?.({ type: "session_start", reason: "startup" }, ctx);
+    await emit(pi, "session_start", { type: "session_start", reason: "startup" }, ctx);
     await vi.advanceTimersByTimeAsync(3_000);
 
     expect(ctx.ui.setStatus).toHaveBeenCalled();
@@ -267,26 +312,37 @@ describe("gateway extension lifecycle", () => {
     expect(monthlyUsageMock.refreshMonthlyUsage).toHaveBeenCalledWith(false, cwd);
   });
 
-  it.each(["set", "cycle", "restore"] as const)(
-    "does not mutate thinking when a Gateway model is selected via %s",
-    async (source) => {
-      const { default: extension } = await import("../index.ts");
-      const pi = makeFakePi();
-      extension(pi as never);
-      const ctx = makeCtx(mkdtempSync(join(tmpdir(), "sf-pi-gateway-thinking-")));
+  it("does not mutate thinking when a Gateway model becomes active", async () => {
+    const { default: extension } = await import("../index.ts");
+    const pi = makeFakePi();
+    extension(pi as never);
+    const ctx = makeCtx(mkdtempSync(join(tmpdir(), "sf-pi-gateway-thinking-")));
+    (ctx as { model?: unknown }).model = {
+      provider: "sf-llm-gateway",
+      id: "example-reasoning-model",
+    };
 
-      await pi.handlers.model_select?.[0]?.(
-        {
-          type: "model_select",
-          model: { provider: "sf-llm-gateway", id: "example-reasoning-model" },
-          source,
-        },
-        ctx,
-      );
+    await emit(pi, "turn_start", { type: "turn_start", turnIndex: 0, timestamp: 0 }, ctx);
 
-      expect(pi.setThinkingLevel).not.toHaveBeenCalled();
-    },
-  );
+    expect(ctx.ui.setStatus).toHaveBeenCalled();
+    expect(pi.setThinkingLevel).not.toHaveBeenCalled();
+  });
+
+  it("repaints on turn start only after the active model changes", async () => {
+    const { default: extension } = await import("../index.ts");
+    const pi = makeFakePi();
+    extension(pi as never);
+    const ctx = makeCtx(mkdtempSync(join(tmpdir(), "sf-pi-gateway-model-change-")));
+    const event = { type: "turn_start", turnIndex: 0, timestamp: 0 };
+
+    await emit(pi, "turn_start", event, ctx);
+    await emit(pi, "turn_start", event, ctx);
+    expect(ctx.modelRegistry.getAvailable).toHaveBeenCalledTimes(1);
+
+    (ctx as { model?: unknown }).model = { provider: "sf-llm-gateway", id: "example-model" };
+    await emit(pi, "turn_start", event, ctx);
+    expect(ctx.modelRegistry.getAvailable).toHaveBeenCalledTimes(2);
+  });
 
   it.each(["low", undefined])(
     "preserves a %s Pi thinking default without rewriting an undiscovered Gateway model",
@@ -311,7 +367,7 @@ describe("gateway extension lifecycle", () => {
         id: "example-model",
       };
 
-      await pi.handlers.session_start?.[0]?.({ type: "session_start", reason: "startup" }, ctx);
+      await emit(pi, "session_start", { type: "session_start", reason: "startup" }, ctx);
 
       expect(pi.setThinkingLevel).not.toHaveBeenCalled();
       expect(settings.defaultModel).toBe("example-model-v1");
@@ -333,12 +389,13 @@ describe("gateway extension lifecycle", () => {
 
     const cwd = mkdtempSync(join(tmpdir(), "sf-pi-gateway-lifecycle-"));
     const ctx = makeCtx(cwd);
-    const start = pi.handlers.session_start?.[0];
-    const shutdown = pi.handlers.session_shutdown?.[0];
-    expect(start).toBeDefined();
-    expect(shutdown).toBeDefined();
+    expect(pi.handlers.session_start?.length).toBeGreaterThan(0);
+    expect(pi.handlers.session_shutdown?.length).toBeGreaterThan(0);
+    const start = () => emit(pi, "session_start", { type: "session_start" }, ctx);
+    const shutdown = () =>
+      emit(pi, "session_shutdown", { type: "session_shutdown", reason: "resume" }, ctx);
 
-    await start?.({ type: "session_start" }, ctx);
+    await start();
     expect(providerRuntimeMock.bind).toHaveBeenCalledWith(
       cwd,
       ctx.ui,
@@ -348,11 +405,11 @@ describe("gateway extension lifecycle", () => {
     );
     expect(monthlyUsageMock.registerGatewayMonthlyUsageRefresher).toHaveBeenCalledTimes(1);
 
-    await shutdown?.({ type: "session_shutdown", reason: "resume" }, ctx);
+    await shutdown();
     expect(providerRuntimeMock.clear).toHaveBeenCalledTimes(1);
     expect(monthlyUsageMock.unregisters[0]).toHaveBeenCalledTimes(1);
 
-    await start?.({ type: "session_start" }, ctx);
+    await start();
     expect(providerRuntimeMock.bind).toHaveBeenCalledTimes(2);
     expect(monthlyUsageMock.registerGatewayMonthlyUsageRefresher).toHaveBeenCalledTimes(2);
   });

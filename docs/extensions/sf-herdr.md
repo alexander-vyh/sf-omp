@@ -48,7 +48,7 @@ Open its Manager detail or change its package state with:
 - **Commands:** `/sf-herdr`
 - **LLM tools:** `sf_herdr_plan`
 - **Providers:** _none_
-- **Events/hooks:** `session_start`, `tool_result`
+- **Events/hooks:** `session_start`, `session_switch`, `session_tree`, `tool_result`
 
 </details>
 

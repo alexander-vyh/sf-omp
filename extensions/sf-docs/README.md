@@ -49,10 +49,10 @@ explain actions always request citations.
 Project values override global values, then extension defaults.
 
 Use `/login sf-docs` to enter an internally supplied docs endpoint URL followed
-by the access token through SF Pi's fixed-mask credential input. Pi persists the
-API-key credential with the endpoint and owns logout. SF Docs ships with no
-default endpoint or token. `SF_DOCS_MCP_TOKEN` and `SF_DOCS_MCP_ENDPOINT`
-remain the non-persisted automation overrides.
+by the access token in OMP's masked login prompt. OMP stores the token with the
+endpoint in its credential store (`agent.db`), and `/logout sf-docs` removes
+them. SF Docs ships with no default endpoint or token. `SF_DOCS_MCP_TOKEN` and
+`SF_DOCS_MCP_ENDPOINT` remain the non-persisted automation overrides.
 
 ## Safety and Data Boundaries
 
@@ -76,8 +76,8 @@ release-note recovery live in [`AGENT_GUIDE.md`](./AGENT_GUIDE.md).
 
 **SF Docs is not configured:** Run `/sf-docs connect`, submit the prefilled
 native login command, enter the internally supplied docs endpoint URL, and paste
-the access token into the fixed-mask prompt. For automation, set both
-`SF_DOCS_MCP_TOKEN` and `SF_DOCS_MCP_ENDPOINT` before starting Pi.
+the access token into OMP's masked prompt. For automation, set both
+`SF_DOCS_MCP_TOKEN` and `SF_DOCS_MCP_ENDPOINT` before starting OMP.
 
 **Collections look stale:** Run `/sf-docs refresh` or request `collections` with
 `refresh=true`.

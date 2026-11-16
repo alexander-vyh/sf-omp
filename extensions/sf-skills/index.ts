@@ -41,6 +41,7 @@ import { SkillsHudComponent } from "./lib/hud-component.ts";
 import {
   buildSkillsHudState,
   formatSkillsHudSummary,
+  ompSkillPromptName,
   type SkillsHudState,
 } from "./lib/skill-state.ts";
 import { requirePiVersion } from "../../lib/common/pi-compat.ts";
@@ -381,7 +382,17 @@ export default function sfSkills(pi: ExtensionAPI) {
     }
   });
 
-  pi.on("message_end", async (_event, ctx) => {
+  pi.on("message_end", async (event, ctx) => {
+    // OMP delivers an explicit `/skill:<name>` as a `skill-prompt` custom
+    // message instead of Pi's `<skill>` user block; count it once here.
+    const ompSkill = ompSkillPromptName(event.message);
+    if (ompSkill) {
+      try {
+        recordSkillInvocation(ompSkill, ctx.cwd);
+      } catch {
+        // Counters are best-effort — never break a turn.
+      }
+    }
     rebuildAndRender(ctx);
   });
 
@@ -435,7 +446,8 @@ export default function sfSkills(pi: ExtensionAPI) {
         }
         // Top-level subcommand: route `defaults ...` into the management
         // dispatcher; everything else stays in the HUD-flavored handler.
-        const head = trimmed.split(/\s+/, 1)[0]?.toLowerCase() ?? "summary";
+        // `"".split()` yields [""], so an empty headless invocation needs `||`.
+        const head = trimmed.split(/\s+/, 1)[0]?.toLowerCase() || "summary";
         if (head === "defaults") {
           const tail = trimmed.slice("defaults".length);
           const parsed = parseDefaultsArgs(

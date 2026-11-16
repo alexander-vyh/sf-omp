@@ -3,13 +3,17 @@
  * Tests for the skill-sources detector + settings writer.
  *
  * Covers disk detection across ~/.claude, ~/.codex, ~/.cursor, the
- * wired-vs-available cross-reference with ~/.pi/agent/settings.json,
- * and the idempotent add/remove semantics of updateSkillSources().
+ * wired-vs-available cross-reference with native OMP YAML
+ * `skills.customDirectories` (global `<agentDir>/config.yml`, project
+ * `<cwd>/.omp/config.yml`), and the idempotent add/remove semantics of
+ * updateSkillSources().
  */
-import { afterEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import * as YAML from "yaml";
 import {
   detectSkillSources,
   updateSkillSources,
@@ -17,7 +21,19 @@ import {
 import { parseSkillsArgs } from "../lib/skill-sources-command.ts";
 
 const originalHome = process.env.HOME;
+const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const tempDirs: string[] = [];
+let agentDir = "";
+
+// Global native settings refuse paths outside this checkout's .runtime directory,
+// so each test gets an isolated agent dir there instead of the real runtime.
+function nativeTestDir(prefix: string): string {
+  const root = fileURLToPath(new URL("../../../.runtime/skill-tests/", import.meta.url));
+  mkdirSync(root, { recursive: true });
+  const dir = mkdtempSync(path.join(root, prefix));
+  tempDirs.push(dir);
+  return dir;
+}
 
 function makeHome(): string {
   const dir = mkdtempSync(path.join(tmpdir(), "sf-skill-sources-home-"));
@@ -25,21 +41,48 @@ function makeHome(): string {
   return dir;
 }
 
-function writeSettings(home: string, body: Record<string, unknown>): string {
-  const filePath = path.join(home, ".pi", "agent", "settings.json");
+function makeCwd(): string {
+  const dir = mkdtempSync(path.join(tmpdir(), "sf-skill-sources-cwd-"));
+  tempDirs.push(dir);
+  return dir;
+}
+
+function globalConfigPath(): string {
+  return path.join(agentDir, "config.yml");
+}
+
+function projectConfigPath(cwd: string): string {
+  return path.join(cwd, ".omp", "config.yml");
+}
+
+function writeConfig(filePath: string, body: Record<string, unknown>): string {
   mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(filePath, `${JSON.stringify(body, null, 2)}\n`, "utf8");
+  writeFileSync(filePath, YAML.stringify(body), "utf8");
   return filePath;
 }
 
-function readSettings(home: string): Record<string, unknown> {
-  const filePath = path.join(home, ".pi", "agent", "settings.json");
-  return JSON.parse(readFileSync(filePath, "utf8"));
+function writeSkillDirectories(filePath: string, customDirectories: string[]): string {
+  return writeConfig(filePath, { skills: { customDirectories } });
 }
+
+function readConfig(filePath: string): Record<string, unknown> {
+  return YAML.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
+}
+
+function customDirectories(filePath: string): unknown {
+  return (readConfig(filePath).skills as { customDirectories?: unknown }).customDirectories;
+}
+
+beforeEach(() => {
+  agentDir = path.join(nativeTestDir("sf-pi-manager-skill-sources-"), "agent");
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+});
 
 afterEach(() => {
   if (originalHome === undefined) delete process.env.HOME;
   else process.env.HOME = originalHome;
+  if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+  else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -51,13 +94,14 @@ describe("detectSkillSources", () => {
     const result = detectSkillSources(home);
     expect(result.candidates).toEqual([]);
     expect(result.staleWired).toEqual([]);
+    expect(result.settingsPath).toBe(globalConfigPath());
   });
 
-  it("detects Claude, Codex, and Cursor roots with skill counts", () => {
+  it("detects Claude, Codex, and Cursor roots with OMP skill counts", () => {
     const home = makeHome();
     process.env.HOME = home;
 
-    // Claude: two dir-based skills, one loose .md
+    // Claude: two dir-based skills, one loose .md (OMP scans child SKILL.md dirs only)
     mkdirSync(path.join(home, ".claude", "skills", "skill-one"), { recursive: true });
     writeFileSync(path.join(home, ".claude", "skills", "skill-one", "SKILL.md"), "---\n");
     mkdirSync(path.join(home, ".claude", "skills", "skill-two"), { recursive: true });
@@ -74,16 +118,16 @@ describe("detectSkillSources", () => {
     expect(labels).toEqual(["Claude Code", "OpenAI Codex"]);
 
     const claude = result.candidates.find((c) => c.label === "Claude Code")!;
-    expect(claude.skillCount).toBe(3);
+    expect(claude.skillCount).toBe(2);
     expect(claude.settingsPath).toBe("~/.claude/skills");
     expect(claude.wired).toBe(false);
   });
 
-  it("flags a root as wired when settings.skills contains the ~-prefixed path", () => {
+  it("flags a root as wired when customDirectories contains the ~-prefixed path", () => {
     const home = makeHome();
     process.env.HOME = home;
     mkdirSync(path.join(home, ".claude", "skills"), { recursive: true });
-    writeSettings(home, { skills: ["~/.claude/skills"] });
+    writeSkillDirectories(globalConfigPath(), ["~/.claude/skills"]);
 
     const result = detectSkillSources(home);
     expect(result.candidates).toHaveLength(1);
@@ -97,7 +141,7 @@ describe("detectSkillSources", () => {
     process.env.HOME = home;
     const absoluteClaude = path.join(home, ".claude", "skills");
     mkdirSync(absoluteClaude, { recursive: true });
-    writeSettings(home, { skills: [absoluteClaude] });
+    writeSkillDirectories(globalConfigPath(), [absoluteClaude]);
 
     const result = detectSkillSources(home);
     expect(result.candidates[0]!.wired).toBe(true);
@@ -106,7 +150,7 @@ describe("detectSkillSources", () => {
   it("reports stale wired entries whose paths no longer exist", () => {
     const home = makeHome();
     process.env.HOME = home;
-    writeSettings(home, { skills: ["~/.claude/skills", "~/some/missing/dir"] });
+    writeSkillDirectories(globalConfigPath(), ["~/.claude/skills", "~/some/missing/dir"]);
 
     const result = detectSkillSources(home);
     expect(result.staleWired).toContain("~/.claude/skills");
@@ -116,20 +160,13 @@ describe("detectSkillSources", () => {
   it("does not inspect project-scope candidates when project scope is excluded", () => {
     const home = makeHome();
     process.env.HOME = home;
-    const cwd = mkdtempSync(path.join(tmpdir(), "sf-skill-sources-cwd-"));
-    tempDirs.push(cwd);
+    const cwd = makeCwd();
     mkdirSync(path.join(cwd, ".claude", "skills", "my-skill"), { recursive: true });
     writeFileSync(
       path.join(cwd, ".claude", "skills", "my-skill", "SKILL.md"),
       "---\nname: my-skill\n---\n",
     );
-    const projectSettingsPath = path.join(cwd, ".pi", "settings.json");
-    mkdirSync(path.dirname(projectSettingsPath), { recursive: true });
-    writeFileSync(
-      projectSettingsPath,
-      `${JSON.stringify({ skills: ["./missing-project-skills"] }, null, 2)}\n`,
-      "utf8",
-    );
+    writeSkillDirectories(projectConfigPath(cwd), ["./missing-project-skills"]);
 
     const result = detectSkillSources({ home, cwd, includeProject: false });
 
@@ -142,8 +179,7 @@ describe("detectSkillSources", () => {
   it("detects project-scope candidates when cwd is supplied", () => {
     const home = makeHome();
     process.env.HOME = home;
-    const cwd = mkdtempSync(path.join(tmpdir(), "sf-skill-sources-cwd-"));
-    tempDirs.push(cwd);
+    const cwd = makeCwd();
     mkdirSync(path.join(cwd, ".claude", "skills", "my-skill"), { recursive: true });
     writeFileSync(
       path.join(cwd, ".claude", "skills", "my-skill", "SKILL.md"),
@@ -153,6 +189,7 @@ describe("detectSkillSources", () => {
     const result = detectSkillSources({ home, cwd });
     const labels = result.candidates.map((c) => c.label);
     expect(labels).toContain("Claude Code (project)");
+    expect(result.projectSettingsPath).toBe(projectConfigPath(cwd));
     const project = result.candidates.find((c) => c.scope === "project");
     expect(project?.skillCount).toBe(1);
     expect(project?.wired).toBe(false);
@@ -161,8 +198,7 @@ describe("detectSkillSources", () => {
   it("distinguishes wiring per scope", () => {
     const home = makeHome();
     process.env.HOME = home;
-    const cwd = mkdtempSync(path.join(tmpdir(), "sf-skill-sources-cwd-"));
-    tempDirs.push(cwd);
+    const cwd = makeCwd();
     // Both global ~/.claude/skills and project ./.claude/skills exist.
     mkdirSync(path.join(home, ".claude", "skills", "global-skill"), { recursive: true });
     writeFileSync(
@@ -176,13 +212,7 @@ describe("detectSkillSources", () => {
     );
 
     // Wire the project candidate in project settings only.
-    const projectSettingsPath = path.join(cwd, ".pi", "settings.json");
-    mkdirSync(path.dirname(projectSettingsPath), { recursive: true });
-    writeFileSync(
-      projectSettingsPath,
-      `${JSON.stringify({ skills: ["./.claude/skills"] }, null, 2)}\n`,
-      "utf8",
-    );
+    writeSkillDirectories(projectConfigPath(cwd), ["./.claude/skills"]);
 
     const result = detectSkillSources({ home, cwd });
     const global = result.candidates.find((c) => c.scope === "global");
@@ -193,51 +223,57 @@ describe("detectSkillSources", () => {
 });
 
 describe("updateSkillSources", () => {
-  it("appends new skills paths to an existing settings file", () => {
+  it("appends new skills paths and preserves unrelated native settings", () => {
     const home = makeHome();
     process.env.HOME = home;
-    writeSettings(home, { packages: ["npm:pi-web-access"], skills: ["~/.existing/skills"] });
+    writeConfig(globalConfigPath(), {
+      setupVersion: 3,
+      skills: { customDirectories: ["~/.existing/skills"], ignoredSkills: ["noisy"] },
+    });
 
     const updated = updateSkillSources({ add: ["~/.claude/skills"], remove: [], home });
+    expect(updated.settingsPath).toBe(globalConfigPath());
     expect(updated.skills).toEqual(["~/.existing/skills", "~/.claude/skills"]);
 
-    const disk = readSettings(home);
-    expect(disk.skills).toEqual(["~/.existing/skills", "~/.claude/skills"]);
-    expect(disk.packages).toEqual(["npm:pi-web-access"]);
+    const disk = readConfig(globalConfigPath());
+    expect(disk.skills).toEqual({
+      customDirectories: ["~/.existing/skills", "~/.claude/skills"],
+      ignoredSkills: ["noisy"],
+    });
+    expect(disk.setupVersion).toBe(3);
   });
 
-  it("creates the settings file when none exists", () => {
+  it("creates the native config file when none exists", () => {
     const home = makeHome();
     process.env.HOME = home;
 
     const updated = updateSkillSources({ add: ["~/.claude/skills"], remove: [], home });
     expect(updated.skills).toEqual(["~/.claude/skills"]);
 
-    const disk = readSettings(home);
-    expect(disk).toEqual({ skills: ["~/.claude/skills"] });
+    expect(readConfig(globalConfigPath())).toEqual({
+      skills: { customDirectories: ["~/.claude/skills"] },
+    });
   });
 
   it("is idempotent when adding a path already present", () => {
     const home = makeHome();
     process.env.HOME = home;
-    const filePath = writeSettings(home, { skills: ["~/.claude/skills"] });
-    const mtimeBefore = readFileSync(filePath, "utf8");
+    const filePath = writeSkillDirectories(globalConfigPath(), ["~/.claude/skills"]);
+    const before = readFileSync(filePath, "utf8");
 
     updateSkillSources({ add: ["~/.claude/skills"], remove: [], home });
 
-    const mtimeAfter = readFileSync(filePath, "utf8");
-    expect(mtimeAfter).toBe(mtimeBefore);
+    expect(readFileSync(filePath, "utf8")).toBe(before);
   });
 
   it("removes an entry matched by its raw value", () => {
     const home = makeHome();
     process.env.HOME = home;
-    writeSettings(home, { skills: ["~/.claude/skills", "~/.codex/skills"] });
+    writeSkillDirectories(globalConfigPath(), ["~/.claude/skills", "~/.codex/skills"]);
 
     updateSkillSources({ add: [], remove: ["~/.claude/skills"], home });
 
-    const disk = readSettings(home);
-    expect(disk.skills).toEqual(["~/.codex/skills"]);
+    expect(customDirectories(globalConfigPath())).toEqual(["~/.codex/skills"]);
   });
 
   it("removes an entry matched by resolved absolute path", () => {
@@ -245,20 +281,18 @@ describe("updateSkillSources", () => {
     // from settings to avoid leaving a duplicate behind.
     const home = makeHome();
     process.env.HOME = home;
-    writeSettings(home, { skills: ["~/.claude/skills"] });
+    writeSkillDirectories(globalConfigPath(), ["~/.claude/skills"]);
 
     const absolute = path.join(home, ".claude", "skills");
     updateSkillSources({ add: [], remove: [absolute], home });
 
-    const disk = readSettings(home);
-    expect(disk.skills).toEqual([]);
+    expect(customDirectories(globalConfigPath())).toEqual([]);
   });
 
-  it("writes to the project settings file when scope is 'project'", () => {
+  it("writes to the project config when scope is 'project', resolving against cwd", () => {
     const home = makeHome();
     process.env.HOME = home;
-    const cwd = mkdtempSync(path.join(tmpdir(), "sf-skill-sources-cwd-"));
-    tempDirs.push(cwd);
+    const cwd = makeCwd();
 
     const updated = updateSkillSources({
       add: ["./.claude/skills"],
@@ -267,15 +301,13 @@ describe("updateSkillSources", () => {
       cwd,
       home,
     });
-    expect(updated.settingsPath).toBe(path.join(cwd, ".pi", "settings.json"));
-    expect(updated.skills).toEqual(["./.claude/skills"]);
-
-    const disk = JSON.parse(readFileSync(updated.settingsPath, "utf8"));
-    expect(disk.skills).toEqual(["./.claude/skills"]);
+    const absolute = path.join(cwd, ".claude", "skills");
+    expect(updated.settingsPath).toBe(projectConfigPath(cwd));
+    expect(updated.skills).toEqual([absolute]);
+    expect(customDirectories(updated.settingsPath)).toEqual([absolute]);
 
     // Global settings should remain untouched.
-    const globalPath = path.join(home, ".pi", "agent", "settings.json");
-    expect(() => readFileSync(globalPath, "utf8")).toThrow();
+    expect(existsSync(globalConfigPath())).toBe(false);
   });
 
   it("throws when scope='project' is used without cwd", () => {
@@ -283,7 +315,17 @@ describe("updateSkillSources", () => {
     process.env.HOME = home;
     expect(() =>
       updateSkillSources({ add: ["./.claude/skills"], remove: [], scope: "project", home }),
-    ).toThrow(/requires `cwd`/);
+    ).toThrow(/require cwd/);
+  });
+
+  it("refuses to write a settings file other than the native OMP config", () => {
+    const home = makeHome();
+    process.env.HOME = home;
+    const legacy = path.join(home, ".pi", "agent", "settings.json");
+    expect(() =>
+      updateSkillSources({ add: ["~/.claude/skills"], remove: [], home, settingsFile: legacy }),
+    ).toThrow(/native OMP config/);
+    expect(existsSync(legacy)).toBe(false);
   });
 });
 

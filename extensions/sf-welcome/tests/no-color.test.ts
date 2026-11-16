@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SfWelcomeHeader, SfWelcomeOverlay } from "../lib/splash-component.ts";
 import { collectInitialSplashData } from "../lib/splash-data.ts";
@@ -8,6 +8,15 @@ import { collectInitialSplashData } from "../lib/splash-data.ts";
 const ANSI_ESCAPE = String.fromCharCode(27);
 const ANSI_SGR = new RegExp(`${ANSI_ESCAPE}\\[[0-9;]*m`);
 const ANSI_TRUE_COLOR = new RegExp(`${ANSI_ESCAPE}\\[(?:38|48);2;`);
+
+// Color assertions must not inherit NO_COLOR from the launching terminal.
+beforeEach(() => {
+  vi.stubEnv("NO_COLOR", undefined);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("SF Welcome terminal color behavior", () => {
   it("renders the overlay and persistent header without ANSI color escapes", () => {

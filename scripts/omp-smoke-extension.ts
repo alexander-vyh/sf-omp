@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Smoke-only adapter: forwards real registrations and native hooks, then calls real tools. */
-import { mkdir, realpath, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { getAgentDir, getConfigRootDir } from "@oh-my-pi/pi-utils";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,32 +9,75 @@ import {
   rediscoverSkills,
   Settings,
   type ExtensionAPI,
+  type ExtensionContext,
 } from "@oh-my-pi/pi-coding-agent";
+import { importExtensionModule } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/loader";
+import { loadLegacyPiModule } from "@oh-my-pi/pi-coding-agent/extensibility/plugins/legacy-pi-compat";
 import { parseSoql } from "../extensions/sf-soql/lib/parser.ts";
 import { updateSkillSources } from "../lib/common/skill-sources/skill-sources.ts";
 import { skillSettingsValues } from "../lib/common/skill-sources/skill-settings.ts";
 import { buildSkillInventory } from "../lib/common/skill-detection/detection.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const selected = [
-  "sf-guardrail",
-  "sf-brain",
-  "sf-apex",
-  "sf-soql",
-  "sf-lwc",
-  "sf-code-analyzer",
-  "sf-lsp",
-  "sf-agentscript",
-  "sf-skills",
-  "sf-flow",
-] as const;
+// Smoke loads exactly what the launcher loads: the root manifest's extension list.
+const selected = (
+  JSON.parse(await readFile(path.join(root, "package.json"), "utf8")) as {
+    pi: { extensions: string[] };
+  }
+).pi.extensions.map((entry) => entry.split("/")[2]);
+const CHECKS_DIR = path.join(root, "scripts", "omp-smoke-checks");
 type Status = "pass" | "failed" | "blocked" | "not-tested";
+
+/**
+ * Contract for per-extension check modules in scripts/omp-smoke-checks/<id>.ts.
+ * A module's default export receives this API and records checks through `run`
+ * (or `skip` for an explicit blocked/not-tested prerequisite). Checks invoke the
+ * real registered tools with the genuine host context; no network is allowed.
+ */
+export interface SmokeApi {
+  pi: ExtensionAPI;
+  ctx: unknown;
+  workspace: string;
+  file(relative: string): string;
+  run(name: string, extension: string, action: () => Promise<unknown>): Promise<void>;
+  skip(name: string, extension: string, status: "blocked" | "not-tested", reason: string): void;
+  invoke(name: string, params: Record<string, unknown>): Promise<unknown>;
+  requireSuccess(name: string, params: Record<string, unknown>): Promise<unknown>;
+  requireTrue(condition: unknown, message: string): asserts condition;
+  details(result: unknown): Record<string, unknown>;
+  /** The extension's real `pi.on(event, …)` handlers, in registration order (smoke-wrapped). */
+  handlers(extension: string, event: string): SmokeHandler[];
+  /** The real `pi.registerCommand(name, …)` definition, with its owning extension. */
+  command(name: string): SmokeCommand | undefined;
+  /**
+   * Run a real registered slash command with the host ctx (hasUI=false unless overridden)
+   * and capture what it surfaced: ui.notify calls and session entries it appended.
+   */
+  runCommand(name: string, args: string, options?: { hasUI?: boolean }): Promise<CommandOutput>;
+}
+export interface CommandOutput {
+  notifications: Array<{ message: string; level: string }>;
+  /** console.info/log lines: headless commands print their body like print mode. */
+  stdout: string[];
+  entries: Array<{ customType?: string; data?: unknown }>;
+  /** notifications plus entry titles/bodies as one searchable string. */
+  text: string;
+}
+export type SmokeHandler = (event: unknown, ctx: unknown) => Promise<unknown>;
+export interface SmokeCommand {
+  extension: string;
+  name: string;
+  handler: (args: string, ctx: unknown) => Promise<unknown>;
+  getArgumentCompletions?: (prefix: string) => unknown;
+}
 interface Check {
   name: string;
   extension: string;
   status: Status;
   evidence?: unknown;
   reason?: string;
+  /** Wall time of the check action; absent for recorded skips. */
+  durationMs?: number;
 }
 interface Loaded {
   name: string;
@@ -86,6 +129,8 @@ export default async function smoke(pi: ExtensionAPI): Promise<void> {
   const checks: Check[] = [];
   const hookErrors: Array<{ extension: string; event: string; error: string }> = [];
   const tools = new Map<string, CapturedTool>();
+  const hookHandlers = new Map<string, SmokeHandler[]>();
+  const commands = new Map<string, SmokeCommand>();
   const blockedFetches: string[] = [];
   let sessionStarted = false;
   let sessionShutdown = false;
@@ -133,6 +178,24 @@ export default async function smoke(pi: ExtensionAPI): Promise<void> {
               });
             }
           }
+          if (property === "registerCommand" && typeof args[0] === "string") {
+            const definition = record(args[1]);
+            const handler = definition.handler;
+            const completions = definition.getArgumentCompletions;
+            if (typeof handler === "function") {
+              commands.set(args[0], {
+                extension: name,
+                name: args[0],
+                handler: async (...values) => await Reflect.apply(handler, args[1], values),
+                ...(typeof completions === "function"
+                  ? {
+                      getArgumentCompletions: (prefix: string) =>
+                        Reflect.apply(completions, args[1], [prefix]),
+                    }
+                  : {}),
+              });
+            }
+          }
           if (property === "on" && typeof args[0] === "string" && typeof args[1] === "function") {
             const event = args[0];
             entry.registeredHooks.push(event);
@@ -147,17 +210,22 @@ export default async function smoke(pi: ExtensionAPI): Promise<void> {
                 throw error;
               }
             };
+            const key = `${name}\u0000${event}`;
+            hookHandlers.set(key, [...(hookHandlers.get(key) ?? []), args[1] as SmokeHandler]);
           }
           return Reflect.apply(member, target, args);
         };
       },
     });
     try {
-      // This runtime registry deliberately tests each plugin loading boundary independently.
-      const module: unknown = await import(path.join(root, "extensions", name, "index.ts"));
-      const factory = record(module).default;
-      requireTrue(typeof factory === "function", `${name} has no extension factory.`);
-      await Reflect.apply(factory, undefined, [proxy]);
+      // OMP's own loader applies the legacy Pi import remapping (shims), exactly as
+      // a normal `-e` load does; a plain import() would bind the Pi SDK instead.
+      const prepared = await importExtensionModule(
+        path.join(root, "extensions", name, "index.ts"),
+        root,
+      );
+      requireTrue(prepared.factory, prepared.error ?? `${name} has no extension factory.`);
+      await Reflect.apply(prepared.factory, undefined, [proxy]);
       entry.loaded = true;
     } catch (error) {
       entry.error = errorText(error);
@@ -190,30 +258,38 @@ export default async function smoke(pi: ExtensionAPI): Promise<void> {
       blockedFetches,
       limitations: [
         "Native OMP session_start/session_shutdown hooks and real registration APIs are used; tool functions receive the genuine host ExtensionContext.",
-        "Tool execute functions are invoked directly after registration: model tool selection, OMP tool-call approval/rendering and tool_call/tool_result dispatch are not exercised.",
+        "Tool execute functions and registered event/command handlers are invoked directly with the host ctx: model tool selection and OMP's own tool_call/tool_result/session_stop dispatch order are not exercised here.",
         "No prompt or model request is submitted. Dummy OpenAI selection/key creates the host context only.",
         "No Salesforce org authentication, API calls, deploy/activate, Agentforce preview/eval, live schema grounding, Apex execution or tests are attempted.",
         "SOQL is the extension's actual parser called directly: the ordinary registered sf_soql tool connects to an org before dispatch.",
         "Apex diagnostics require an already provisioned repo-isolated language server; missing prerequisites are blocked, never installed here.",
-        "Code Analyzer, managed LSP installation, managed skill downloads/catalog UI, brain projection and guardrail tool interception have startup coverage only.",
+        "Code Analyzer scans, managed LSP installation/diagnostics and managed skill downloads/catalog UI need prerequisites absent from the isolated state; their hooks are checked up to that boundary.",
         "Outbound fetch is rejected in this child after smoke extension activation; this is not an OS-level network sandbox.",
       ],
     };
     await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   }
 
-  pi.on("session_start", async (_event, ctx) => {
+  // OMP bounds each session_start handler (EXTENSION_HANDLER_TIMEOUT_MS, 30s), so the
+  // checks run detached; the runner persists the report and shuts the session down.
+  pi.on("session_start", (_event, ctx) => {
     sessionStarted = true;
+    void runChecks(ctx);
+  });
+  async function runChecks(ctx: ExtensionContext): Promise<void> {
     async function run(
       name: string,
       extension: string,
       action: () => Promise<unknown>,
     ): Promise<void> {
+      const started = performance.now();
       try {
         const evidence = await action();
-        checks.push({ name, extension, status: "pass", evidence });
+        const durationMs = Math.round(performance.now() - started);
+        checks.push({ name, extension, status: "pass", evidence, durationMs });
       } catch (error) {
-        checks.push({ name, extension, status: "failed", reason: errorText(error) });
+        const durationMs = Math.round(performance.now() - started);
+        checks.push({ name, extension, status: "failed", reason: errorText(error), durationMs });
       }
     }
     async function invoke(name: string, params: Record<string, unknown>): Promise<unknown> {
@@ -274,6 +350,19 @@ export default async function smoke(pi: ExtensionAPI): Promise<void> {
           executable: process.execPath,
           home: process.env.HOME,
         };
+      });
+      await run("omp.native.legacy-shim", "runtime", async () => {
+        // Extensions are loaded through the same remapping; inside that graph the
+        // Pi SDK specifier must resolve to OMP's legacy shim, not Pi 1.x.
+        const compat = record(
+          await loadLegacyPiModule(path.join(root, "lib", "common", "pi-compat.ts")),
+        );
+        const version = Reflect.apply(compat.getInstalledPiVersion as () => unknown, undefined, []);
+        requireTrue(
+          version === "18.17.0",
+          `Extension graph resolved the Pi SDK version ${String(version)}, not the OMP shim.`,
+        );
+        return { installedPiVersionInExtensionGraph: version };
       });
       for (const entry of loaded) {
         await run(`${entry.name}.startup`, entry.name, async () => {
@@ -549,6 +638,89 @@ export default async function smoke(pi: ExtensionAPI): Promise<void> {
           checks.push({ name, extension: "sf-apex", status: "failed", reason: errorText(error) });
         }
       }
+      const api: SmokeApi = {
+        pi,
+        ctx,
+        workspace,
+        file,
+        run,
+        skip: (name, extension, status, reason) => {
+          checks.push({ name, extension, status, reason });
+        },
+        invoke,
+        requireSuccess,
+        requireTrue,
+        details,
+        handlers: (extension, event) => [...(hookHandlers.get(`${extension}\u0000${event}`) ?? [])],
+        command: (name) => commands.get(name),
+        runCommand: async (name, args, options = {}) => {
+          const command = commands.get(name);
+          requireTrue(command, `Expected registered command /${name}.`);
+          const base = ctx as object;
+          const sessionManager = record(Reflect.get(base, "sessionManager"));
+          const getEntries = sessionManager.getEntries as () => unknown[];
+          const before = Reflect.apply(getEntries, sessionManager, []).length;
+          const notifications: CommandOutput["notifications"] = [];
+          const ui = new Proxy(Reflect.get(base, "ui") as object, {
+            get: (target, key) =>
+              key === "notify"
+                ? (message: string, level?: string) =>
+                    notifications.push({ message: String(message), level: level ?? "info" })
+                : Reflect.get(target, key),
+          });
+          const hasUI = options.hasUI ?? Reflect.get(base, "hasUI");
+          const commandCtx = new Proxy(base, {
+            get: (target, key) =>
+              key === "hasUI" ? hasUI : key === "ui" ? ui : Reflect.get(target, key),
+          });
+          // Headless commands print their body (console.info/log) as in print mode.
+          const stdout: string[] = [];
+          const { info, log } = console;
+          console.info = (...values: unknown[]) => stdout.push(values.map(String).join(" "));
+          console.log = console.info;
+          try {
+            await command.handler(args, commandCtx);
+          } finally {
+            console.info = info;
+            console.log = log;
+          }
+          const entries = Reflect.apply(getEntries, sessionManager, [])
+            .slice(before)
+            .map((entry) => ({
+              customType: record(entry).customType as string | undefined,
+              data: record(entry).data,
+            }));
+          const text = [
+            ...notifications.map((entry) => entry.message),
+            ...stdout,
+            ...entries.map((entry) => {
+              const data = record(entry.data);
+              return typeof data.body === "string"
+                ? `${String(data.title ?? "")}\n${data.body}`
+                : JSON.stringify(entry.data ?? "");
+            }),
+          ].join("\n");
+          return { notifications, stdout, entries, text };
+        },
+      };
+      const modules = (await readdir(CHECKS_DIR).catch(() => []))
+        .filter((name) => name.endsWith(".ts") && selected.includes(name.slice(0, -3)))
+        .sort();
+      for (const name of modules) {
+        // Check modules are discovered from disk per packaged extension.
+        const module: unknown = await import(path.join(CHECKS_DIR, name));
+        const checksFor = record(module).default;
+        if (typeof checksFor !== "function") {
+          checks.push({
+            name: `${name}.module`,
+            extension: name.slice(0, -3),
+            status: "failed",
+            reason: "Check module has no default export function.",
+          });
+          continue;
+        }
+        await Reflect.apply(checksFor, undefined, [api]);
+      }
       checks.push({
         name: "external.live.behavior",
         extension: "all",
@@ -567,7 +739,7 @@ export default async function smoke(pi: ExtensionAPI): Promise<void> {
       await persist();
       ctx.shutdown();
     }
-  });
+  }
   pi.on("session_shutdown", async () => {
     sessionShutdown = true;
     await persist();

@@ -102,6 +102,8 @@ function configuredAuthController(): GatewayProviderAuthController {
     clear: vi.fn(),
     getActiveCwd: vi.fn(() => undefined),
     hasConfiguredCredential: vi.fn(async () => true),
+    resolveConfiguredRoot: vi.fn(() => "https://gateway.example.test"),
+    ompLogin: vi.fn(async () => "test-key"),
     resolveRuntimeAuth: vi.fn(async () => ({
       apiKey: "test-key",
       baseUrl: "https://gateway.example.test",

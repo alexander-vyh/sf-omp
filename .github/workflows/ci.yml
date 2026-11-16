@@ -15,8 +15,8 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: macos-latest
+    timeout-minutes: 45
     env:
       PI_NATIVES_DIR: ${{ github.workspace }}/.runtime/ci/natives
     steps:
@@ -28,7 +28,60 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run check
-      - run: npm run test:omp
-      - run: npm run smoke:omp
-      - run: npm run smoke:auth
+      - name: Generated catalog is current
+        run: npm run generate-catalog:check
+      - name: Documentation health
+        run: npm run docs:health:check
+      - name: Architecture boundaries
+        run: npm run check:architecture
+      - name: SPDX headers
+        run: npm run spdx:check
+      - name: Formatting
+        run: npm run format:check
+      - name: Lint
+        run: npm run eslint
+      - name: Type check
+        run: npm run check
+      - name: Lifecycle scripts
+        run: npm run check:lifecycle-scripts
+      - name: Unit tests
+        run: npm test
+      - name: Native OMP smoke
+        run: npm run smoke:omp
+      - name: Shared auth smoke
+        run: npm run smoke:auth
+      - name: SF Pi → OMP parity
+        run: npm run parity:omp
+
+  commitlint:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Conventional commits
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: npx --no -- commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
+
+  audit:
+    name: npm audit (production)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run audit:production

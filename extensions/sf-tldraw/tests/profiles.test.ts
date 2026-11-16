@@ -326,6 +326,20 @@ describe("deterministic Salesforce profiles", () => {
     expect(program).toContain("friendless-arrow");
   });
 
+  it("sizes straddling boundary badges to their text and exempts them from container-crossing lints", () => {
+    const program = buildCanvasProgram(
+      compileProfile(fixture("architecture"), {
+        renderMode: "replace",
+        preferences: DEFAULT_TLDRAW_PREFERENCES,
+      }),
+    );
+    // tldraw office 1.24 lints text crossing an unfilled >=200px card; badges straddle by design.
+    expect(program).toContain("node.boundary.length*10+40");
+    expect(
+      program.match(/lintIgnore:\['overlapping-text','growY-on-shape','text-crosses-container'\]/g),
+    ).toHaveLength(2);
+  });
+
   it("keeps record types hidden by default", () => {
     const spec = fixture("data-model");
     if (spec.family !== "data_model") throw new Error("Expected data-model fixture.");

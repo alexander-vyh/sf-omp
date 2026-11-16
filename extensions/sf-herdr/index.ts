@@ -11,6 +11,10 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { getFirstTokenCompletions } from "../../lib/common/command-actions.ts";
 import { registerExtensionDoctor } from "../../lib/common/doctor/registry.ts";
 import { getHerdrSplitToolReadiness } from "../../lib/common/herdr-runtime.ts";
+import {
+  emitHumanOnlyCommandOutput,
+  registerHumanOnlyCommandOutput,
+} from "../../lib/common/human-only-command-output.ts";
 import { openInfoPanel, type InfoPanelSeverity } from "../../lib/common/info-panel.ts";
 import {
   openExtensionInManager,
@@ -100,6 +104,7 @@ export default function sfHerdr(pi: ExtensionAPI): void {
   }));
   registerManagerDetailActions(pi, EXTENSION_ID, buildHerdrManagerActions());
 
+  registerHumanOnlyCommandOutput(pi, COMMAND_NAME);
   pi.on("session_start", async () => {
     if (planToolRegistered) return;
     const readiness = getHerdrSplitToolReadiness(pi.getActiveTools());
@@ -139,6 +144,7 @@ export default function sfHerdr(pi: ExtensionAPI): void {
   ): Promise<void> {
     if (action === "settings") {
       await emit(
+        pi,
         ctx,
         "SF Herdr settings",
         "Open global settings from the interactive manager: /sf-pi open sf-herdr settings",
@@ -148,11 +154,12 @@ export default function sfHerdr(pi: ExtensionAPI): void {
       return;
     }
     if (action === "status") {
-      await emit(ctx, "SF Herdr status", renderStatus(pi.getActiveTools()), "info", fromPanel);
+      await emit(pi, ctx, "SF Herdr status", renderStatus(pi.getActiveTools()), "info", fromPanel);
       return;
     }
     if (action === "doctor") {
       await emit(
+        pi,
         ctx,
         "SF Herdr doctor",
         renderDoctor(pi.getActiveTools(), process.env, ctx.cwd),
@@ -161,11 +168,12 @@ export default function sfHerdr(pi: ExtensionAPI): void {
       );
       return;
     }
-    await emit(ctx, "SF Herdr help", renderHelp(), "info", fromPanel);
+    await emit(pi, ctx, "SF Herdr help", renderHelp(), "info", fromPanel);
   }
 }
 
 async function emit(
+  pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
   title: string,
   body: string,
@@ -180,7 +188,8 @@ async function emit(
     ctx.ui.notify(body, severity === "success" ? "info" : severity);
     return;
   }
-  console.info(body);
+  // Headless: stdout is the RPC/JSON channel outside print mode, so never console.info here.
+  await emitHumanOnlyCommandOutput(pi, ctx, COMMAND_NAME, { title, body, severity });
 }
 
 function renderHelp(): string {

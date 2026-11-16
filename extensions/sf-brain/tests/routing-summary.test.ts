@@ -1,20 +1,20 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { describe, expect, it } from "vitest";
 
+import { SF_PI_REGISTRY } from "../../../catalog/registry.ts";
 import {
   formatSfPiRoutingSummary,
   SF_PI_ROUTING_CLOSE_TAG,
   SF_PI_ROUTING_OPEN_TAG,
 } from "../lib/routing-summary.ts";
 
-const PACKAGED = new Set(["sf-brain", "sf-apex", "sf-soql", "sf-agentscript"]);
+const ALL_TOOLS = new Set(SF_PI_REGISTRY.flatMap((extension) => extension.tools ?? []));
+const without = (...names: string[]) =>
+  new Set([...ALL_TOOLS].filter((tool) => !names.includes(tool)));
 
 describe("SF Pi Routing Summary", () => {
   it("keeps the all-available summary tiny and does not repeat the extension catalog", () => {
-    const summary = formatSfPiRoutingSummary(
-      new Set(["sf_apex", "sf_soql", "agentscript_authoring", "read"]),
-      PACKAGED,
-    );
+    const summary = formatSfPiRoutingSummary(ALL_TOOLS);
 
     expect(summary.startsWith(SF_PI_ROUTING_OPEN_TAG)).toBe(true);
     expect(summary.endsWith(SF_PI_ROUTING_CLOSE_TAG)).toBe(true);
@@ -26,30 +26,20 @@ describe("SF Pi Routing Summary", () => {
   });
 
   it("treats an owner as available when any one of its declared tools registered", () => {
-    const summary = formatSfPiRoutingSummary(
-      new Set(["sf_apex", "sf_soql", "agentscript_preview"]),
-      PACKAGED,
-    );
+    const summary = formatSfPiRoutingSummary(without("agentscript_eval", "agentscript_preview"));
 
     expect(summary).toContain("Unavailable capability owners: none.");
   });
 
-  it("lists packaged tool owners whose tools did not register, without a Manager recovery path", () => {
-    const summary = formatSfPiRoutingSummary(new Set(["sf_soql"]), PACKAGED);
+  it("offers the Manager enable path only for owners the user disabled", () => {
+    const summary = formatSfPiRoutingSummary(without("sf_apex", "sf_soql"), new Set(["sf-apex"]));
 
     expect(summary).toContain("- sf-apex — Apex lifecycle");
-    expect(summary).toContain("- sf-agentscript — Agentforce Agent Script");
-    expect(summary).not.toContain("- sf-soql");
-    expect(summary).not.toContain("/sf-pi enable");
-  });
-
-  it("never reports extensions absent from the package manifest", () => {
-    const summary = formatSfPiRoutingSummary(
-      new Set(["sf_apex", "sf_soql", "agentscript_eval"]),
-      PACKAGED,
+    expect(summary).toContain("Disabled; enable: /sf-pi enable sf-apex");
+    expect(summary).toContain("- sf-soql — schema-aware SOQL");
+    expect(summary).toContain(
+      "sf-soql — schema-aware SOQL and SOSL lifecycle. Declared tools not registered.",
     );
-
-    expect(summary).toContain("Unavailable capability owners: none.");
-    expect(summary).not.toContain("sf-docs");
+    expect(summary).not.toContain("/sf-pi enable sf-soql");
   });
 });

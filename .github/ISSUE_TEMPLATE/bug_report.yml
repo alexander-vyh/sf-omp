@@ -22,16 +22,16 @@ body:
   - type: input
     id: version
     attributes:
-      label: SF Pi version
-      description: Run `/sf-pi doctor` and copy the reported SF Pi version.
+      label: sf-omp commit
+      description: Run `/sf-pi doctor` and copy the reported version, plus `git rev-parse --short HEAD` in your sf-omp checkout.
     validations:
       required: true
 
   - type: input
     id: pi_version
     attributes:
-      label: Pi coding agent version
-      description: Output of `pi --version`.
+      label: OMP runtime version
+      description: Output of `bun scripts/omp.ts --version` in your sf-omp checkout.
     validations:
       required: true
 

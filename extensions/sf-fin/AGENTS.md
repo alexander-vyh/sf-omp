@@ -35,7 +35,7 @@ SF Fin owns the Fin (formerly Intercom) workspace credential, Fin CLI install li
 
 ## Invariants
 
-1. **Pi owns the credential.** `/login sf-fin` collects the region via a select prompt and the token via the shared fixed-mask bridge; Pi persists both and `/logout sf-fin` removes them. Never write `auth.json`, a keychain entry, or any other secret store.
+1. **The host owns the credential.** `/login sf-fin` collects the token in the host's masked prompt (OMP's login dialog; SF Pi's masked input on Pi, via `loginWithSecureCredentialPrompt`) and detects the region, asking only when detection cannot reach Fin. Register only through `registerAuthOnlyProvider`; the host persists both (OMP: `agent.db`) and `/logout sf-fin` removes them. Read credentials only through `resolveAuthOnlyProviderAuth`/`pi-auth-status.ts`. Never write `auth.json`, `agent.db`, a keychain entry, or any other secret store.
 2. **Token only in the child env.** `cli-runner.ts` passes `INTERCOM_TOKEN` through an allowlisted environment. Never put the token in argv, logs, status, tool `content`/`details`, errors, or debug bundles. Scrub CLI output with `redactSecret`; scrub verbose traces with `scrubTrace`.
 3. **Private CLI config.** Always set `INTERCOM_CONFIG_DIR` to the SF Pi-private directory so the user's own CLI login is never read or mutated.
 4. **No shell, bounded runs.** `spawn`/`pi.exec` without a shell, with timeouts and output caps.

@@ -18,10 +18,11 @@ const slackSource = readFileSync(
 );
 
 describe("sf-slack systemPromptOptions wiring", () => {
-  it("reads systemPromptOptions from the event in before_agent_start", () => {
-    // The handler destructures: const { systemPromptOptions } = event;
-    expect(slackSource).toContain("{ systemPromptOptions }");
-    expect(slackSource).toContain("systemPromptOptions.selectedTools");
+  it("reads Pi systemPromptOptions and falls back to OMP's active tools", () => {
+    // Pi passes systemPromptOptions; OMP's before_agent_start does not, so the
+    // handler falls back to the live active tool set.
+    expect(slackSource).toContain('"systemPromptOptions" in event');
+    expect(slackSource).toContain("systemPromptOptions?.selectedTools ?? pi.getActiveTools()");
   });
 
   it("uses the event parameter (not _event) in before_agent_start", () => {

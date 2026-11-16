@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Consent-preserving Auto Update scheduling at Pi's agent_settled seam. */
+/** Consent-preserving Auto Update scheduling at the settled-turn seam (terminal agent_end). */
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
@@ -75,12 +75,19 @@ export function createAgentSettledUpdateCoordinator(
               append({
                 title: "Auto Update planned",
                 body: [
-                  "Pi runtime: user-managed; stable pre-2.0 releases remain loadable",
-                  plan.offline
-                    ? "Pi packages: skip because PI_OFFLINE is active"
-                    : eligible > 0
-                      ? `Pi packages: ${eligible} compatible package update${eligible === 1 ? "" : "s"} through Pi`
-                      : "Pi packages: no compatible updates available",
+                  ...(plan.checkout
+                    ? [
+                        "OMP runtime: pinned by the sf-omp checkout lockfile",
+                        `sf-omp checkout: ${plan.checkout.message}${plan.checkout.state === "behind" ? " Will run git pull --ff-only + npm ci." : ""}`,
+                      ]
+                    : [
+                        "Pi runtime: user-managed; stable pre-2.0 releases remain loadable",
+                        plan.offline
+                          ? "Pi packages: skip because PI_OFFLINE is active"
+                          : eligible > 0
+                            ? `Pi packages: ${eligible} compatible package update${eligible === 1 ? "" : "s"} through Pi`
+                            : "Pi packages: no compatible updates available",
+                      ]),
                   plan.offline
                     ? "Salesforce CLI: skip because PI_OFFLINE is active"
                     : "Salesforce CLI: update the stable channel",
@@ -136,8 +143,23 @@ export function createAgentSettledUpdateCoordinator(
         clearAutoUpdatePending("Auto Update disabled before execution.");
         return;
       }
-      if (!safeIsIdle(ctx)) return;
-      await execute(ctx, true);
+      if (safeIsIdle(ctx)) {
+        await execute(ctx, true);
+        return;
+      }
+      // A terminal agent_end can precede host idleness (Pi awaits its handlers
+      // before settling; OMP notifies while the prompt unwinds). Never block
+      // the handler: poll briefly in the background and give up on a new run.
+      let attempts = 0;
+      const retry = (): void => {
+        if (agentActive || disposed || running || !pending) return;
+        if (safeIsIdle(ctx)) {
+          void execute(ctx, true).catch(() => undefined);
+          return;
+        }
+        if ((attempts += 1) < IDLE_POLL_ATTEMPTS) setTimeout(retry, IDLE_POLL_MS).unref?.();
+      };
+      setTimeout(retry, IDLE_POLL_MS).unref?.();
     },
     async runManual(ctx) {
       return execute(ctx, false);
@@ -152,6 +174,9 @@ export function createAgentSettledUpdateCoordinator(
     },
   };
 }
+
+const IDLE_POLL_MS = 100;
+const IDLE_POLL_ATTEMPTS = 100;
 
 function formatFinalTranscript(status: AutoUpdateStatus): string {
   return [

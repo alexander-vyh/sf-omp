@@ -17,6 +17,7 @@ import {
   getDisabledExtensionFiles,
   getExplicitlyEnabledExtensionFiles,
 } from "./sf-pi-package-resolution.ts";
+import { readOmpDisabledExtensionFiles } from "./omp-extension-state.ts";
 
 export type SfPiExtensionId = (typeof SF_PI_REGISTRY)[number]["id"];
 
@@ -48,6 +49,25 @@ export function isSfPiExtensionEnabled(cwd: string, extensionId: SfPiExtensionId
     return getEnabledExtensionFilesForCwd(cwd).has(extension.file);
   }
   return !getDisabledExtensionFilesForCwd(cwd).has(extension.file);
+}
+
+/**
+ * True when the OMP-native `disabledExtensions` config for `cwd` disables this
+ * bundled extension (`extension-module:<id>`). OMP-host callers only: Pi hosts
+ * use the settings.json package filters above. alwaysActive extensions and
+ * unreadable config never count as disabled, so a bad file cannot hide tools.
+ */
+export function isExtensionDisabledInOmpConfig(
+  extensionId: string,
+  cwd: string = process.cwd(),
+): boolean {
+  const extension = SF_PI_REGISTRY.find((entry) => entry.id === extensionId);
+  if (!extension || extension.alwaysActive) return false;
+  try {
+    return readOmpDisabledExtensionFiles(cwd).has(extension.file);
+  } catch {
+    return false;
+  }
 }
 
 export function filterEnabledExtensionStatuses(

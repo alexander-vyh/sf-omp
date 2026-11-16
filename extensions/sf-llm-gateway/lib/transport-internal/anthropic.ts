@@ -13,7 +13,7 @@ import {
   type SimpleStreamOptions,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { streamAnthropic, streamSimpleAnthropic } from "@earendil-works/pi-ai/compat";
+import { streamAnthropic, streamSimpleAnthropic } from "../host-compat.ts";
 import { sanitizeAnthropicStream } from "./shared.ts";
 
 export interface GatewayAnthropicFullTestHooks {

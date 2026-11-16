@@ -42,6 +42,7 @@ import {
   type ManagerDetailAction,
 } from "../../lib/common/manager-actions.ts";
 import { openExtensionInManager } from "../../lib/common/manager-deep-link.ts";
+import { registerAuthOnlyProvider } from "../../lib/common/auth-only-provider.ts";
 import { getInstalledPiVersion, requirePiVersion } from "../../lib/common/pi-compat.ts";
 import { withSafeCommandHandler } from "../../lib/common/safe-command-handler.ts";
 import {
@@ -88,12 +89,13 @@ export default function sfFin(pi: ExtensionAPI) {
           ];
     controllers.set(name, pair);
     for (const controller of pair) {
-      pi.registerProvider(controller.provider);
+      registerAuthOnlyProvider(pi, controller.provider);
       if (binding) controller.bind(binding.ui, binding.mode);
     }
     // Fin admin browser sign-in: Pi stores Fin's sign-in cookies like the
     // other credentials; the login is the human signing in in a window.
-    pi.registerProvider(
+    registerAuthOnlyProvider(
+      pi,
       createFinBrowserSigninProvider({
         workspace: name,
         profile: () => readWorkspaces(createWorkspaceStore()).workspaces[name],
@@ -108,6 +110,7 @@ export default function sfFin(pi: ExtensionAPI) {
   const service = createFinService({
     exec: buildExecFn(pi),
     onWorkspaceAdded: registerWorkspace,
+    listTools: () => pi.getAllTools(),
   });
 
   pi.on("session_start", async (_event, ctx) => {

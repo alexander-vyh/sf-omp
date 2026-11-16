@@ -1,6 +1,17 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Strict, atomic reads and writes for Pi's native mcp.json files. */
-import type { McpExposure, McpServerConfig } from "@earendil-works/pi-coding-agent";
+/**
+ * Strict, atomic reads and writes for the host's native mcp.json files.
+ *
+ * SF MCP models every entry in Pi's shape. On OMP the file dialect differs:
+ * `timeout` is milliseconds (Pi: seconds) and a fixed OAuth redirect is
+ * `oauth.redirectUri` (Pi: `oauth.callbackUrl`). Entries are converted at this
+ * read/write boundary so OMP's loader receives values it actually honors.
+ */
+import {
+  CONFIG_DIR_NAME,
+  type McpExposure,
+  type McpServerConfig,
+} from "@earendil-works/pi-coding-agent";
 import {
   existsSync,
   mkdirSync,
@@ -11,7 +22,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { globalAgentPath, projectConfigPath } from "../../../lib/common/pi-paths.ts";
+import { globalAgentPath } from "../../../lib/common/pi-paths.ts";
 
 export type { McpExposure, McpServerConfig };
 
@@ -62,8 +73,27 @@ export type McpConfigMutationResult =
       message: string;
     };
 
+export type NativeMcpDialect = "pi" | "omp";
+
+let nativeDialect: NativeMcpDialect = "pi";
+
+/** Selects the running host's mcp.json dialect; set once by the extension factory. */
+export function setNativeMcpDialect(dialect: NativeMcpDialect): void {
+  nativeDialect = dialect;
+}
+
+export function getNativeMcpDialect(): NativeMcpDialect {
+  return nativeDialect;
+}
+
+/**
+ * Native files the host loads: `<agentDir>/mcp.json` and the host's project
+ * config directory (`.pi/mcp.json` on Pi, `.omp/mcp.json` on OMP).
+ */
 export function mcpConfigPath(cwd: string, scope: "global" | "project"): string {
-  return scope === "global" ? globalAgentPath("mcp.json") : projectConfigPath(cwd, "mcp.json");
+  return scope === "global"
+    ? globalAgentPath("mcp.json")
+    : path.join(cwd, CONFIG_DIR_NAME, "mcp.json");
 }
 
 export function inspectMcpConfig(filePath: string): McpConfigInspection {
@@ -124,7 +154,7 @@ export function inspectMcpConfig(filePath: string): McpConfigInspection {
   const overrides: Record<string, McpServerOverride> = {};
   for (const [name, entry] of Object.entries(entries)) {
     if (isMcpServerOverride(entry)) overrides[name] = entry;
-    else completeServers[name] = entry as McpServerConfig;
+    else completeServers[name] = fromNativeEntry(entry as McpServerConfig);
   }
 
   return {
@@ -262,7 +292,7 @@ function writeMcpRoot(filePath: string, root: McpFileRoot): McpConfigMutationRes
     const existingMode = existsSync(filePath) ? statSync(filePath).mode & 0o777 : 0o600;
     const tmpPath = `${filePath}.${process.pid}.tmp`;
     try {
-      writeFileSync(tmpPath, `${JSON.stringify(root, null, 2)}\n`, {
+      writeFileSync(tmpPath, `${JSON.stringify(toNativeRoot(root), null, 2)}\n`, {
         encoding: "utf8",
         mode: existingMode,
       });
@@ -284,6 +314,50 @@ function writeMcpRoot(filePath: string, root: McpFileRoot): McpConfigMutationRes
       message: `Could not update ${filePath}: ${errorMessage(error)}`,
     };
   }
+}
+
+function toNativeRoot(root: McpFileRoot): McpFileRoot {
+  if (nativeDialect === "pi" || !root.mcpServers) return root;
+  return {
+    ...root,
+    mcpServers: Object.fromEntries(
+      Object.entries(root.mcpServers).map(([name, entry]) => [
+        name,
+        isMcpServerOverride(entry) ? entry : toNativeEntry(entry),
+      ]),
+    ),
+  };
+}
+
+/** Pi-shaped entry → OMP file entry (milliseconds, `redirectUri`). */
+function toNativeEntry(entry: McpServerConfig): McpServerConfig {
+  if (nativeDialect === "pi") return entry;
+  const next = { ...entry };
+  if (typeof next.timeout === "number") next.timeout = Math.round(next.timeout * 1000);
+  if ("oauth" in next && next.oauth?.callbackUrl !== undefined) {
+    const { callbackUrl, ...oauth } = next.oauth;
+    // `redirectUri` is OMP's field; Pi's OAuth type does not declare it.
+    next.oauth = Object.assign(oauth, { redirectUri: callbackUrl });
+  }
+  return next;
+}
+
+/** OMP file entry → Pi-shaped entry; exact inverse of {@link toNativeEntry}. */
+function fromNativeEntry(entry: McpServerConfig): McpServerConfig {
+  if (nativeDialect === "pi" || !isRecord(entry)) return entry;
+  const next = { ...entry };
+  if (typeof next.timeout === "number") next.timeout = next.timeout / 1000;
+  if (
+    "oauth" in next &&
+    isRecord(next.oauth) &&
+    typeof next.oauth.redirectUri === "string" &&
+    next.oauth.callbackUrl === undefined
+  ) {
+    const oauth = { ...next.oauth, callbackUrl: next.oauth.redirectUri };
+    Reflect.deleteProperty(oauth, "redirectUri");
+    next.oauth = oauth;
+  }
+  return next;
 }
 
 function inspectionFailure(

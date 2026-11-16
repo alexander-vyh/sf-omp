@@ -43,7 +43,7 @@ describe("sf-herdr", () => {
     expect(pi.registerCommand).toHaveBeenCalledWith("sf-herdr", expect.any(Object));
   });
 
-  it("registers only the current session and result-normalization lifecycle hooks", async () => {
+  it("registers the session, result-normalization, and human-only output hooks", async () => {
     const mod = await import("../index.ts");
     const pi = {
       events: eventBus(),
@@ -53,7 +53,13 @@ describe("sf-herdr", () => {
     };
 
     mod.default(pi as never);
-    expect(pi.on.mock.calls.map(([name]) => name)).toEqual(["session_start", "tool_result"]);
+    expect(pi.on.mock.calls.map(([name]) => name)).toEqual([
+      "session_start",
+      "session_switch",
+      "session_tree",
+      "session_start",
+      "tool_result",
+    ]);
   });
 
   it("normalizes the current pane-run empty-success result through the extension seam", async () => {

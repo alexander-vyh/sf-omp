@@ -7,8 +7,19 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { visibleWidth } from "@earendil-works/pi-tui";
+
+// Render assertions must not depend on the launching terminal (NO_COLOR, Terminal.app).
+beforeEach(() => {
+  vi.stubEnv("NO_COLOR", undefined);
+  vi.stubEnv("TERM_PROGRAM", undefined);
+  vi.stubEnv("SF_PI_ASCII_ICONS", undefined);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 /**
  * Strip ANSI escapes from a rendered splash so assertions can match plain
@@ -873,7 +884,7 @@ describe("sf-welcome", () => {
         .join("\n"),
     );
 
-    expect(pending).toContain("waiting for agent_settled");
+    expect(pending).toContain("waiting for the turn to settle");
     expect(running).toContain("Updating Pi packages");
   });
 

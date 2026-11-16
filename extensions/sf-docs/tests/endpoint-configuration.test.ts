@@ -45,14 +45,14 @@ describe("SF Docs authenticated configuration", () => {
     expect(status).not.toContain(token);
   });
 
-  it("prepares native login for endpoint plus fixed-mask token input", async () => {
+  it("prepares native login for endpoint plus masked token input", async () => {
     const done = vi.fn();
     const prepareLogin = vi.fn(() => "Prepared /login sf-docs.");
     const panel = createSfDocsConnectPanel({ theme, done, prepareLogin });
 
     const rendered = panel.renderContent(100).join("\n").replace(/\s+/g, " ");
     expect(rendered).toContain("docs endpoint URL");
-    expect(rendered).toContain("fixed-mask");
+    expect(rendered).toContain("masked prompt");
     expect(rendered).toContain("SF_DOCS_MCP_TOKEN");
     panel.handleInput("\r");
     await vi.waitFor(() => expect(prepareLogin).toHaveBeenCalledTimes(1));
@@ -92,6 +92,6 @@ describe("SF Docs authenticated configuration", () => {
     expect(authStorage.login).not.toHaveBeenCalled();
     expect(authStorage.set).not.toHaveBeenCalled();
     expect(setEditorText).toHaveBeenCalledWith("/login sf-docs");
-    expect(notify.mock.calls.flat().join("\n")).toContain("fixed-mask");
+    expect(notify.mock.calls.flat().join("\n")).toContain("masked prompt");
   });
 });

@@ -108,6 +108,21 @@ describe("sf-ohana-spinner waiting-state outcome", () => {
     expect(ctx.ui.setWorkingIndicator).toHaveBeenLastCalledWith();
     expect(ctx.ui.setWorkingMessage).toHaveBeenLastCalledWith();
   });
+
+  it("drives OMP's working message when the host has no working-indicator API", async () => {
+    const cwd = tempCwd();
+    writeScopedOhanaSpinnerSettings(cwd, "project", { mode: "ohana" });
+    vi.spyOn(Math, "random").mockReturnValue(0);
+
+    const handlers = registerExtension();
+    const ctx = createCtx(cwd);
+    const ompCtx = { ...ctx, ui: { setWorkingMessage: ctx.ui.setWorkingMessage } };
+    await runSessionStart(handlers, ompCtx as never);
+    expect(ctx.ui.setWorkingMessage).toHaveBeenLastCalledWith(messages[0]);
+
+    await runSessionShutdown(handlers, ompCtx as never);
+    expect(ctx.ui.setWorkingMessage).toHaveBeenLastCalledWith();
+  });
 });
 
 describe("sf-ohana-spinner stale-ctx safety", () => {

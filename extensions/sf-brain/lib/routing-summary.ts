@@ -6,7 +6,6 @@ import {
   type ActiveContextSession,
   shouldInjectOnce,
 } from "../../../lib/common/session/inject-once.ts";
-import { packagedExtensionIds } from "./packaged-extensions.ts";
 
 export const SF_PI_ROUTING_ENTRY_TYPE = "sf-pi-routing-summary";
 export const SF_PI_ROUTING_OPEN_TAG = "<sf_pi_routing>";
@@ -34,16 +33,13 @@ const CAPABILITY_LABELS: Record<string, string> = {
 
 export function formatSfPiRoutingSummary(
   registeredToolNames: ReadonlySet<string>,
-  packagedExtensions: ReadonlySet<string> = packagedExtensionIds(),
+  disabledExtensions: ReadonlySet<string> = new Set(),
 ): string {
-  // OMP loads exactly the root manifest and ignores Pi settings.json package
-  // filters for loading; an extension can still skip its own tool registration
-  // (sf-code-analyzer honors those filters itself). A packaged tool owner is
-  // unavailable only when none of its declared tools registered. Unpackaged
-  // upstream extensions are absent, not unavailable.
+  // A tool owner is unavailable when none of its declared tools registered:
+  // either the user disabled it, or it skipped registration (for example a
+  // conditional tool surface whose prerequisites are missing).
   const unavailable = SF_PI_REGISTRY.filter(
     (extension) =>
-      packagedExtensions.has(extension.id) &&
       (extension.tools?.length ?? 0) > 0 &&
       !extension.tools?.some((tool) => registeredToolNames.has(tool)),
   );
@@ -55,10 +51,13 @@ export function formatSfPiRoutingSummary(
   if (unavailable.length === 0) {
     lines.push("Unavailable capability owners: none.");
   } else {
-    lines.push("Unavailable capability owners (declared tools not registered):");
+    lines.push("Unavailable capability owners:");
     for (const extension of unavailable) {
+      const label = CAPABILITY_LABELS[extension.id] ?? extension.description;
       lines.push(
-        `- ${extension.id} — ${CAPABILITY_LABELS[extension.id] ?? extension.description}.`,
+        disabledExtensions.has(extension.id)
+          ? `- ${extension.id} — ${label}. Disabled; enable: /sf-pi enable ${extension.id}`
+          : `- ${extension.id} — ${label}. Declared tools not registered.`,
       );
     }
   }

@@ -3,7 +3,7 @@
  * Targeted tests for gateway status formatting helpers.
  */
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -85,6 +85,11 @@ function withDefaults(partial: Partial<GatewayRuntimeStatusState>): GatewayRunti
 }
 
 describe("buildFooterStatus", () => {
+  // Footer glyphs follow the terminal (ASCII on Apple Terminal); pin Unicode here.
+  beforeEach(() => {
+    process.env.SF_PI_ASCII_ICONS = "0";
+  });
+
   it("returns monthly usage with spend and a finite budget", () => {
     const text = buildFooterStatus(
       withDefaults({

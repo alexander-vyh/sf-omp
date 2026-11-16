@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderBottomBarParts, type BottomBarState, type BarTheme } from "../lib/bottom-bar.ts";
 
 // -------------------------------------------------------------------------------------------------
@@ -16,12 +16,17 @@ const ESC = "\u001b";
 let priorCapabilities: ReturnType<typeof getCapabilities>;
 
 beforeEach(() => {
+  // Render assertions must not depend on the launching terminal (NO_COLOR, Terminal.app).
+  vi.stubEnv("NO_COLOR", undefined);
+  vi.stubEnv("TERM_PROGRAM", undefined);
+  vi.stubEnv("SF_PI_ASCII_ICONS", undefined);
   priorCapabilities = getCapabilities();
   setCapabilities({ ...priorCapabilities, trueColor: true });
 });
 
 afterEach(() => {
   setCapabilities(priorCapabilities);
+  vi.unstubAllEnvs();
 });
 
 function ansiFg(r: number, g: number, b: number): string {

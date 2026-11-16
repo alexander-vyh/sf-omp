@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Real Pi 0.81 lifecycle proof for agent-settled automatic updates. */
+/** Real Pi lifecycle proof for settled-turn (terminal agent_end) automatic updates. */
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -28,8 +28,8 @@ afterEach(() => {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-describe("Agent-Settled Update Coordinator through real Pi", () => {
-  it("runs after agent_settled with suppression env set and never invokes self-update", async () => {
+describe("Settled-turn Update Coordinator through real Pi", () => {
+  it("runs after a terminal agent_end with suppression env set and never invokes self-update", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "sf-pi-m6-real-pi-"));
     tempDirs.push(root);
     const agentDir = path.join(root, "agent");

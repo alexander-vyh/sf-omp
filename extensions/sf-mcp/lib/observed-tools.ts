@@ -14,6 +14,10 @@ export interface ObservedMcpToolInput {
     idempotentHint?: boolean;
     openWorldHint?: boolean;
   };
+  /** OMP: configured server and original tool name behind `mcp__<server>_<tool>`. */
+  mcpServerName?: string;
+  mcpToolName?: string;
+  mcpReadOnlyHint?: boolean;
 }
 
 export interface ObservedMcpTool {
@@ -36,7 +40,7 @@ let observedByServer = new Map<string, ObservedMcpTool[]>();
 export function captureObservedMcpTools(tools: readonly ObservedMcpToolInput[]): void {
   const next = new Map<string, Map<string, ObservedMcpTool>>();
   for (const tool of tools) {
-    const identity = parseRuntimeToolName(tool.name);
+    const identity = runtimeToolIdentity(tool);
     if (!identity) continue;
     const serverTools = next.get(identity.serverName) ?? new Map<string, ObservedMcpTool>();
     serverTools.set(identity.toolName, {
@@ -44,7 +48,11 @@ export function captureObservedMcpTools(tools: readonly ObservedMcpToolInput[]):
       ...(tool.description ? { description: tool.description } : {}),
       ...(tool.parameters ? { parameters: tool.parameters } : {}),
       ...(tool.exposure ? { exposure: tool.exposure } : {}),
-      ...(tool.annotations ? { annotations: { ...tool.annotations } } : {}),
+      ...(tool.annotations
+        ? { annotations: { ...tool.annotations } }
+        : tool.mcpReadOnlyHint !== undefined
+          ? { annotations: { readOnlyHint: tool.mcpReadOnlyHint } }
+          : {}),
     });
     next.set(identity.serverName, serverTools);
   }
@@ -86,6 +94,19 @@ export function inspectObservedToolDrift(
     added,
     removed,
   };
+}
+
+function runtimeToolIdentity(
+  tool: ObservedMcpToolInput,
+): { serverName: string; toolName: string } | undefined {
+  // OMP joins server and tool with one underscore, so only its metadata is unambiguous.
+  if (tool.mcpServerName && tool.mcpToolName) {
+    return {
+      serverName: canonicalMcpServerName(tool.mcpServerName),
+      toolName: tool.mcpToolName,
+    };
+  }
+  return parseRuntimeToolName(tool.name);
 }
 
 function parseRuntimeToolName(name: string): { serverName: string; toolName: string } | undefined {

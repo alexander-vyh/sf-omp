@@ -12,7 +12,7 @@
  */
 
 import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
-import { getBuiltinModels, getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
+import { getHostCatalogModels } from "./host-compat.ts";
 
 export type GatewayApi = "anthropic-messages" | "openai-completions" | "openai-responses";
 
@@ -160,9 +160,7 @@ export type TaggedGatewayModel = Omit<Model<GatewayApi>, "provider" | "baseUrl">
 let piModelCatalog: PiModelReference[] | undefined;
 
 function getPiModelReferences(id: string): PiModelReference[] {
-  piModelCatalog ??= getBuiltinProviders().flatMap(
-    (provider) => getBuiltinModels(provider) as readonly Model<Api>[],
-  );
+  piModelCatalog ??= getHostCatalogModels();
   return piModelCatalog.filter((model) => model.id === id);
 }
 
@@ -287,8 +285,11 @@ export function toProviderModelConfig(
 
   def.contextWindow = Math.min(def.contextWindow, MAX_INHERITED_CONTEXT_WINDOW);
 
+  // Hosts may list third-party Chat Completions copies of a GPT ID; any public
+  // Responses reference keeps the catalog-backed GPT on Responses.
   const catalogBackedGptResponses =
-    def.family === "openai" && apiReference?.api === "openai-responses";
+    def.family === "openai" &&
+    apiReferences.some((candidate) => candidate.api === "openai-responses");
   const api =
     catalogBackedGptResponses || info?.mode === "responses"
       ? "openai-responses"

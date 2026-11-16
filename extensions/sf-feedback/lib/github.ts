@@ -7,8 +7,10 @@ import type { ExecFn } from "./diagnostics.ts";
 import { sanitizeText } from "./sanitize.ts";
 import { browserOpenCommand } from "../../../lib/common/open-external.ts";
 
-const REPO = "salesforce/sf-pi";
-const ISSUE_NEW_URL = `https://github.com/${REPO}/issues/new`;
+// This fork's issues live in its own repository, not upstream SF Pi.
+export const FEEDBACK_REPO = "alexander-vyh/sf-omp";
+const ISSUE_NEW_URL = `https://github.com/${FEEDBACK_REPO}/issues/new`;
+const ISSUE_URL_PATTERN = /https:\/\/github\.com\/alexander-vyh\/sf-omp\/issues\/\d+/;
 
 export interface CreateIssueResult {
   ok: boolean;
@@ -29,7 +31,16 @@ export async function createIssueWithGh(
   const bodyFile = path.join(tempDir, "issue.md");
   writeFileSync(bodyFile, body, "utf8");
 
-  const baseArgs = ["issue", "create", "--repo", REPO, "--title", title, "--body-file", bodyFile];
+  const baseArgs = [
+    "issue",
+    "create",
+    "--repo",
+    FEEDBACK_REPO,
+    "--title",
+    title,
+    "--body-file",
+    bodyFile,
+  ];
   const withLabels = [...baseArgs];
   for (const label of labels) {
     withLabels.push("--label", label);
@@ -134,5 +145,5 @@ function firstLine(value: string): string | undefined {
 }
 
 function extractIssueUrl(value: string): string | undefined {
-  return value.match(/https:\/\/github\.com\/salesforce\/sf-pi\/issues\/\d+/)?.[0];
+  return value.match(ISSUE_URL_PATTERN)?.[0];
 }

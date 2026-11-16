@@ -62,14 +62,15 @@ describe("Data 360 orchestration hook", () => {
     await handlers.get("tool_result")?.(result(0), { cwd: process.cwd() });
     await handlers.get("tool_result")?.(result(200), { cwd: process.cwd() });
     await handlers.get("tool_result")?.(result(400), { cwd: process.cwd() });
-    const completed = (await handlers.get("message_end")?.({
+    const completed = (await handlers.get("assistant_message")?.({
+      type: "assistant_message",
       message: {
         role: "assistant",
         content: [{ type: "text", text: "DMO discovery complete." }],
       },
-    })) as { message?: { content?: Array<{ type?: string; text?: string }> } } | undefined;
+    })) as { content?: Array<{ type?: string; text?: string }> } | undefined;
 
-    const text = completed?.message?.content
+    const text = completed?.content
       ?.filter((part) => part.type === "text")
       .map((part) => part.text)
       .join("\n");
@@ -79,7 +80,8 @@ describe("Data 360 orchestration hook", () => {
     expect(text).toContain("Page 3");
     expect(text?.match(/```mermaid/g)).toHaveLength(1);
     expect(
-      await handlers.get("message_end")?.({
+      await handlers.get("assistant_message")?.({
+        type: "assistant_message",
         message: { role: "assistant", content: [{ type: "text", text: "Next." }] },
       }),
     ).toBeUndefined();

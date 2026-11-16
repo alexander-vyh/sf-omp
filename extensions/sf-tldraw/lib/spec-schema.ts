@@ -1,7 +1,14 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Single runtime/static source of truth for Salesforce Diagram Spec v2. */
-import { StringEnum } from "@earendil-works/pi-ai";
-import { Type, type Static } from "typebox";
+// `typebox/type`, unlike the bare `typebox` specifier, is not remapped by OMP's legacy Pi
+// loader (whose facade drops `pattern`), so `typebox/value` validates real TypeBox schemas.
+import type { Static } from "typebox";
+import * as Type from "typebox/type";
+
+/** Same `{ type: "string", enum }` shape as Pi's StringEnum, built by real TypeBox. */
+function StringEnum<const T extends readonly string[]>(values: T): Type.TUnsafe<T[number]> {
+  return Type.Unsafe<T[number]>({ type: "string", enum: [...values] });
+}
 
 const ID_PATTERN = "^[A-Za-z][A-Za-z0-9._-]{0,79}$";
 const API_NAME_PATTERN = "^[A-Za-z][A-Za-z0-9_]{0,127}$";

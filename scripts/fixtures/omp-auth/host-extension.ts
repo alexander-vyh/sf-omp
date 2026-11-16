@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Observes the genuine native host; does not register or reload Salesforce factories. */
+import { readFileSync } from "node:fs";
 import { lstat, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
@@ -11,7 +12,6 @@ import {
   resolveEffectiveSettings,
 } from "@oh-my-pi/pi-coding-agent/session/auth-broker-config";
 import { cfgCompactionEnabled } from "@oh-my-pi/pi-coding-agent/session/context-settings";
-import { collectManagerDetailActions } from "../../../lib/common/manager-actions.ts";
 import {
   accountPolicy,
   refreshMaterial,
@@ -20,18 +20,18 @@ import {
   updatedApiKey,
 } from "./credentials.ts";
 
-const selected = [
-  "sf-guardrail",
-  "sf-brain",
-  "sf-apex",
-  "sf-soql",
-  "sf-lwc",
-  "sf-code-analyzer",
-  "sf-lsp",
-  "sf-agentscript",
-  "sf-skills",
-  "sf-flow",
-] as const;
+const root = path.resolve(import.meta.dirname, "../../..");
+// Every packaged extension that declares slash commands must register them natively.
+const expectedCommands = (
+  JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
+    pi: { extensions: string[] };
+  }
+).pi.extensions.flatMap((entry) => {
+  const manifest = JSON.parse(
+    readFileSync(path.join(root, path.dirname(entry), "manifest.json"), "utf8"),
+  ) as { commands?: string[] };
+  return (manifest.commands ?? []).map((command) => command.replace(/^\//, ""));
+});
 
 function requireTrue(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
@@ -60,7 +60,7 @@ export default function authHostObserver(pi: ExtensionAPI): void {
     apiKeyResolved: false,
     oauthResolved: false,
     refreshMaterialHidden: false,
-    tenSalesforceRegistrations: false,
+    salesforceRegistrations: false,
     localDatabase: false,
     localSessions: false,
     localConfig: false,
@@ -114,16 +114,17 @@ export default function authHostObserver(pi: ExtensionAPI): void {
         !JSON.stringify(result.snapshot).includes(refreshMaterial);
       requireTrue(report.refreshMaterialHidden, "Broker leaked fixture OAuth refresh material.");
 
-      // Nine factories register native commands; Brain exposes event-bus actions.
-      const commands = pi.getCommands();
-      report.tenSalesforceRegistrations = selected.every((name) =>
-        name === "sf-brain"
-          ? collectManagerDetailActions(pi, name).length > 0
-          : commands.some((command) => command.source === "extension" && command.name === name),
+      const commands = new Set(
+        pi
+          .getCommands()
+          .filter((command) => command.source === "extension")
+          .map((command) => command.name),
       );
+      report.salesforceRegistrations =
+        expectedCommands.length > 0 && expectedCommands.every((name) => commands.has(name));
       requireTrue(
-        report.tenSalesforceRegistrations,
-        "Native host is missing a Salesforce extension registration.",
+        report.salesforceRegistrations,
+        `Native host is missing Salesforce commands: ${expectedCommands.filter((name) => !commands.has(name)).join(", ")}`,
       );
 
       const expectedRoot = await realpath(stateRoot);

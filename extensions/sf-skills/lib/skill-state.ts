@@ -10,6 +10,7 @@ export {
   buildSkillInventory,
   buildSkillsHudState,
   formatSkillsHudSummary,
+  ompSkillPromptName,
 } from "../../../lib/common/skill-detection/index.ts";
 export type {
   SkillEvidence,

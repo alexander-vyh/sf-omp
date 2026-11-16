@@ -19,6 +19,10 @@ import {
   getFirstTokenCompletionsFromActions,
   resolveAction,
 } from "../../lib/common/command-actions.ts";
+import {
+  emitHumanOnlyCommandOutput,
+  registerHumanOnlyCommandOutput,
+} from "../../lib/common/human-only-command-output.ts";
 import { openInfoPanel, type InfoPanelSeverity } from "../../lib/common/info-panel.ts";
 import {
   registerManagerDetailActions,
@@ -42,6 +46,7 @@ export default function sfTldraw(pi: ExtensionAPI): void {
   if (!requirePiVersion(pi, "sf-tldraw")) return;
 
   registerTldrawCanvasTool(pi);
+  registerHumanOnlyCommandOutput(pi, COMMAND_NAME);
 
   pi.on("session_start", async () => {
     if (!hasTldrawServerConfig()) {
@@ -67,21 +72,21 @@ export default function sfTldraw(pi: ExtensionAPI): void {
           await openInManager(pi, ctx, "detail");
           return;
         }
-        await handleCommand(ctx, trimmed, false);
+        await handleCommand(pi, ctx, trimmed, false);
       });
     },
   });
 
-  registerManagerDetailActions(pi, COMMAND_NAME, managerActions());
+  registerManagerDetailActions(pi, COMMAND_NAME, managerActions(pi));
 }
 
-function managerActions(): ManagerDetailAction[] {
+function managerActions(pi: ExtensionAPI): ManagerDetailAction[] {
   return SF_TLDRAW_ACTIONS.map((action) => ({
     id: action.value,
     label: action.label,
     description: action.description,
     group: action.group,
-    run: (ctx) => handleCommand(ctx, action.value, true),
+    run: (ctx) => handleCommand(pi, ctx, action.value, true),
   }));
 }
 
@@ -93,22 +98,23 @@ async function openInManager(
   const opened = await openExtensionInManager(pi, ctx, {
     extensionId: COMMAND_NAME,
     view,
-    actions: managerActions(),
+    actions: managerActions(pi),
   });
   if (!opened) ctx.ui.notify("SF Pi Manager is unavailable. Try /sf-pi open sf-tldraw.", "warning");
 }
 
 async function handleCommand(
+  pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
   rawArgs: string,
   fromPanel: boolean,
 ): Promise<void> {
   const token = rawArgs.trim().split(/\s+/)[0] ?? "";
   const action = token ? (resolveAction(SF_TLDRAW_ACTIONS, token) ?? token) : "status";
-  if (action === "help") return emit(ctx, "SF tldraw help", renderHelp(), "info", fromPanel);
+  if (action === "help") return emit(pi, ctx, "SF tldraw help", renderHelp(), "info", fromPanel);
   if (action === "cheatsheet") {
     const text = readFileSync(path.join(import.meta.dirname, "docs", "cheatsheet.md"), "utf8");
-    return emit(ctx, "SF tldraw cheatsheet", text, "info", fromPanel);
+    return emit(pi, ctx, "SF tldraw cheatsheet", text, "info", fromPanel);
   }
   if (action === "status") {
     const client = new TldrawRuntimeClient();
@@ -116,6 +122,7 @@ async function handleCommand(
     setTldrawStatus({ ...observation.status, origin: "interaction" });
     const body = `${formatTldrawRuntimeStatus(observation.status)}\n\n${effectiveSettingsText(ctx.cwd)}`;
     return emit(
+      pi,
       ctx,
       "SF tldraw status",
       body,
@@ -128,6 +135,7 @@ async function handleCommand(
     const observation = await client.observe(ctx.signal);
     setTldrawStatus({ ...observation.status, origin: "interaction" });
     return emit(
+      pi,
       ctx,
       "Open tldraw documents",
       formatTldrawDocuments(observation.documents),
@@ -136,6 +144,7 @@ async function handleCommand(
     );
   }
   return emit(
+    pi,
     ctx,
     "SF tldraw — unknown subcommand",
     `Unknown /sf-tldraw subcommand: ${action}. Use status, documents, cheatsheet, or help.`,
@@ -145,10 +154,11 @@ async function handleCommand(
 }
 
 async function emit(
+  pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
   title: string,
   body: string,
-  severity: InfoPanelSeverity | "success",
+  severity: InfoPanelSeverity,
   fromPanel: boolean,
 ): Promise<void> {
   const panelSeverity: InfoPanelSeverity = severity === "success" ? "info" : severity;
@@ -160,5 +170,6 @@ async function emit(
     ctx.ui.notify(body, panelSeverity);
     return;
   }
-  console.info(body);
+  // Headless RPC/JSON stdout is the protocol channel; print mode alone receives plain text.
+  await emitHumanOnlyCommandOutput(pi, ctx, COMMAND_NAME, { title, body, severity });
 }

@@ -14,6 +14,7 @@ import {
   deactivateSlackTools,
   gateToolsFromGrantedScopes,
   probeAndGateTools,
+  settleSlackToolRegistration,
 } from "../lib/scope-probe.ts";
 import { _resetGrantedScopes, slackApi } from "../lib/api.ts";
 // global fetch is stubbed via vi.stubGlobal.
@@ -175,7 +176,7 @@ describe("scope-probe", () => {
       const pi = new FakePi(["bash", "slack", "slack_file", "slack_send", "slack_schedule"]);
 
       await slackApi("auth.test", "xoxp-test", {});
-      const result = gateToolsFromGrantedScopes(
+      const result = await gateToolsFromGrantedScopes(
         pi as never,
         ["search:read.public", "files:read", "chat:write"],
         "user",
@@ -247,10 +248,67 @@ describe("scope-probe", () => {
       expect(pi.getActiveTools()).toEqual(["bash", "slack", "slack_file"]);
     });
 
-    it("deactivates all Slack tools while preserving non-Slack tools", () => {
+    it("deactivates all Slack tools while preserving non-Slack tools", async () => {
       const pi = new FakePi(["bash", "slack", "slack_file"], ["bash", "slack", "slack_file"]);
-      deactivateSlackTools(pi as never);
+      await deactivateSlackTools(pi as never);
       expect(pi.getActiveTools()).toEqual(["bash"]);
+    });
+
+    it("restores scope-allowed Slack tools after logout then login in one session", async () => {
+      const pi = new FakePi(["bash", "read", "slack", "slack_file", "slack_send"]);
+      const requested = ["search:read.public", "files:read", "chat:write"];
+
+      mockAuthTestScopes("search:read.public, chat:write");
+      await probeAndGateTools(pi as never, "xoxp-test", undefined, requested, "user");
+      expect(pi.getActiveTools()).toEqual(["bash", "read", "slack", "slack_send"]);
+
+      // Logged-out refresh clears every Slack tool.
+      await deactivateSlackTools(pi as never);
+      expect(pi.getActiveTools()).toEqual(["bash", "read"]);
+      // The user turns a non-Slack tool off while logged out.
+      pi.setActiveTools(["bash"]);
+
+      // Login + refresh: the newly granted scope set now includes files:read.
+      mockAuthTestScopes("search:read.public, files:read, chat:write");
+      const result = await probeAndGateTools(
+        pi as never,
+        "xoxp-test",
+        undefined,
+        requested,
+        "user",
+      );
+      expect(result.gatedTools).toEqual([]);
+      expect(pi.getActiveTools()).toEqual(["bash", "slack", "slack_file", "slack_send"]);
+    });
+
+    it("gates OMP late registrations only after the host installs them", async () => {
+      // OMP installs post-startup registrations on the same serialized queue
+      // as setActiveTools, so they are invisible until that queue drains.
+      const all = ["bash"];
+      let active = ["bash"];
+      let queue = Promise.resolve();
+      queue = queue.then(() => {
+        for (const name of ["slack", "slack_file", "slack_send"]) {
+          all.push(name);
+          active.push(name);
+        }
+      });
+      const pi = {
+        getAllTools: () => all.map((name) => ({ name })),
+        getActiveTools: () => [...active],
+        setActiveTools: (next: string[]) =>
+          (queue = queue.then(() => {
+            active = next.filter((name) => all.includes(name));
+          })),
+      };
+      mockAuthTestScopes("search:read.public");
+      await slackApi("auth.test", "xoxp-test", {});
+
+      await settleSlackToolRegistration(pi as never);
+      const result = await gateToolsFromGrantedScopes(pi as never, [], "user");
+
+      expect(result.gatedTools.sort()).toEqual(["slack_file", "slack_send"]);
+      expect(pi.getActiveTools()).toEqual(["bash", "slack"]);
     });
   });
 

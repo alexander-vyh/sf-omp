@@ -194,6 +194,18 @@ export interface FinServiceDeps {
   readSignin?: (workspace: string) => ReturnType<typeof readStoredSignin>;
   /** Called after a workspace is added, so its Pi sign-ins can be registered. */
   onWorkspaceAdded?: (name: string) => void;
+  /**
+   * Host tool inventory (`pi.getAllTools()`). Used to detect an Intercom MCP
+   * connection where the host cannot run tools for extensions (OMP).
+   */
+  listTools?: () => readonly HostToolInfo[];
+}
+
+/** The `pi.getAllTools()` fields the MCP probe reads; OMP adds the MCP provenance. */
+export interface HostToolInfo {
+  name: string;
+  mcpServerName?: string;
+  mcpToolName?: string;
 }
 
 export function createFinService(deps: FinServiceDeps): FinService {
@@ -711,7 +723,11 @@ export function createFinService(deps: FinServiceDeps): FinService {
       }
 
       // Intercom MCP: read-only identity probe through the configured connection.
-      const mcp = await probeMcpIdentity(ctx, workspaceProviders(name).mcpConnection);
+      const mcp = await probeMcpIdentity(
+        ctx,
+        workspaceProviders(name).mcpConnection,
+        deps.listTools,
+      );
 
       const report = evaluateSetup(
         {
@@ -807,12 +823,21 @@ export interface ProcedureResponse {
  * Read-only identity probe through the workspace's Intercom MCP connection:
  * `list_articles` with one row carries `workspace_id`. Unknown tool means the
  * connection is not configured; an error result means it is signed out.
+ * Without `executeTool` (OMP), the host tool inventory shows whether OMP
+ * exposes the connection's `list_articles` tool ("connected"); OMP offers
+ * extensions no way to call it, so sign-in and workspace stay unproven.
  */
 async function probeMcpIdentity(
   ctx: { executeTool?: (name: string, args: unknown) => Promise<unknown> },
   connection: string,
+  listTools: (() => readonly HostToolInfo[]) | undefined,
 ): Promise<McpIdentity> {
-  if (typeof ctx.executeTool !== "function") return { state: "not_configured" };
+  if (typeof ctx.executeTool !== "function") {
+    const exposed = (listTools?.() ?? []).some(
+      (tool) => tool.mcpServerName === connection && tool.mcpToolName === "list_articles",
+    );
+    return exposed ? { state: "connected" } : { state: "not_configured" };
+  }
   const tool = `mcp__${connection.replace(/-/g, "_")}__list_articles`;
   try {
     const outcome = (await ctx.executeTool(tool, { per_page: 1 })) as {

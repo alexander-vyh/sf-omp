@@ -97,7 +97,7 @@ Jump to an extension's Troubleshooting section to see the full fix. This index i
 - A toggle does not take effect
 - A newer stable Pi version is outside the audited window
 - Auto Update skipped a package
-- Auto Update waits for `agent_settled`
+- Auto Update waits for a settled turn
 - Project changes do not stick
 - Recommended items or skill roots look stale
 - `pi-web-access` reports `Blocked internal address` for a public site

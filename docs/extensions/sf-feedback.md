@@ -47,7 +47,7 @@ Open its Manager detail or change its package state with:
 - **Commands:** `/sf-feedback`
 - **LLM tools:** _none_
 - **Providers:** _none_
-- **Events/hooks:** _none_
+- **Events/hooks:** `session_start`, `session_switch`, `session_tree`
 
 </details>
 

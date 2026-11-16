@@ -16,6 +16,7 @@
  * Until then, this is the accepted pattern for provider extensions that
  * need to persist defaultProvider/defaultModel.
  */
+import path from "node:path";
 import {
   globalSettingsPath as resolveGlobalSettingsPath,
   projectSettingsPath as resolveProjectSettingsPath,
@@ -23,6 +24,7 @@ import {
   writeJsonFile,
 } from "../../../lib/common/sf-pi-settings.ts";
 import { ENABLED_MODEL_PATTERN, PROVIDER_NAME, asOptionalString } from "./config.ts";
+import { mirrorModelSelectionToOmp, type OmpSettingsScope } from "./omp-settings.ts";
 
 const LEGACY_GATEWAY_PROVIDER_PREFIX = `${PROVIDER_NAME}-`;
 
@@ -103,6 +105,17 @@ export function readSettings(filePath: string): Record<string, unknown> {
 
 export function writeSettings(filePath: string, settings: Record<string, unknown>): void {
   writeJsonFile(filePath, settings);
+  // OMP reads model selection from its own config, not settings.json.
+  const target = ompScopeForSettingsPath(filePath);
+  if (target) mirrorModelSelectionToOmp(target, settings);
+}
+
+function ompScopeForSettingsPath(filePath: string): OmpSettingsScope | undefined {
+  if (path.resolve(filePath) === path.resolve(globalSettingsPath())) return { scope: "global" };
+  const cwd = path.dirname(path.dirname(filePath));
+  return path.resolve(projectSettingsPath(cwd)) === path.resolve(filePath)
+    ? { scope: "project", cwd }
+    : undefined;
 }
 
 function toStringArray(value: unknown): string[] {

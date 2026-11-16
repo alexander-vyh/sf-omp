@@ -42,6 +42,7 @@ Open its Manager detail or change its package state with:
 - Headless 360 target_org planning succeeds only when protected-resource and OpenID discovery resolve to the explicit org's trusted My Domain. The org identity, endpoint proof, and per-org server name are source-bound and privately persisted with the managed fingerprint.
 - Multiple instances can share one reviewed preset without sharing Pi OAuth credentials. Ambiguous instance actions require connection_name and legacy singleton entries remain unbound until explicitly verified.
 - Exact tool conflict recommendations change only MCP exposure; SF MCP never disables an SF Pi capability owner automatically.
+- OMP loads native mcp.json entries but ignores Pi exposure fields, so SF MCP itself removes policy-hidden MCP tools from the active set and blocks their tool calls.
 - Observed additions remain locked hidden until a reviewed preset revision approves them; removed documented tools are unavailable and can be repaired to Hidden on unchanged managed entries.
 - Agentforce Sales is sandbox-only and experimental in SF Pi; its secret is an environment reference and every operation remains Guardrail-mediated and fail-closed without exact OAuth-org identity.
 - Standalone Tableau uses Pi-native OAuth against Tableau's managed endpoint; Trailhead uses its published no-auth, read-only public-content endpoint.
@@ -65,7 +66,7 @@ Open its Manager detail or change its package state with:
 - **Commands:** `/sf-mcp`
 - **LLM tools:** `sf_mcp`
 - **Providers:** _none_
-- **Events/hooks:** `session_start`, `before_agent_start`
+- **Events/hooks:** `session_start`, `session_switch`, `session_tree`, `before_agent_start`, `tool_call`
 
 </details>
 

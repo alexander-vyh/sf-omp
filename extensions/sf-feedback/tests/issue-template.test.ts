@@ -5,7 +5,7 @@ import type { Diagnostics, FeedbackDraft } from "../lib/types.ts";
 
 const diagnostics: Diagnostics = {
   sfPiVersion: "0.1.0",
-  piVersion: "0.2.0",
+  hostRuntime: "OMP 18.17.0",
   nodeVersion: "v20.0.0",
   npmVersion: "10.0.0",
   platform: "darwin",
@@ -53,6 +53,7 @@ describe("sf-feedback issue template", () => {
 
     expect(body).toContain("## Diagnostics");
     expect(body).toContain("SF Pi: 0.1.0");
+    expect(body).toContain("Runtime: OMP 18.17.0");
     expect(body).toContain("<email-redacted>");
     expect(body).toContain("<salesforce-instance-url-redacted>");
     expect(body).not.toContain("jane@example.com");

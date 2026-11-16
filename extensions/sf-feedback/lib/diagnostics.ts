@@ -15,7 +15,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PACKAGE_ROOT = path.resolve(__dirname, "../../..");
 
-export async function collectDiagnostics(exec: ExecFn, cwd: string): Promise<Diagnostics> {
+export async function collectDiagnostics(
+  exec: ExecFn,
+  cwd: string,
+  hostRuntime: string,
+): Promise<Diagnostics> {
   const disabledFiles = getDisabledExtensionFilesForCwd(cwd);
   const enabledExtensions = SF_PI_REGISTRY.filter((ext) => !disabledFiles.has(ext.file)).map(
     (ext) => ext.id,
@@ -24,34 +28,25 @@ export async function collectDiagnostics(exec: ExecFn, cwd: string): Promise<Dia
     (ext) => ext.id,
   );
 
-  const [
-    npmVersion,
-    piVersion,
-    sfVersion,
-    sfPlugins,
-    sfConfig,
-    gitInside,
-    gitBranch,
-    gitStatus,
-    gitRemote,
-  ] = await Promise.all([
-    run(exec, "npm", ["--version"]),
-    run(exec, "pi", ["--version"]),
-    run(exec, "sf", ["--version", "--json"]),
-    run(exec, "sf", ["plugins", "--core", "--json"]),
-    run(exec, "sf", ["config", "get", "target-org", "org-api-version", "--json"]),
-    run(exec, "git", ["rev-parse", "--is-inside-work-tree"], { cwd }),
-    run(exec, "git", ["branch", "--show-current"], { cwd }),
-    run(exec, "git", ["status", "--short"], { cwd }),
-    run(exec, "git", ["remote", "get-url", "origin"], { cwd }),
-  ]);
+  const [npmVersion, sfVersion, sfPlugins, sfConfig, gitInside, gitBranch, gitStatus, gitRemote] =
+    await Promise.all([
+      run(exec, "npm", ["--version"]),
+      run(exec, "sf", ["--version", "--json"]),
+      run(exec, "sf", ["plugins", "--core", "--json"]),
+      run(exec, "sf", ["config", "get", "target-org", "org-api-version", "--json"]),
+      run(exec, "git", ["rev-parse", "--is-inside-work-tree"], { cwd }),
+      run(exec, "git", ["branch", "--show-current"], { cwd }),
+      run(exec, "git", ["status", "--short"], { cwd }),
+      run(exec, "git", ["remote", "get-url", "origin"], { cwd }),
+    ]);
 
   const github = await detectGithubStatus(exec);
-  const tools = await detectTools(exec, ["gh", "git", "node", "npm", "sf", "pi"]);
+  // The host runs in-process (OMP via repo-local Bun), so a PATH `pi` probe says nothing about it.
+  const tools = await detectTools(exec, ["gh", "git", "node", "npm", "sf", "bun"]);
 
   return {
     sfPiVersion: readPackageVersion(),
-    piVersion: firstLine(piVersion.stdout) || statusLabel(piVersion),
+    hostRuntime: sanitizeText(hostRuntime),
     nodeVersion: process.version,
     npmVersion: firstLine(npmVersion.stdout) || statusLabel(npmVersion),
     platform: platform(),
@@ -260,7 +255,7 @@ export function renderDiagnosticsText(diagnostics: Diagnostics): string {
   return sanitizeLines(
     [
       `SF Pi: ${diagnostics.sfPiVersion}`,
-      `Pi: ${diagnostics.piVersion}`,
+      `Runtime: ${diagnostics.hostRuntime}`,
       `Node: ${diagnostics.nodeVersion}`,
       `npm: ${diagnostics.npmVersion}`,
       `OS: ${diagnostics.platform} ${diagnostics.osRelease} ${diagnostics.arch}`,

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +21,53 @@ export function localOmpCommand(): string[] {
   if (manifest.version !== OMP_VERSION)
     throw new Error(`Expected local OMP ${OMP_VERSION}; run npm ci.`);
   return [bun, path.join(ompRoot, "dist", "cli.js")];
+}
+
+/** Pinned agent-browser release installed by scripts/provision-agent-browser.ts. */
+export const AGENT_BROWSER_VERSION = "0.43.0";
+export const AGENT_BROWSER_TOOLCHAIN = path.join(ROOT, ".runtime", "toolchains", "agent-browser");
+/** HOME used only for the provisioning download, so Chrome for Testing lands in .runtime. */
+export const AGENT_BROWSER_HOME = path.join(AGENT_BROWSER_TOOLCHAIN, "home");
+
+/** The provisioned CLI's bin directory and Chrome binary, when present. */
+export function agentBrowserToolchain(): { binDir?: string; chrome?: string } {
+  const binDir = path.join(AGENT_BROWSER_TOOLCHAIN, "node_modules", ".bin");
+  const browsers = path.join(AGENT_BROWSER_HOME, ".agent-browser", "browsers");
+  const app = "Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing";
+  // Same layouts agent-browser's own lookup accepts (cli/src/install.rs).
+  const chrome = (existsSync(browsers) ? readdirSync(browsers) : [])
+    .filter((name) => name.startsWith("chrome-"))
+    .sort()
+    .reverse()
+    .flatMap((name) =>
+      ["", "chrome-mac-arm64", "chrome-mac-x64"].map((inner) =>
+        path.join(browsers, name, inner, app),
+      ),
+    )
+    .find((candidate) => existsSync(candidate));
+  return {
+    ...(existsSync(path.join(binDir, "agent-browser")) ? { binDir } : {}),
+    ...(chrome ? { chrome } : {}),
+  };
+}
+
+/**
+ * Pinned tldraw office desktop app (the real sf-tldraw Canvas API runtime) installed by
+ * `bun scripts/provision-tldraw-office.ts` under .runtime/toolchains/tldraw-office/<version>.
+ * The sf-tldraw smoke check launches it hidden with a hermetic TEST_DATA_DIR when present.
+ */
+export function tldrawOfficeToolchain(): { version: string; app: string; executable?: string } {
+  const version = "1.24.1";
+  const app = path.join(
+    ROOT,
+    ".runtime",
+    "toolchains",
+    "tldraw-office",
+    version,
+    "tldraw office.app",
+  );
+  const executable = path.join(app, "Contents", "MacOS", "tldraw office");
+  return { version, app, ...(existsSync(executable) ? { executable } : {}) };
 }
 
 /** OMP stays local; ordinary launches retain existing Salesforce authentication. */
@@ -58,9 +106,18 @@ export function runtimeEnvironment(stateRoot?: string): NodeJS.ProcessEnv {
     env.XDG_STATE_HOME = path.join(state, "state");
     delete env.SF_STATE_FOLDER;
     delete env.SFDX_STATE_FOLDER;
+    // Without a key.json in the empty HOME, @salesforce/core falls back to the
+    // real macOS login keychain (not HOME-scoped) and can block; hermetic runs
+    // keep their key under the fake HOME instead.
+    env.SF_USE_GENERIC_UNIX_KEYCHAIN = "true";
     for (const name of Object.keys(env)) {
       if (name.startsWith("OMP_AUTH_BROKER_")) delete env[name];
     }
+    // agent-browser's daemon socket defaults to $HOME/.agent-browser; a hermetic HOME
+    // under .runtime/smoke/<run>/state exceeds macOS's 103-byte socket path limit.
+    const socketKey = createHash("sha256").update(state).digest("hex").slice(0, 8);
+    env.AGENT_BROWSER_SOCKET_DIR = path.join(ROOT, ".runtime", "ab", socketKey);
+    mkdirSync(env.AGENT_BROWSER_SOCKET_DIR, { recursive: true, mode: 0o700 });
   } else {
     env.OMP_AUTH_BROKER_SNAPSHOT_CACHE = path.join(cache, "auth-broker-snapshot.enc");
     const toolchain = path.join(ROOT, ".runtime", "toolchains", "java");
@@ -72,6 +129,13 @@ export function runtimeEnvironment(stateRoot?: string): NodeJS.ProcessEnv {
       env.PATH = `${path.join(javaHome, "bin")}${path.delimiter}${env.PATH}`;
     }
   }
+  // SF Browser shells out to agent-browser. A copy provisioned by
+  // `bun scripts/provision-agent-browser.ts` (pinned CLI plus Chrome for Testing,
+  // all under .runtime/toolchains/agent-browser) takes precedence over a global
+  // install so launcher, smoke, and parity use the same audited browser runtime.
+  const agentBrowser = agentBrowserToolchain();
+  if (agentBrowser.binDir) env.PATH = `${agentBrowser.binDir}${path.delimiter}${env.PATH}`;
+  if (agentBrowser.chrome) env.AGENT_BROWSER_EXECUTABLE_PATH ??= agentBrowser.chrome;
   // Global config overlays can include extensions; the auth bridge supplies
   // only its own policy overlay explicitly, never the inherited whole config.
   for (const name of [
@@ -82,5 +146,10 @@ export function runtimeEnvironment(stateRoot?: string): NodeJS.ProcessEnv {
     "PI_CONFIG_FILES",
   ])
     delete env[name];
+  // @salesforce/core's file logger starts a pino transport whose relative target
+  // pino resolves from caller stack paths; inside OMP's extension loader that
+  // fails, so every in-process org connection would throw. Memory logging keeps
+  // org features working; an explicit user setting still wins.
+  env.SF_DISABLE_LOG_FILE ??= "true";
   return env;
 }

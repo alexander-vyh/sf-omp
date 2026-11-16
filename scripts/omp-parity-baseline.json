@@ -1,0 +1,195 @@
+{
+  "schemaVersion": 1,
+  "ompVersion": "18.17.0",
+  "extensions": {
+    "sf-agentscript": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-apex": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-brain": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-browser": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-code-analyzer": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-data-explorer": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-data360": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-devbar": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-docs": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-feedback": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-fin": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-flow": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-guardrail": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-herdr": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-integrate": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-llm-gateway": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-lsp": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-lwc": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-mcp": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-ohana-spinner": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-pi-manager": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-planreview": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-skills": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-slack": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-soql": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-tldraw": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    },
+    "sf-welcome": {
+      "status": "pass",
+      "missingCommands": [],
+      "missingTools": [],
+      "missingProviders": [],
+      "unsupportedEvents": []
+    }
+  }
+}

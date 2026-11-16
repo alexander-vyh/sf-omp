@@ -15,6 +15,7 @@ import {
   classifyPiVersion,
   getInstalledPiVersion,
   HARD_MAX_PI_VERSION_EXCLUSIVE,
+  isOmpRuntime,
   MIN_PI_VERSION,
   RECOMMENDED_PI_VERSION,
 } from "../pi-compat.ts";
@@ -300,6 +301,9 @@ export function findLoaderCollisions(options: {
   const skillPaths = Array.isArray(options.settings.skills)
     ? options.settings.skills.filter((v): v is string => typeof v === "string")
     : [];
+  // OMP's loadSkills is async with a different result shape, and OMP reports
+  // its own skill conflicts; this synchronous probe mirrors Pi's loader only.
+  if (isOmpRuntime()) return [];
   let diagnostics: Array<{ collision?: { name: string; winnerPath: string; loserPath: string } }>;
   try {
     const result = loadSkills({

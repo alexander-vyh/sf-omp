@@ -89,6 +89,7 @@ import {
   deactivateSlackTools,
   gateToolsFromGrantedScopes,
   probeAndGateTools,
+  settleSlackToolRegistration,
 } from "./lib/scope-probe.ts";
 import {
   DEFAULT_PREFERENCES,
@@ -124,6 +125,7 @@ import {
 import { withSafeCommandHandler } from "../../lib/common/safe-command-handler.ts";
 import { openInfoPanel } from "../../lib/common/info-panel.ts";
 import { requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { registerAuthOnlyProvider } from "../../lib/common/auth-only-provider.ts";
 import {
   createSlackConnectPanel,
   createSlackDisconnectPanel,
@@ -352,7 +354,7 @@ export default function sfSlack(pi: ExtensionAPI) {
         if (notifyOnFailure && ctx.hasUI) {
           ctx.ui.notify(`Slack auth.test failed: ${errMessage}`, "warning");
         }
-        deactivateSlackTools(pi);
+        await deactivateSlackTools(pi);
         updateStatus(ctx, "error", generation);
         return;
       }
@@ -364,7 +366,7 @@ export default function sfSlack(pi: ExtensionAPI) {
       };
       setDetectedTeamId(authResult.data?.team_id);
 
-      const probeResult = gateToolsFromGrantedScopes(pi, requestedScopes, tokenType);
+      const probeResult = await gateToolsFromGrantedScopes(pi, requestedScopes, tokenType);
       const grantedScopes = getGrantedScopes();
       updateScopeCounts(grantedScopes, requestedScopes, probeResult.missingGrantedScopes.length);
 
@@ -398,7 +400,7 @@ export default function sfSlack(pi: ExtensionAPI) {
       if (notifyOnFailure && ctx.hasUI) {
         ctx.ui.notify(`Slack ${lastError.step} failed: ${message}`, "warning");
       }
-      deactivateSlackTools(pi);
+      await deactivateSlackTools(pi);
       updateStatus(ctx, "error", generation);
     }
   }
@@ -422,7 +424,7 @@ export default function sfSlack(pi: ExtensionAPI) {
   //                       surface; every call confirms via ctx.ui.confirm)
   //   - slack_schedule:   schedule/list/delete API-scheduled messages (also
   //                       confirmed for schedule/delete)
-  function ensureSlackToolsRegistered(): void {
+  async function ensureSlackToolsRegistered(): Promise<void> {
     if (slackToolsRegistered) return;
     registerSlackTool(pi);
     registerTimeRangeTool(pi);
@@ -435,10 +437,14 @@ export default function sfSlack(pi: ExtensionAPI) {
     registerSendTool(pi);
     registerScheduleTool(pi);
     slackToolsRegistered = true;
+    await settleSlackToolRegistration(pi);
   }
 
   // ─── Auth provider registration ─────────────────────────────────────────────
-  pi.registerProvider(sfSlackAuthController.provider);
+  // Host-aware: Pi registers the Provider object; OMP registers `{ oauth }` so
+  // `/login sf-slack` and `/logout sf-slack` work natively.
+  const { provider } = sfSlackAuthController;
+  registerAuthOnlyProvider(pi, { id: provider.id, name: provider.name, auth: provider.auth });
 
   // ─── Helper: update footer status ───────────────────────────────────────────
   function updateStatus(
@@ -513,12 +519,12 @@ export default function sfSlack(pi: ExtensionAPI) {
     if (!auth.ok) {
       // No token → hide any Slack tools left active from an earlier session.
       setDetectedTeamId("");
-      deactivateSlackTools(pi);
+      await deactivateSlackTools(pi);
       updateStatus(ctx, "disconnected", generation);
       return;
     }
 
-    ensureSlackToolsRegistered();
+    await ensureSlackToolsRegistered();
     const token = auth.token;
     const requestedScopes = oauthScopes()
       .split(",")
@@ -534,7 +540,7 @@ export default function sfSlack(pi: ExtensionAPI) {
       tokenType = cached.tokenType;
       setDetectedTeamId(cached.identity.teamId);
       seedGrantedScopesForStartup(cached.grantedScopes);
-      const probeResult = gateToolsFromGrantedScopes(pi, requestedScopes, tokenType);
+      const probeResult = await gateToolsFromGrantedScopes(pi, requestedScopes, tokenType);
       const grantedScopes = getGrantedScopes();
       updateScopeCounts(grantedScopes, requestedScopes, probeResult.missingGrantedScopes.length);
       lastError = null;
@@ -588,7 +594,7 @@ export default function sfSlack(pi: ExtensionAPI) {
       if (ctx.hasUI) {
         ctx.ui.notify(`Slack ${lastError.step} failed: ${message}`, "warning");
       }
-      deactivateSlackTools(pi);
+      await deactivateSlackTools(pi);
       updateStatus(ctx, "error", generation);
     }
   });
@@ -600,7 +606,7 @@ export default function sfSlack(pi: ExtensionAPI) {
     if (!wasActive) return;
 
     identity = null;
-    deactivateSlackTools(pi);
+    await deactivateSlackTools(pi);
     clearSlackStatus();
     setDetectedTeamId("");
     missingGrantedScopeCount = 0;
@@ -630,8 +636,12 @@ export default function sfSlack(pi: ExtensionAPI) {
     // Only project Slack context while identity exists and at least one Slack
     // tool is selected for this turn. Inactive turns filter prior workspace
     // messages from model context without mutating the append-only session.
-    const { systemPromptOptions } = event;
-    const hasSlackTool = systemPromptOptions.selectedTools?.some((t) => t.startsWith("slack"));
+    // OMP's before_agent_start carries no systemPromptOptions; fall back to
+    // the live active tool set, which is what the next turn ships.
+    const systemPromptOptions =
+      "systemPromptOptions" in event ? event.systemPromptOptions : undefined;
+    const selectedTools = systemPromptOptions?.selectedTools ?? pi.getActiveTools();
+    const hasSlackTool = selectedTools.some((t) => t.startsWith("slack"));
     slackContextActive = identity !== null && hasSlackTool === true;
     if (!slackContextActive || !identity) return;
 
@@ -746,7 +756,7 @@ export default function sfSlack(pi: ExtensionAPI) {
         if (!isActiveSession(ctx, generation)) return;
 
         if (!auth.ok) {
-          deactivateSlackTools(pi);
+          await deactivateSlackTools(pi);
           updateStatus(ctx, "disconnected", generation);
           await emitSlackOutput(
             ctx,
@@ -758,7 +768,7 @@ export default function sfSlack(pi: ExtensionAPI) {
           return;
         }
 
-        ensureSlackToolsRegistered();
+        await ensureSlackToolsRegistered();
         const token = auth.token;
         tokenType = detectTokenType(token);
 
@@ -798,7 +808,7 @@ export default function sfSlack(pi: ExtensionAPI) {
           } else {
             const errMessage = (authResult as ApiErr).error;
             lastError = { step: "auth.test", message: errMessage };
-            deactivateSlackTools(pi);
+            await deactivateSlackTools(pi);
             updateStatus(ctx, "error", generation);
             await emitSlackOutput(ctx, "Slack auth.test failed", errMessage, "error", fromPanel);
           }
@@ -814,7 +824,7 @@ export default function sfSlack(pi: ExtensionAPI) {
             step: identity ? "probe-or-prewarm" : "auth.test",
             message,
           };
-          deactivateSlackTools(pi);
+          await deactivateSlackTools(pi);
           updateStatus(ctx, "error", generation);
           await emitSlackOutput(ctx, "Slack detection failed", message, "error", fromPanel);
         }

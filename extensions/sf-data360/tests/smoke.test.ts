@@ -45,8 +45,8 @@ describe("sf-data360 extension smoke", () => {
       "session_shutdown",
       "resources_discover",
       "tool_result",
-      "message_end",
-      "agent_settled",
+      "assistant_message",
+      "agent_end",
     ]);
   });
 

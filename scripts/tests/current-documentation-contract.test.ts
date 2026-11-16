@@ -11,13 +11,13 @@ function read(relativePath: string): string {
 }
 
 describe("current documentation authority", () => {
-  it("leaves shipped release history to release-please", () => {
+  it("keeps upstream release history intact below the fork's Unreleased section", () => {
     const changelog = read("CHANGELOG.md");
-    const unreleased = changelog.match(/^## Unreleased\s*\n([\s\S]*?)(?=^## \[|$)/m)?.[1] ?? "";
+    const headings = changelog.match(/^## .*$/gm) ?? [];
 
-    expect(unreleased.trim()).toBe("");
-    expect(read(".github/PULL_REQUEST_TEMPLATE.md")).not.toContain(
-      "I added a `CHANGELOG.md` entry under `[Unreleased]`",
+    expect(headings[0]).toBe("## Unreleased");
+    expect(headings[1]).toMatch(
+      /^## \[\d+\.\d+\.\d+\]\(https:\/\/github\.com\/salesforce\/sf-pi\//,
     );
   });
 
@@ -56,7 +56,7 @@ describe("current documentation authority", () => {
     const bugTemplate = read(".github/ISSUE_TEMPLATE/bug_report.yml");
 
     expect(bugTemplate).toContain("`/sf-pi doctor`");
-    expect(bugTemplate).toContain("`pi --version`");
+    expect(bugTemplate).toContain("`bun scripts/omp.ts --version`");
     expect(bugTemplate).toContain("`node --version`");
     expect(bugTemplate).not.toMatch(/placeholder:\s+(?:0\.|v20)/);
   });
@@ -86,27 +86,16 @@ describe("current documentation authority", () => {
   });
 
   it("grounds npm and operating-system support claims in maintained proof", () => {
-    const pkg = JSON.parse(read("package.json")) as {
-      engines?: { node?: string };
-      peerDependencies?: Record<string, string>;
-    };
+    const pkg = JSON.parse(read("package.json")) as { engines?: { node?: string } };
     const install = read("docs/install.md");
 
     expect(install).toContain(`Node.js \`${pkg.engines?.node}\``);
-    expect(install).toContain(
-      `pi coding agent \`${pkg.peerDependencies?.["@earendil-works/pi-coding-agent"]}\``,
-    );
-    expect(install).toContain("SF Pi declares\n  no separate npm floor");
-    expect(install).toContain("Required CI continuously proves Ubuntu with Node 22");
-    expect(install).not.toContain("- npm 11");
-    expect(install).not.toContain("Native Windows is supported");
-    // The Windows claim must stay tied to the blocking CI job that proves it.
+    expect(install).toContain("sf-omp declares\n  no separate npm floor");
+    expect(install).toContain("sf-omp supports macOS only");
+    // The macOS claim must stay tied to the blocking CI job that proves it.
     const ci = read(".github/workflows/ci.yml");
-    expect(ci).toMatch(
-      /name: Tests \(Windows\)\n\s+runs-on: windows-latest\n(?!\s+continue-on-error)/,
-    );
-    expect(install).toMatch(/required\s+`Tests \(Windows\)` job/);
-    expect(install).not.toContain("best-effort; use WSL");
+    expect(ci).toMatch(/\n {2}validate:\n\s+runs-on: macos-latest\n(?!\s+continue-on-error)/);
+    expect(install).toMatch(/required `validate` CI job runs on macOS/);
   });
 
   it("lists every configurable extension exactly once in the settings audit", () => {

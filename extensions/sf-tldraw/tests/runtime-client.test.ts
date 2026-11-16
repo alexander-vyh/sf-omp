@@ -357,6 +357,23 @@ describe("TldrawRuntimeClient", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
+  it("executes against long base64url working-copy ids literally", async () => {
+    const id = `tldr:file:${Buffer.from(`/Users/example/${"Documents/".repeat(12)}Support Model.tldraw`).toString("base64url")}`;
+    expect(id.length).toBeGreaterThan(120);
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (url: string) => {
+      urls.push(url);
+      if (url.endsWith("/readme")) return new Response(V112_README);
+      return json({ success: true, result: { ok: true } });
+    }) as unknown as typeof fetch;
+    const client = new TldrawRuntimeClient({ fetchImpl, serverConfigPath: configPath });
+    await expect(client.execute(id, "return 1")).resolves.toEqual({ ok: true });
+    expect(urls.at(-1)).toBe(`http://127.0.0.1:7236/api/doc/${id}/exec`);
+    await expect(client.execute("doc/../escape", "return 1")).rejects.toMatchObject({
+      code: "not_found",
+    });
+  });
+
   it("rejects unsafe document names before calling the create route", async () => {
     const fetchImpl = vi.fn(async () => new Response(V112_README)) as unknown as typeof fetch;
     const client = new TldrawRuntimeClient({ fetchImpl, serverConfigPath: configPath });

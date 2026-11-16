@@ -683,12 +683,15 @@ function safeLabel(value: string): string {
   return value.replace(/[^A-Za-z0-9:._-]/g, "").slice(0, 120);
 }
 
+// Current desktop builds key documents as `tldr:file:<base64url absolute path>`, which can
+// exceed the 120-character display label; validate the opaque id without truncating it.
+const DOCUMENT_ID_RE = /^[A-Za-z0-9:._-]{1,2048}$/;
+
 function documentPathId(value: string): string {
-  const safe = safeLabel(value);
-  if (!safe || safe !== value || value.includes("/")) {
+  if (!DOCUMENT_ID_RE.test(value)) {
     throw new TldrawRuntimeError("not_found", "Invalid tldraw document id.");
   }
   // The desktop router matches the opaque id literally; percent-encoding the
   // colons changes the lookup key and produces a false Document-not-found.
-  return safe;
+  return value;
 }

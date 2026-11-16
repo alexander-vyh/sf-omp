@@ -33,7 +33,8 @@ export interface GithubStatus {
 
 export interface Diagnostics {
   sfPiVersion: string;
-  piVersion: string;
+  /** In-process host runtime, e.g. "OMP 18.17.0"; never a PATH-resolved CLI. */
+  hostRuntime: string;
   nodeVersion: string;
   npmVersion: string;
   platform: NodeJS.Platform;

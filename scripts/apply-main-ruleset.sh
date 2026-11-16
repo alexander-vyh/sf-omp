@@ -82,14 +82,13 @@ payload=$(cat <<JSON
       "parameters": {
         "strict_required_status_checks_policy": false,
         "required_status_checks": [
-          { "context": "Validate" },
+          { "context": "validate" },
           { "context": "npm audit (production)" },
           { "context": "gitleaks" },
           { "context": "actionlint" },
           { "context": "Require SHA-pinned actions" },
           { "context": "commitlint" },
-          { "context": "License scan (production deps)" },
-          { "context": "Tests (Windows)" }
+          { "context": "License scan (production deps)" }
         ]
       }
     }

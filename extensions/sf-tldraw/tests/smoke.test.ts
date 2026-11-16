@@ -68,22 +68,54 @@ describe("sf-tldraw extension", () => {
       .mockResolvedValue(observation);
     const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const registerCommand = vi.fn();
+    const appendEntry = vi.fn();
     const mod = await import("../index.ts");
     mod.default({
       on: vi.fn(),
       registerTool: vi.fn(),
       registerCommand,
+      appendEntry,
       events: { on: vi.fn() },
     } as never);
     const command = registerCommand.mock.calls.find(([name]) => name === "sf-tldraw")?.[1];
+    const expected = surface.formatTldrawRuntimeStatus(observation.status);
     await command.handler("status", {
       cwd: process.cwd(),
       hasUI: false,
+      mode: "print",
       ui: { notify: vi.fn() },
     });
     expect(observe).toHaveBeenCalledOnce();
-    expect(consoleInfo).toHaveBeenCalledWith(
-      expect.stringContaining(surface.formatTldrawRuntimeStatus(observation.status)),
+    expect(consoleInfo).toHaveBeenCalledWith(expect.stringContaining(expected));
+    expect(appendEntry).toHaveBeenCalledWith(
+      "sf-tldraw",
+      expect.objectContaining({ title: "SF tldraw status", severity: "warning" }),
+    );
+    vi.restoreAllMocks();
+  });
+
+  it("keeps headless RPC stdout free of command text", async () => {
+    vi.resetModules();
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const registerCommand = vi.fn();
+    const appendEntry = vi.fn();
+    const mod = await import("../index.ts");
+    mod.default({
+      on: vi.fn(),
+      registerTool: vi.fn(),
+      registerCommand,
+      appendEntry,
+      events: { on: vi.fn() },
+    } as never);
+    const command = registerCommand.mock.calls.find(([name]) => name === "sf-tldraw")?.[1];
+    await command.handler("help", { cwd: process.cwd(), hasUI: false, mode: "rpc" });
+    expect(consoleInfo).not.toHaveBeenCalled();
+    expect(appendEntry).toHaveBeenCalledWith(
+      "sf-tldraw",
+      expect.objectContaining({
+        title: "SF tldraw help",
+        body: expect.stringContaining("/sf-tldraw status"),
+      }),
     );
     vi.restoreAllMocks();
   });

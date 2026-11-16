@@ -18,12 +18,13 @@
  */
 import type { AuthInteraction } from "@earendil-works/pi-ai";
 import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
-import { readStoredCredential } from "@earendil-works/pi-coding-agent";
-import { existsSync } from "node:fs";
-import { createAuthOnlyProvider } from "../../../lib/common/auth-only-provider.ts";
 import {
-  getPiAuthStorePath,
+  createAuthOnlyProvider,
+  resolveAuthOnlyProviderAuth,
+} from "../../../lib/common/auth-only-provider.ts";
+import {
   hasPiAuthProviderApiKey,
+  readPiAuthCredential,
   readPiAuthProviderEnv,
 } from "../../../lib/common/pi-auth-status.ts";
 import {
@@ -198,7 +199,7 @@ export function notConnectedMessage(workspace: string = DEFAULT_WORKSPACE): stri
     isDefault(workspace)
       ? "SF Fin is not connected."
       : `Fin workspace "${workspace}" is not connected.`,
-    `Run ${login} in interactive TUI mode; SF Pi masks the personal API token and detects the region.`,
+    `Run ${login} in interactive TUI mode; the personal API token is entered in a masked prompt and the region is detected.`,
     ...(isDefault(workspace)
       ? [`For automation, set ${ENV_TOKEN} (and optionally ${ENV_REGION}) before starting Pi.`]
       : []),
@@ -211,20 +212,16 @@ export async function getFinCredential(
   workspace: string = DEFAULT_WORKSPACE,
 ): Promise<FinCredentialResult> {
   const provider = workspaceProviders(workspace).personal;
-  const getProviderAuth = ctx.modelRegistry.getProviderAuth;
-  if (typeof getProviderAuth === "function") {
-    try {
-      const resolved = await getProviderAuth.call(ctx.modelRegistry, provider);
-      const token = resolved?.auth?.apiKey?.trim();
-      if (token) {
-        const source = resolved?.source === ENV_TOKEN ? "env" : "pi-auth";
-        const region =
-          normalizeRegion(resolved?.env?.[ENV_REGION]) ?? detectRegion(workspace).region;
-        return { ok: true, credential: { token, source, region } };
-      }
-    } catch {
-      // Fall through to the automation fallback below.
+  try {
+    const resolved = await resolveAuthOnlyProviderAuth(ctx, provider);
+    const token = resolved?.auth?.apiKey?.trim();
+    if (token) {
+      const source = resolved?.source === ENV_TOKEN ? "env" : "pi-auth";
+      const region = normalizeRegion(resolved?.env?.[ENV_REGION]) ?? detectRegion(workspace).region;
+      return { ok: true, credential: { token, source, region } };
     }
+  } catch {
+    // Fall through to the automation fallback below.
   }
 
   const envToken = isDefault(workspace) ? getEnv(ENV_TOKEN) : undefined;
@@ -302,10 +299,8 @@ export const sfFinAgentAuthController = createSfFinAgentAuthController();
  */
 function readSavedPersonalToken(provider: string): string | undefined {
   try {
-    const path = getPiAuthStorePath();
-    if (!existsSync(path)) return undefined;
-    const credential = readStoredCredential(provider, path) as { key?: unknown } | undefined;
-    return typeof credential?.key === "string" ? credential.key : undefined;
+    const credential = readPiAuthCredential(provider);
+    return credential?.type === "api_key" ? credential.key : undefined;
   } catch {
     return undefined;
   }
@@ -317,15 +312,12 @@ export async function getFinAgentApiKey(
 ): Promise<{ ok: true; key: string; region: FinRegion } | { ok: false; message: string }> {
   const region = detectRegion(workspace).region;
   const provider = workspaceProviders(workspace).agent;
-  const getProviderAuth = ctx.modelRegistry.getProviderAuth;
-  if (typeof getProviderAuth === "function") {
-    try {
-      const resolved = await getProviderAuth.call(ctx.modelRegistry, provider);
-      const key = resolved?.auth?.apiKey?.trim();
-      if (key) return { ok: true, key, region };
-    } catch {
-      // Fall through to the automation fallback below.
-    }
+  try {
+    const resolved = await resolveAuthOnlyProviderAuth(ctx, provider);
+    const key = resolved?.auth?.apiKey?.trim();
+    if (key) return { ok: true, key, region };
+  } catch {
+    // Fall through to the automation fallback below.
   }
   const envKey = isDefault(workspace) ? getEnv(AGENT_API_ENV_KEY) : undefined;
   if (envKey) return { ok: true, key: envKey, region };

@@ -15,7 +15,7 @@ export const AUTO_UPDATE_CADENCE_MS = 24 * 60 * 60 * 1000;
 export const AUTO_UPDATE_STALE_RUNNING_MS = 30 * 60 * 1000;
 
 export type AutoUpdateResult = "success" | "failed" | "skipped";
-export type AutoUpdateTarget = "pi-runtime" | "pi-packages" | "sf-cli";
+export type AutoUpdateTarget = "pi-runtime" | "pi-packages" | "sf-omp-checkout" | "sf-cli";
 
 export interface AutoUpdateTargetResult {
   target: AutoUpdateTarget;
@@ -125,7 +125,9 @@ export function markAutoUpdateRunning(target: AutoUpdateTarget): AutoUpdateStatu
         ? "Checking the Pi runtime"
         : target === "pi-packages"
           ? "Updating Pi packages"
-          : "Updating Salesforce CLI",
+          : target === "sf-omp-checkout"
+            ? "Updating the sf-omp checkout"
+            : "Updating Salesforce CLI",
   });
 }
 
@@ -202,7 +204,13 @@ function normalizeStatus(value: unknown): AutoUpdateStatus {
 }
 
 function normalizeTarget(value: unknown): AutoUpdateTarget | undefined {
-  if (value === "pi-runtime" || value === "pi-packages" || value === "sf-cli") return value;
+  if (
+    value === "pi-runtime" ||
+    value === "pi-packages" ||
+    value === "sf-omp-checkout" ||
+    value === "sf-cli"
+  )
+    return value;
   if (value === "pi") return "pi-runtime";
   return undefined;
 }

@@ -71,6 +71,22 @@ type MutableUsage = SkillUsage & {
   evidenceSet: Set<SkillEvidence>;
 };
 
+/** OMP delivers a user `/skill:<name>` invocation as this custom message type. */
+export const OMP_SKILL_PROMPT_TYPE = "skill-prompt";
+
+/**
+ * Skill name of an OMP user-invoked `/skill:` custom message (`details.name`),
+ * or undefined for any other message.
+ */
+export function ompSkillPromptName(message: unknown): string | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const custom = message as { role?: unknown; customType?: unknown; details?: unknown };
+  if (custom.role !== "custom" || custom.customType !== OMP_SKILL_PROMPT_TYPE) return undefined;
+  const details = custom.details;
+  if (!details || typeof details !== "object" || !("name" in details)) return undefined;
+  return typeof details.name === "string" && details.name ? details.name : undefined;
+}
+
 // -------------------------------------------------------------------------------------------------
 // Public API
 // -------------------------------------------------------------------------------------------------
@@ -176,11 +192,22 @@ function collectSkillsFromBranchEntries(
   inventory: SkillInventory,
   cwd: string,
 ): Map<string, SkillUsage> {
-  const messages = entries
-    .filter(
-      (entry): entry is Extract<SessionEntry, { type: "message" }> => entry.type === "message",
-    )
-    .map((entry) => entry.message as SessionMessage);
+  // Pi stores `/skill:` invocations as user messages; OMP stores them as
+  // `custom_message` entries (role "custom" in the session context).
+  const messages = entries.flatMap((entry): SessionMessage[] => {
+    if (entry.type === "message") return [entry.message as SessionMessage];
+    const custom = entry as { type: string; customType?: unknown; details?: unknown };
+    if (custom.type === "custom_message" && custom.customType === OMP_SKILL_PROMPT_TYPE) {
+      return [
+        {
+          role: "custom",
+          customType: custom.customType,
+          details: custom.details,
+        } as unknown as SessionMessage,
+      ];
+    }
+    return [];
+  });
 
   return collectSkillsFromMessages(messages, inventory, cwd);
 }
@@ -221,6 +248,9 @@ function extractExplicitSkillFromMessage(
   message: SessionMessage,
   inventory: SkillInventory,
 ): SkillDescriptor | null {
+  const ompSkill = ompSkillPromptName(message);
+  if (ompSkill) return resolveSkillDescriptor({ skillName: ompSkill }, inventory);
+
   if ((message as { role?: string }).role !== "user") {
     return null;
   }

@@ -11,20 +11,29 @@
  *   Trigger                    | Result
  *   ---------------------------|-----------------------------------------------------------
  *   extension load             | Register command and Manager actions; no network/process
- *   session_start              | Cache local side-by-side routing guidance; no network/process
- *   before_agent_start         | Add guidance only for accepted active overlaps
+ *   session_start              | Cache routing guidance; deactivate policy-hidden MCP tools (OMP)
+ *   before_agent_start         | Add guidance only for accepted active overlaps; re-hide (OMP)
+ *   tool_call                  | Block an MCP tool whose native policy is hidden (OMP)
  *   /sf-mcp                    | Open the SF Pi Manager detail page
  *   Manager Settings           | Show the preset catalog and explicit setup workflow
  *   /sf-mcp status             | Print native-config and overlap status
  *   /sf-mcp conflicts <preset> | Explain deterministic capability overlaps
  *   /sf-mcp disable <preset>   | Disable only an unchanged SF MCP-managed native entry
  */
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import {
   getFirstTokenCompletionsFromActions,
   resolveAction,
   type SfPiCommandAction,
 } from "../../lib/common/command-actions.ts";
+import {
+  emitHumanOnlyCommandOutput,
+  registerHumanOnlyCommandOutput,
+} from "../../lib/common/human-only-command-output.ts";
 import { openInfoPanel } from "../../lib/common/info-panel.ts";
 import {
   openExtensionInManager,
@@ -34,10 +43,11 @@ import {
   registerManagerDetailActions,
   type ManagerDetailAction,
 } from "../../lib/common/manager-actions.ts";
-import { requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { isOmpHost, requirePiVersion } from "../../lib/common/pi-compat.ts";
 import { withSafeCommandHandler } from "../../lib/common/safe-command-handler.ts";
 import { formatConflictPlan } from "./lib/conflict-planner.ts";
-import { mcpConfigPath } from "./lib/mcp-config.ts";
+import { mcpConfigPath, setNativeMcpDialect } from "./lib/mcp-config.ts";
+import { deactivateHiddenMcpTools, hiddenMcpToolNames } from "./lib/native-exposure.ts";
 import { captureObservedMcpTools } from "./lib/observed-tools.ts";
 import { SALESFORCE_MCP_PRESETS, getPreset } from "./lib/presets.ts";
 import { registerSfMcpTool } from "./lib/sf-mcp-tool.ts";
@@ -50,7 +60,22 @@ import {
 
 const EXTENSION_ID = "sf-mcp";
 const COMMAND_NAME = "sf-mcp";
+const ROUTING_SECTION = "sf_mcp_routing";
 type SfMcpAction = "status" | "catalog" | "conflicts" | "disable" | "native" | "help";
+
+/** Replace SF MCP's own block on every preparation; other policy blocks stay untouched. */
+function withMcpRoutingBlock(systemPrompt: readonly unknown[], guidelines: string[]): string[] {
+  const open = `<${ROUTING_SECTION}>`;
+  const close = `</${ROUTING_SECTION}>`;
+  const sections = systemPrompt.filter(
+    (section): section is string =>
+      typeof section === "string" && !(section.startsWith(open) && section.endsWith(close)),
+  );
+  if (guidelines.length > 0) {
+    sections.push([open, ...guidelines.map((line) => `- ${line}`), close].join("\n"));
+  }
+  return sections;
+}
 
 const ACTIONS: SfPiCommandAction<SfMcpAction>[] = [
   {
@@ -94,19 +119,46 @@ const ACTIONS: SfPiCommandAction<SfMcpAction>[] = [
 export default function sfMcp(pi: ExtensionAPI): void {
   if (!requirePiVersion(pi, "sf-mcp")) return;
 
+  setNativeMcpDialect(isOmpHost(pi) ? "omp" : "pi");
   registerSfMcpTool(pi);
   let routingGuidelines: string[] = [];
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", async (_event, ctx) => {
     captureObservedMcpTools(pi.getAllTools());
     routingGuidelines = buildMcpRoutingGuidelines(ctx.cwd);
+    await deactivateHiddenMcpTools(pi, ctx.cwd);
   });
-  pi.on("before_agent_start", (event) => {
+  // One registration serves both hosts: Pi passes mutable structured prompt
+  // sections, OMP passes an ordered policy-block array and takes a replacement.
+  const hostEvents = pi as unknown as {
+    on(
+      event: "before_agent_start",
+      handler: (
+        event: { systemPrompt: unknown; systemPromptOptions?: { promptGuidelines: string[] } },
+        ctx: ExtensionContext,
+      ) => Promise<{ systemPrompt: string[] } | undefined>,
+    ): void;
+  };
+  hostEvents.on("before_agent_start", async (event, ctx) => {
     captureObservedMcpTools(pi.getAllTools());
-    for (const guideline of routingGuidelines) {
-      if (!event.systemPromptOptions.promptGuidelines.includes(guideline)) {
-        event.systemPromptOptions.promptGuidelines.push(guideline);
-      }
+    await deactivateHiddenMcpTools(pi, ctx.cwd);
+    if (Array.isArray(event.systemPrompt)) {
+      return { systemPrompt: withMcpRoutingBlock(event.systemPrompt, routingGuidelines) };
     }
+    const promptGuidelines = event.systemPromptOptions?.promptGuidelines;
+    if (!promptGuidelines) return undefined;
+    for (const guideline of routingGuidelines) {
+      if (!promptGuidelines.includes(guideline)) promptGuidelines.push(guideline);
+    }
+    return undefined;
+  });
+  pi.on("tool_call", (event, ctx) => {
+    if (!event.toolName.startsWith("mcp__")) return undefined;
+    const tool = pi.getAllTools().find((candidate) => candidate.name === event.toolName);
+    if (!tool || !hiddenMcpToolNames(ctx.cwd, [tool]).has(event.toolName)) return undefined;
+    return {
+      block: true,
+      reason: `${event.toolName} is hidden by its reviewed SF MCP tool policy. Review exposure with sf_mcp tools.plan instead of calling it.`,
+    };
   });
 
   pi.registerCommand(COMMAND_NAME, {
@@ -127,6 +179,7 @@ export default function sfMcp(pi: ExtensionAPI): void {
   });
 
   registerManagerDetailActions(pi, EXTENSION_ID, buildManagerActions(pi));
+  registerHumanOnlyCommandOutput(pi, COMMAND_NAME);
 }
 
 function buildManagerActions(pi: ExtensionAPI): ManagerDetailAction[] {
@@ -169,10 +222,10 @@ async function handleAction(
 
   if (action === "catalog") {
     if (ctx.hasUI) return openMcpInManager(pi, ctx, "settings");
-    return emit(ctx, "SF MCP catalog", renderStatus(ctx.cwd, scope), fromPanel);
+    return emit(pi, ctx, "SF MCP catalog", renderStatus(ctx.cwd, scope), fromPanel);
   }
   if (action === "status") {
-    return emit(ctx, "SF MCP status", renderStatus(ctx.cwd, scope), fromPanel);
+    return emit(pi, ctx, "SF MCP status", renderStatus(ctx.cwd, scope), fromPanel);
   }
   if (action === "conflicts") {
     let presetId = positional[0];
@@ -184,11 +237,12 @@ async function handleAction(
       presetId = selected?.split(" — ")[0];
     }
     if (!presetId) {
-      return emit(ctx, "SF MCP conflicts", "Usage: /sf-mcp conflicts <preset-id>", fromPanel);
+      return emit(pi, ctx, "SF MCP conflicts", "Usage: /sf-mcp conflicts <preset-id>", fromPanel);
     }
     try {
       const state = inspectPresetRuntime(ctx.cwd, scope, getPreset(presetId));
       return emit(
+        pi,
         ctx,
         `${state.preset.label} capability conflicts`,
         [
@@ -200,12 +254,13 @@ async function handleAction(
         fromPanel,
       );
     } catch (error) {
-      return emit(ctx, "SF MCP conflicts", errorMessage(error), fromPanel);
+      return emit(pi, ctx, "SF MCP conflicts", errorMessage(error), fromPanel);
     }
   }
   if (action === "disable") {
     if (scope === "project" && !ctx.isProjectTrusted()) {
       return emit(
+        pi,
         ctx,
         "SF MCP disable",
         "Project MCP configuration is unavailable until Pi trusts this project. Use --scope global or /trust.",
@@ -214,7 +269,7 @@ async function handleAction(
     }
     const presetId = positional[0];
     if (!presetId) {
-      return emit(ctx, "SF MCP disable", "Usage: /sf-mcp disable <preset-id>", fromPanel);
+      return emit(pi, ctx, "SF MCP disable", "Usage: /sf-mcp disable <preset-id>", fromPanel);
     }
     try {
       const result = setManagedPresetEnabled({
@@ -224,16 +279,16 @@ async function handleAction(
         connectionName: positional[1],
         enabled: false,
       });
-      if (!result.ok) return emit(ctx, "SF MCP disable", result.message, fromPanel);
+      if (!result.ok) return emit(pi, ctx, "SF MCP disable", result.message, fromPanel);
       if (ctx.hasUI) {
         ctx.ui.notify(`${result.message} Reloading…`, "info");
         await ctx.reload();
         return;
       }
-      console.info(result.message);
+      await emit(pi, ctx, "SF MCP disable", result.message, fromPanel);
       return;
     } catch (error) {
-      return emit(ctx, "SF MCP disable", errorMessage(error), fromPanel);
+      return emit(pi, ctx, "SF MCP disable", errorMessage(error), fromPanel);
     }
   }
   if (action === "native") {
@@ -242,9 +297,17 @@ async function handleAction(
       ctx.ui.notify("Prepared Pi's native /mcp manager in the editor.", "info");
       return;
     }
-    return emit(ctx, "Pi native MCP", "Run `pi mcp list --json` outside a session.", fromPanel);
+    return emit(
+      pi,
+      ctx,
+      "Native MCP",
+      isOmpHost(pi)
+        ? "Run `/mcp list` in an interactive OMP session."
+        : "Run `pi mcp list --json` outside a session.",
+      fromPanel,
+    );
   }
-  return emit(ctx, "SF MCP help", renderHelp(), fromPanel);
+  return emit(pi, ctx, "SF MCP help", renderHelp(), fromPanel);
 }
 
 function renderStatus(cwd: string, scope: "global" | "project"): string {
@@ -293,6 +356,7 @@ function renderHelp(): string {
 }
 
 async function emit(
+  pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
   title: string,
   body: string,
@@ -306,7 +370,8 @@ async function emit(
     ctx.ui.notify(body, "info");
     return;
   }
-  console.info(body);
+  // Headless: stdout is the RPC/JSON channel outside print mode, so never console.info here.
+  await emitHumanOnlyCommandOutput(pi, ctx, COMMAND_NAME, { title, body, severity: "info" });
 }
 
 function parseScope(args: string[]): "global" | "project" {

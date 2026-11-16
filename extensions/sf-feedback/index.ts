@@ -26,7 +26,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { buildExecFn } from "../../lib/common/exec-adapter.ts";
 import type { ExecFn } from "../../lib/common/sf-environment/detect.ts";
-import { requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { getInstalledPiVersion, isOmpHost, requirePiVersion } from "../../lib/common/pi-compat.ts";
 import { withSafeCommandHandler } from "../../lib/common/safe-command-handler.ts";
 import {
   type SfPiCommandAction,
@@ -140,7 +140,7 @@ function buildFeedbackManagerActions(pi: ExtensionAPI): ManagerDetailAction[] {
                 theme,
                 tui,
                 issueKind,
-                (draft) => prepareFeedbackPreview(ctx, buildExecFn(pi, ctx.cwd), draft),
+                (draft) => prepareFeedbackPreview(pi, ctx, buildExecFn(pi, ctx.cwd), draft),
                 (preview) => submitPreparedFeedback(pi, ctx, buildExecFn(pi, ctx.cwd), preview),
                 done,
               ),
@@ -191,7 +191,7 @@ async function handleCommand(
 
   ctx.ui.setStatus(STATUS_KEY, "Feedback: collecting diagnostics…");
   try {
-    const diagnostics = await collectDiagnostics(exec, ctx.cwd);
+    const diagnostics = await collectDiagnostics(exec, ctx.cwd, hostRuntimeLabel(pi));
 
     if (subcommand === "diagnostics") {
       await emitCommandOutput(
@@ -223,7 +223,13 @@ async function handleCommand(
   }
 }
 
+/** Names the host that is actually running SF Pi; issue reports need OMP vs Pi. */
+function hostRuntimeLabel(pi: ExtensionAPI): string {
+  return `${isOmpHost(pi) ? "OMP" : "Pi"} ${getInstalledPiVersion() ?? "unknown"}`;
+}
+
 async function prepareFeedbackPreview(
+  pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
   exec: ExecFn,
   draft: FeedbackDraft,
@@ -236,7 +242,8 @@ async function prepareFeedbackPreview(
   ]);
   const { buildIssueBody, labelForKind, normalizeIssueTitle } = issueTemplate;
   const { buildIssueUrl } = github;
-  const diagnostics = existingDiagnostics ?? (await collectDiagnostics(exec, ctx.cwd));
+  const diagnostics =
+    existingDiagnostics ?? (await collectDiagnostics(exec, ctx.cwd, hostRuntimeLabel(pi)));
   const title = normalizeIssueTitle(draft.kind, draft.title);
   const labels = labelForKind(draft.kind);
   const body = buildIssueBody(draft, diagnostics);
@@ -251,7 +258,7 @@ async function submitFeedbackDraft(
   draft: FeedbackDraft,
   existingDiagnostics?: Diagnostics,
 ): Promise<void> {
-  const preview = await prepareFeedbackPreview(ctx, exec, draft, existingDiagnostics);
+  const preview = await prepareFeedbackPreview(pi, ctx, exec, draft, existingDiagnostics);
 
   if (!ctx.hasUI) {
     await emitCommandOutput(

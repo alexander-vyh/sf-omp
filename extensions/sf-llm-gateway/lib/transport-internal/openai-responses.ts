@@ -7,7 +7,7 @@ import {
   type SimpleStreamOptions,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { streamOpenAIResponses, streamSimpleOpenAIResponses } from "@earendil-works/pi-ai/compat";
+import { streamOpenAIResponses, streamSimpleOpenAIResponses } from "../host-compat.ts";
 import { omitGatewayPromptCacheKey } from "./prompt-cache-key.ts";
 import { streamGatewayResponsesWithTerminalGuard } from "./responses-terminal-guard.ts";
 import { withGatewayResponsesToolImageCompatibility } from "./responses-tool-images.ts";

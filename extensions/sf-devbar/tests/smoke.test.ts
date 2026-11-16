@@ -31,8 +31,10 @@ describe("sf-devbar", () => {
     expect(source).toContain("toDevbarRuntimeFacts(ctx.getContextUsage(), pi.getSessionName())");
   });
 
-  it("repaints from Pi's public session-name event", () => {
-    expect(source).toMatch(/pi\.on\("session_info_changed",\s*async\s*\(_event, ctx\)/);
+  it("reads the session name live instead of relying on Pi-only change events", () => {
+    for (const event of ["model_select", "session_info_changed", "thinking_level_select"]) {
+      expect(source).not.toContain(`pi.on("${event}"`);
+    }
     expect(source).toContain("pi.getSessionName()");
   });
 

@@ -63,4 +63,55 @@ describe("SF Skills before_agent_start usage signal", () => {
 
     expect(loadUsageMap("global", cwd).get("sf-apex")?.count).toBe(2);
   });
+
+  it("counts OMP /skill: invocations delivered as skill-prompt custom messages", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "sf-skills-omp-skill-"));
+    tempDirs.push(root);
+    const cwd = path.join(root, "project");
+    mkdirSync(path.join(root, "agent"), { recursive: true });
+    mkdirSync(cwd, { recursive: true });
+    process.env[AGENT_DIR_ENV] = path.join(root, "agent");
+    process.env.HOME = root;
+
+    const handlers = new Map<string, Array<(event: unknown, ctx: unknown) => unknown>>();
+    const pi = {
+      on: vi.fn((name: string, handler: (event: unknown, ctx: unknown) => unknown) => {
+        handlers.set(name, [...(handlers.get(name) ?? []), handler]);
+      }),
+      registerCommand: vi.fn(),
+      getCommands: vi.fn(() => []),
+    };
+    const { default: sfSkills } = await import("../index.ts");
+    sfSkills(pi as never);
+    const messageEnd = handlers.get("message_end")?.[0];
+    expect(messageEnd).toBeDefined();
+    const ctx = {
+      cwd,
+      mode: "rpc",
+      sessionManager: { getBranch: () => [], getLeafId: () => null },
+    };
+
+    await messageEnd?.(
+      {
+        type: "message_end",
+        message: {
+          role: "custom",
+          customType: "skill-prompt",
+          content: '[IMPORTANT: User invoked the "sf-apex" skill; follow its instructions.]',
+          details: { name: "sf-apex", path: "/tmp/sf-apex/SKILL.md" },
+        },
+      },
+      ctx,
+    );
+    await messageEnd?.(
+      {
+        type: "message_end",
+        message: { role: "custom", customType: "sf-brain-constitution", content: "x" },
+      },
+      ctx,
+    );
+
+    expect(loadUsageMap("global", cwd).get("sf-apex")?.count).toBe(1);
+    expect(loadUsageMap("global", cwd).size).toBe(1);
+  });
 });

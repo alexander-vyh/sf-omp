@@ -18,7 +18,8 @@
  *   No LLM activity | Silent — Pi only shows the indicator while streaming
  *
  * Pi SDK features used:
- *   ctx.ui.setWorkingIndicator() — restore Pi's default spinner
+ *   ctx.ui.setWorkingIndicator() — restore Pi's default spinner (absent on OMP,
+ *     whose default spinner needs no restoring)
  *   ctx.ui.setWorkingMessage() — Ohana catalog text, or Pi's default label
  *   session_start, session_shutdown — lifecycle management
  */
@@ -68,9 +69,14 @@ export default function (pi: ExtensionAPI) {
     rotationTimer = undefined;
   }
 
+  /** OMP exposes no working-indicator API; its spinner is always the host default. */
+  function restoreDefaultSpinner(ui: ExtensionContext["ui"]) {
+    if (typeof ui.setWorkingIndicator === "function") ui.setWorkingIndicator();
+  }
+
   function restorePiWorkingIndicator(session: IndicatorSession) {
     if (!session.ui || !isCurrentSession(session)) return;
-    session.ui.setWorkingIndicator();
+    restoreDefaultSpinner(session.ui);
     session.ui.setWorkingMessage();
   }
 
@@ -102,7 +108,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     if (!indicatorSession.ui || !isCurrentSession(indicatorSession)) return;
-    indicatorSession.ui.setWorkingIndicator();
+    restoreDefaultSpinner(indicatorSession.ui);
     await applyOhanaMessage(indicatorSession);
     if (!indicatorSession.ui || !isCurrentSession(indicatorSession)) return;
 
@@ -126,7 +132,7 @@ export default function (pi: ExtensionAPI) {
     stopRotation();
     activeIndicatorSession = undefined;
     if (indicatorSession.ui) {
-      indicatorSession.ui.setWorkingIndicator();
+      restoreDefaultSpinner(indicatorSession.ui);
       indicatorSession.ui.setWorkingMessage();
     }
   });

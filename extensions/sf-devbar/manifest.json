@@ -10,10 +10,7 @@
   "events": [
     "session_start",
     "session_shutdown",
-    "model_select",
     "session_compact",
-    "session_info_changed",
-    "thinking_level_select",
     "turn_end",
     "agent_end",
     "before_agent_start",

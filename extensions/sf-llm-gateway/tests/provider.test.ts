@@ -86,6 +86,8 @@ function authController(root = "https://active.example.test/v1"): GatewayProvide
     getActiveCwd: vi.fn(() => undefined),
     hasConfiguredCredential: vi.fn(async () => false),
     resolveRuntimeAuth: vi.fn(async () => undefined),
+    resolveConfiguredRoot: vi.fn(() => undefined),
+    ompLogin: vi.fn(async () => "test-key"),
   };
 }
 

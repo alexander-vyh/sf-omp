@@ -62,6 +62,21 @@ agent-browser install
 Homebrew installations should be updated through Homebrew. Run
 `/sf-browser doctor` after installation or upgrade.
 
+In this OMP fork, provision a repo-local runtime instead of a global install:
+
+```bash
+bun scripts/provision-agent-browser.ts
+```
+
+It installs the pinned agent-browser CLI and downloads Chrome for Testing under
+`.runtime/toolchains/agent-browser` (nothing global, nothing in your real
+`HOME`), skips pieces that are already present, and prints both paths.
+`scripts/omp-runtime.ts` then puts that CLI first on `PATH` and points
+`AGENT_BROWSER_EXECUTABLE_PATH` at that Chrome for every OMP launch, smoke, and
+parity run. `npm run smoke:omp` drives the SF Browser tools against a local
+fixture page once the runtime is present and reports `blocked` with this
+command when it is not.
+
 ## Safety and Data Boundaries
 
 - No startup browser or org probe runs. Detection occurs only through explicit

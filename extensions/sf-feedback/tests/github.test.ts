@@ -12,7 +12,7 @@ describe("sf-feedback GitHub helpers", () => {
   it("builds a prefilled GitHub issue URL", () => {
     const url = buildIssueUrl("[Bug] Broken", "Body text", ["feedback", "bug"]);
 
-    expect(url).toContain("https://github.com/salesforce/sf-pi/issues/new?");
+    expect(url).toContain("https://github.com/alexander-vyh/sf-omp/issues/new?");
     expect(url).toContain("title=%5BBug%5D+Broken");
     expect(url).toContain("body=Body+text");
     expect(url).toContain("labels=feedback%2Cbug");
@@ -38,7 +38,27 @@ describe("sf-feedback GitHub helpers", () => {
 
     expect(result.ok).toBe(false);
     expect(result.shouldOpenFallback).toBe(false);
-    expect(result.fallbackUrl).toContain("https://github.com/salesforce/sf-pi/issues/new?");
+    expect(result.fallbackUrl).toContain("https://github.com/alexander-vyh/sf-omp/issues/new?");
+  });
+
+  it("creates the issue in the sf-omp repository and returns its URL", async () => {
+    const calls: string[][] = [];
+    const exec: ExecFn = async (_command, args) => {
+      calls.push(args);
+      return {
+        code: 0,
+        stdout: "https://github.com/alexander-vyh/sf-omp/issues/42\n",
+        stderr: "",
+      };
+    };
+
+    const result = await createIssueWithGh(exec, "[Bug] Broken", "Body text", ["feedback"]);
+
+    expect(calls[0]?.slice(0, 4)).toEqual(["issue", "create", "--repo", "alexander-vyh/sf-omp"]);
+    expect(result).toMatchObject({
+      ok: true,
+      url: "https://github.com/alexander-vyh/sf-omp/issues/42",
+    });
   });
 });
 

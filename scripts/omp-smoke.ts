@@ -136,13 +136,22 @@ try {
     stdout: "pipe",
     stderr: "pipe",
   });
+  // Stdin stays open while checks run: EOF ends the RPC session and would cut
+  // off check modules still running. The smoke extension persists its report
+  // when every check has finished; EOF then lets the RPC session shut down.
   child.stdin.write(`${JSON.stringify({ id: "smoke-context-only", type: "get_state" })}\n`);
-  child.stdin.end();
+  await child.stdin.flush();
   let timedOut = false;
   const timeout = setTimeout(() => {
     timedOut = true;
     child.kill("SIGKILL");
-  }, 120_000);
+  }, 300_000);
+  let exited = false;
+  void child.exited.then(() => {
+    exited = true;
+  });
+  while (!exited && !timedOut && !(await Bun.file(childReportPath).exists())) await Bun.sleep(250);
+  child.stdin.end();
   const [exitCode, stdout, stderr] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),
@@ -204,16 +213,26 @@ try {
     : [];
   console.log(`OMP offline smoke: ${passed ? "PASS" : "FAIL"}`);
   console.log(
-    `Extensions loaded: ${extensions.filter((entry) => entry.loaded === true).length}/10`,
+    `Extensions loaded: ${extensions.filter((entry) => entry.loaded === true).length}/${extensions.length}`,
   );
   console.log(
     `Global OMP configuration/install unchanged: ${changedGlobalPaths.length === 0 ? "PASS" : `FAIL (${changedGlobalPaths.join(", ")})`}`,
   );
   for (const check of checks) {
+    // Slow checks are named so the smoke budget stays visible as checks grow.
+    const slow =
+      typeof check.durationMs === "number" && check.durationMs >= 10_000
+        ? ` (${Math.round(check.durationMs / 1000)}s)`
+        : "";
     console.log(
-      `[${String(check.status)}] ${String(check.name)}${check.reason ? ` — ${String(check.reason)}` : ""}`,
+      `[${String(check.status)}] ${String(check.name)}${slow}${check.reason ? ` — ${String(check.reason)}` : ""}`,
     );
   }
+  const totalMs = checks.reduce(
+    (sum, check) => sum + (typeof check.durationMs === "number" ? check.durationMs : 0),
+    0,
+  );
+  console.log(`Checks: ${checks.length} in ${Math.round(totalMs / 1000)}s`);
   console.log(`Report: ${latestReportPath}`);
   console.log(`Child logs: ${runRoot}`);
   if (!passed && checks.length === 0)

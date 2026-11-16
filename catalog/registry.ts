@@ -106,7 +106,7 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
     defaultEnabled: true,
     commands: ["/sf-data360"],
     tools: ["sf_data360"],
-    events: ["session_start","session_shutdown","resources_discover","tool_result","message_end","agent_settled"],
+    events: ["session_start","session_shutdown","resources_discover","tool_result","assistant_message","agent_end"],
     configurable: true,
     getConfigPanel: async () => {
       const mod = await import("../extensions/sf-data360/lib/config-panel.ts");
@@ -122,7 +122,7 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
     maturity: "stable",
     defaultEnabled: true,
     commands: ["/sf-devbar","/sf-org"],
-    events: ["session_start","session_shutdown","model_select","session_compact","session_info_changed","thinking_level_select","turn_end","agent_end","before_agent_start","context"],
+    events: ["session_start","session_shutdown","session_compact","turn_end","agent_end","before_agent_start","context"],
     configurable: true,
     getConfigPanel: async () => {
       const mod = await import("../extensions/sf-devbar/lib/config-panel.ts");
@@ -132,7 +132,7 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
   {
     id: "sf-docs",
     name: "SF Docs",
-    description: "Salesforce documentation lookup for agents and humans, with Pi-native bearer authentication, cited results, and a Manager settings surface.",
+    description: "Salesforce documentation lookup for agents and humans, with host-native `/login` bearer authentication, cited results, and a Manager settings surface.",
     file: "extensions/sf-docs/index.ts",
     category: "agent-tool",
     maturity: "experimental",
@@ -156,6 +156,7 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
     maturity: "stable",
     defaultEnabled: true,
     commands: ["/sf-feedback"],
+    events: ["session_start","session_switch","session_tree"],
     configurable: true,
     getConfigPanel: async () => {
       const mod = await import("../extensions/sf-feedback/lib/config-panel.ts");
@@ -165,7 +166,7 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
   {
     id: "sf-fin",
     name: "SF Fin",
-    description: "Connect SF Pi to a Fin (formerly Intercom) workspace: Pi-owned masked credentials, Guardrail-mediated Fin CLI install, doctor and debug, Fin-as-code authoring (procedures, simulations, guidance, data connectors), a CLI vs MCP surface comparison, and a Fin Agent API test harness.",
+    description: "Connect SF Pi to a Fin (formerly Intercom) workspace: OMP-stored masked credentials, Guardrail-mediated Fin CLI install, doctor and debug, Fin-as-code authoring (procedures, simulations, guidance, data connectors), a CLI vs MCP surface comparison, and a Fin Agent API test harness.",
     file: "extensions/sf-fin/index.ts",
     category: "agent-tool",
     maturity: "experimental",
@@ -213,7 +214,7 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
     defaultEnabled: true,
     commands: ["/sf-herdr"],
     tools: ["sf_herdr_plan"],
-    events: ["session_start","tool_result"],
+    events: ["session_start","session_switch","session_tree","tool_result"],
     configurable: true,
     getConfigPanel: async () => {
       const mod = await import("../extensions/sf-herdr/lib/config-panel.ts");
@@ -242,7 +243,7 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
     defaultEnabled: true,
     commands: ["/sf-llm-gateway"],
     providers: ["sf-llm-gateway"],
-    events: ["session_start","message_end","session_before_compact","turn_end","model_select","after_provider_response","session_shutdown"],
+    events: ["session_start","session_switch","session_tree","message_end","session_before_compact","turn_start","turn_end","after_provider_response","session_shutdown"],
     configurable: true,
     getConfigPanel: async () => {
       const mod = await import("../extensions/sf-llm-gateway/lib/config-panel.ts");
@@ -287,7 +288,7 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
     defaultEnabled: true,
     commands: ["/sf-mcp"],
     tools: ["sf_mcp"],
-    events: ["session_start","before_agent_start"],
+    events: ["session_start","session_switch","session_tree","before_agent_start","tool_call"],
     configurable: true,
     getConfigPanel: async () => {
       const mod = await import("../extensions/sf-mcp/lib/config-panel.ts");
@@ -318,7 +319,7 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
     maturity: "stable",
     defaultEnabled: true,
     commands: ["/sf-pi"],
-    events: ["session_start","agent_start","agent_settled","session_shutdown"],
+    events: ["session_start","agent_start","agent_end","session_switch","session_tree","session_shutdown"],
     alwaysActive: true,
     configurable: true,
     getConfigPanel: async () => {
@@ -393,7 +394,7 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
     defaultEnabled: true,
     commands: ["/sf-tldraw"],
     tools: ["tldraw_canvas"],
-    events: ["session_start","session_shutdown"],
+    events: ["session_start","session_shutdown","session_switch","session_tree"],
     configurable: true,
     getConfigPanel: async () => {
       const mod = await import("../extensions/sf-tldraw/lib/config-panel.ts");

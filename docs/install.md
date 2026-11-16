@@ -1,69 +1,44 @@
 ---
-title: Install SF Pi
-description: Install Node.js, npm, pi, SF Pi, Salesforce CLI, and the managed Salesforce skill library.
+title: Install sf-omp
+description: Install Node.js, the repository-local OMP runtime, Salesforce CLI, and the managed Salesforce skill library on macOS.
 ---
 
-# Install SF Pi
+# Install sf-omp
 
-SF Pi runs inside the [pi coding agent](https://pi.dev). Follow this one-time
-setup in order.
+sf-omp runs every SF Pi extension inside a repository-local
+[OMP](https://github.com/can1357/oh-my-pi) runtime. OMP and Bun are pinned
+dependencies of this checkout; nothing is installed globally. Follow this
+one-time setup in order.
 
 ## Requirements
 
-- Node.js `>=22.19`
-- the npm version bundled with a supported Node.js installation; SF Pi declares
+- macOS (Apple Silicon or Intel)
+- Node.js `>=22.19` and the npm bundled with it; sf-omp declares
   no separate npm floor
-- pi coding agent `>=1.5.1 <2.0.0`
-- a Salesforce CLI installation appropriate for the host platform
+- a Salesforce CLI installation
 
 ## 1. Install Node.js and npm
 
-Install [Node.js](https://nodejs.org/) **22.19 or newer** and verify the bundled
-npm client:
+Install [Node.js](https://nodejs.org/) **22.19 or newer** (24 recommended) and
+verify the bundled npm client:
 
 ```bash
 node --version
 npm --version
 ```
 
-## 2. Review optional npm release-age policy
-
-Some managed npm 11+ configurations delay newly published packages. If
-`npm config get min-release-age` reports a nonzero value and you intentionally
-want immediate Pi/package availability, set the user-level value to zero:
+## 2. Clone and install
 
 ```bash
-npm config get min-release-age
-npm config set min-release-age 0 --location=user
-npm config get min-release-age
+git clone https://github.com/alexander-vyh/sf-omp.git
+cd sf-omp
+npm ci
 ```
 
-This is an optional user-wide npm policy, not an SF Pi runtime requirement.
-Older npm clients that do not expose this setting can skip this step. See npm's
-[`min-release-age` documentation](https://docs.npmjs.com/cli/v11/using-npm/config/#min-release-age)
-for details.
+`npm ci` installs the pinned OMP and Bun into `node_modules` and applies one
+version-checked compatibility patch to that local copy only.
 
-## 3. Install the latest Pi and SF Pi
-
-Pi's managed installer pins its dependencies and is the recommended installation path:
-
-```bash
-curl -fsSL https://pi.dev/install.sh | sh
-pi --version
-pi install git:github.com/salesforce/sf-pi
-```
-
-An npm installation remains supported but does not pin Pi's transitive dependencies:
-
-```bash
-npm install --global --ignore-scripts @earendil-works/pi-coding-agent
-```
-
-SF Pi's supported Pi range is `>=1.5.1 <2.0.0`; exact Pi `1.5.2` is the latest audited and recommended runtime. Pi owns Pi Runtime update guidance, while `/sf-pi doctor` reports compatibility and installation details.
-
-## 4. Install or update Salesforce CLI
-
-Use npm as the single installation and update path:
+## 3. Install or update Salesforce CLI
 
 ```bash
 npm install --global @salesforce/cli@latest
@@ -72,60 +47,50 @@ sf --version
 
 See the official
 [Salesforce CLI installation guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_setup.meta/sfdx_setup/sfdx_setup_install_cli.htm)
-for platform support and verification details.
+for verification details.
 
-## 5. Start Pi and verify the installation
+## 4. Start OMP and verify the installation
 
-Run Pi from the project directory where you want to work:
+From this checkout:
 
 ```bash
-pi
+npm start
+```
+
+From an existing Salesforce project, keep that project as the working directory:
+
+```bash
+cd /path/to/your/salesforce-project
+bun /path/to/sf-omp/scripts/omp.ts
 ```
 
 Then enter:
 
 ```text
-/reload
 /sf-pi doctor
 ```
 
-## 6. Install Salesforce skills
-
-`sf-skills` is already bundled with SF Pi. Install the managed Salesforce skill
-library globally so it is available in every project:
+## 5. Install Salesforce skills and language servers
 
 ```text
 /sf-skills defaults install global
 /sf-skills summary
+/sf-lsp install
+/sf-lsp doctor
 ```
 
-## 7. Install the recommended extensions
-
-Install the complete curated package bundle:
-
-```text
-/sf-pi recommended install bundle:default
-/sf-pi recommended status
-```
+Here `global` means this launcher's isolated `.runtime/omp/agent`, not `~/.omp`.
+Java-based tooling uses a JDK extracted to `.runtime/toolchains/java` (see the
+root README).
 
 A successful setup has:
 
 - `/sf-pi doctor` reporting no blocking installation problem;
-- `sf --version` printing the installed Salesforce CLI version;
-- `/sf-skills summary` showing the managed Salesforce skills; and
-- `/sf-pi recommended status` showing the curated bundle decisions.
+- `sf --version` printing the installed Salesforce CLI version; and
+- `/sf-skills summary` showing the managed Salesforce skills.
 
 <details>
 <summary><strong>Advanced setup and manual updates</strong></summary>
-
-### Project-only SF Pi installation
-
-The standard installation is global. To make SF Pi available only in the
-current project, use:
-
-```bash
-pi install -l git:github.com/salesforce/sf-pi
-```
 
 ### Terminal font
 
@@ -139,36 +104,30 @@ Then select **MesloLGM Nerd Font Mono** in your terminal and reopen it.
 
 ### Manual updates
 
-Update the three core installations with:
-
 ```bash
-pi update --self
-pi update git:github.com/salesforce/sf-pi
+git pull
+npm ci
 npm install --global @salesforce/cli@latest
 ```
 
-Restart Pi or run `/reload`, then verify with `/sf-pi doctor`.
+Restart OMP, then verify with `/sf-pi doctor`.
 
 ### Platform notes
 
-Required CI continuously proves Ubuntu with Node 22, and the required
-`Tests (Windows)` job runs the type check and full unit suite on native Windows
-for every pull request and release. SF Pi launches Windows `.cmd` CLIs (`sf`,
-`npm`, `pi`, `agent-browser`) and opens URLs without a shell. macOS paths are
-documented but not a required CI job. On Windows, some installers (for example
-the Nerd Font) still use manual steps, and a few POSIX-only features such as
-owner-only file modes rely on the user profile's ACLs instead.
+sf-omp supports macOS only. The required `validate` CI job runs on macOS and
+proves the type check, full unit suite, native OMP smoke, shared-auth smoke, and
+extension parity on every push and pull request.
 
 </details>
 
 ## Maintained support evidence
 
-| Claim               | Maintained proof                                                                              |
-| ------------------- | --------------------------------------------------------------------------------------------- |
-| Node.js `>=22.19`   | `package.json` engines, preinstall check, doctor diagnostics, and required Ubuntu CI          |
-| Pi `>=1.5.1 <2.0.0` | peer dependency, runtime-floor checks, and nightly exact-version compatibility jobs           |
-| npm client          | no independent engine/package-manager floor; required CI uses the npm bundled by Node 22      |
-| Operating systems   | required CI proves Ubuntu and native Windows; macOS paths are documented at their proof level |
+| Claim             | Maintained proof                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| Node.js `>=22.19` | `package.json` engines, preinstall check, and doctor diagnostics                     |
+| OMP runtime       | exact pinned dependency, `scripts/omp-runtime.ts` version check, and the parity gate |
+| npm client        | no independent engine/package-manager floor; CI uses the npm bundled by Node 24      |
+| Operating system  | macOS only; the required `validate` job runs on `macos-latest`                       |
 
 ## Next step
 

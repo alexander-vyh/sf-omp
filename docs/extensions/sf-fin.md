@@ -1,16 +1,16 @@
 ---
 title: "SF Fin"
-description: "Connect SF Pi to a Fin (formerly Intercom) workspace: Pi-owned masked credentials, Guardrail-mediated Fin CLI install, doctor and debug, Fin-as-code authoring (procedures, simulations, guidance, data connectors), a CLI vs MCP surface comparison, and a Fin Agent API test harness."
+description: "Connect SF Pi to a Fin (formerly Intercom) workspace: OMP-stored masked credentials, Guardrail-mediated Fin CLI install, doctor and debug, Fin-as-code authoring (procedures, simulations, guidance, data connectors), a CLI vs MCP surface comparison, and a Fin Agent API test harness."
 editLink: false
 ---
 
 # SF Fin
 
-<p class="sfpi-page-lead">Connect SF Pi to a Fin (formerly Intercom) workspace: Pi-owned masked credentials, Guardrail-mediated Fin CLI install, doctor and debug, Fin-as-code authoring (procedures, simulations, guidance, data connectors), a CLI vs MCP surface comparison, and a Fin Agent API test harness.</p>
+<p class="sfpi-page-lead">Connect SF Pi to a Fin (formerly Intercom) workspace: OMP-stored masked credentials, Guardrail-mediated Fin CLI install, doctor and debug, Fin-as-code authoring (procedures, simulations, guidance, data connectors), a CLI vs MCP surface comparison, and a Fin Agent API test harness.</p>
 
 ## What it does
 
-Provides Pi-native `/login sf-fin`, which asks for the workspace hosting region and collects a Fin personal API token through SF Pi's shared fixed-mask input. Pi alone persists it. The `sf_fin` family tool and `/sf-fin` command expose cached status; a live read-only doctor (Node, Fin CLI presence and version freshness, credential, workspace identity through `intercom me`); Fin CLI install/update through exactly pinned global npm (TUI confirmation for humans, SF Guardrail mediation in the `fin` Power Tool family for the agent); and a redacted debug bundle with optional one-shot verbose traces. The CLI always runs with the token in the child-process environment only and an SF Pi-private CLI config directory. `/sf-pi doctor` receives cached-only checks.
+Provides native OMP `/login sf-fin`, which collects a Fin personal API token in OMP's masked login prompt, detects the workspace hosting region (asking only when the Fin API cannot be reached), and stores both in OMP's credential store. The `sf_fin` family tool and `/sf-fin` command expose cached status; a live read-only doctor (Node, Fin CLI presence and version freshness, credential, workspace identity through `intercom me`); Fin CLI install/update through exactly pinned global npm (TUI confirmation for humans, SF Guardrail mediation in the `fin` Power Tool family for the agent); and a redacted debug bundle with optional one-shot verbose traces. The CLI always runs with the token in the child-process environment only and an SF Pi-private CLI config directory. `/sf-pi doctor` receives cached-only checks.
 
 ## Start
 
@@ -30,7 +30,7 @@ Open its Manager detail or change its package state with:
 
 ## Safety notes
 
-- Interactive `/login sf-fin` masks the personal API token through SF Pi's shared credential input and returns it to Pi under provider id `sf-fin`; SF Fin writes no second secret store.
+- Interactive `/login sf-fin` collects the personal API token in OMP's masked login prompt and OMP stores it under provider id `sf-fin`; `/logout sf-fin` removes it, and SF Fin writes no second secret store.
 - The token reaches the Fin CLI only through an allowlisted child-process environment, never argv, and the child uses an SF Pi-private `INTERCOM_CONFIG_DIR`, so the user's own CLI keychain entry and `~/.intercom` files are never read or written.
 - CLI output is scrubbed of the token before it reaches status, tool results, or logs; status files store only non-secret workspace identity and install readiness.
 - Doctor runs `intercom --version` and `intercom me` only; Fin SDK actions enable the SDK by default on first use through an explicit probe → POST /fin-sdk/enable → verify sequence before any `fin …` CLI call, so the CLI's silent auto-enable never fires; the `/sf-pi doctor` provider reads cached state only.

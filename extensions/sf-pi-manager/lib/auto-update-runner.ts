@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Bounded, abortable execution of independent first-party update targets. */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getInstalledPiVersion } from "../../../lib/common/pi-compat.ts";
+import { getInstalledPiVersion, isOmpRuntime } from "../../../lib/common/pi-compat.ts";
 import { globalAgentPath } from "../../../lib/common/pi-paths.ts";
 import { spawnCommand } from "../../../lib/common/windows-spawn.ts";
 import {
@@ -16,12 +16,19 @@ import {
   type PiPackageUpdatePlan,
   type PiPackageUpdatePlanOptions,
 } from "./auto-update-package-plan.ts";
+import {
+  applyCheckoutUpdate,
+  planCheckoutUpdate,
+  type CheckoutUpdatePlan,
+} from "./auto-update-checkout.ts";
 
 const UPDATE_TIMEOUT_MS = 10 * 60 * 1000;
 
 export interface NativeAutoUpdatePlan {
   offline: boolean;
   packages: PiPackageUpdatePlan;
+  /** OMP host: the sf-omp checkout's position relative to its upstream. */
+  checkout?: CheckoutUpdatePlan;
 }
 
 export interface NativeAutoUpdateRunOptions {
@@ -34,6 +41,10 @@ export interface NativeAutoUpdateRunOptions {
     cwd: string,
     options: PiPackageUpdatePlanOptions,
   ) => Promise<PiPackageUpdatePlan>;
+  /** Host override; defaults to the running host. OMP updates the sf-omp checkout, never Pi packages. */
+  omp?: boolean;
+  /** Checkout root override for the OMP checkout target (tests/fixtures). */
+  checkoutRoot?: string;
 }
 
 export async function runNativeAutoUpdate(
@@ -42,12 +53,14 @@ export async function runNativeAutoUpdate(
   options: NativeAutoUpdateRunOptions = {},
 ): Promise<AutoUpdateStatus> {
   const env = options.env ?? process.env;
+  const omp = options.omp ?? isOmpRuntime();
   const results: AutoUpdateTargetResult[] = [
     {
       target: "pi-runtime",
       result: "skipped",
-      message:
-        "Pi runtime updates remain user-managed; newer stable 0.x releases load in forward-compatibility mode.",
+      message: omp
+        ? "The OMP runtime is pinned by the sf-omp checkout's lockfile and changes only with the checkout."
+        : "Pi runtime updates remain user-managed; newer stable 0.x releases load in forward-compatibility mode.",
     },
   ];
   let interrupted = false;
@@ -157,6 +170,50 @@ export async function runNativeAutoUpdate(
     });
   };
 
+  const runCheckoutTarget = async (): Promise<void> => {
+    if (!mayRun("sf-omp-checkout")) {
+      interrupted = true;
+      results.push({
+        target: "sf-omp-checkout",
+        result: "skipped",
+        message: "Skipped because the session was no longer settled or consented.",
+      });
+      return;
+    }
+    setStatus("Auto Update: checking the sf-omp checkout upstream…");
+    const checkout = await planCheckoutUpdate(pi, {
+      root: options.checkoutRoot,
+      signal: options.signal,
+    });
+    options.onPlan?.({ offline: false, packages: emptyPackagePlan(), checkout });
+    if (checkout.state !== "behind") {
+      results.push({
+        target: "sf-omp-checkout",
+        result: checkout.state === "fetch-failed" ? "failed" : "skipped",
+        message: checkout.message,
+      });
+      return;
+    }
+    if (!mayRun("sf-omp-checkout")) {
+      interrupted = true;
+      results.push({
+        target: "sf-omp-checkout",
+        result: "skipped",
+        message: "Update stopped because the session was no longer settled or consented.",
+      });
+      return;
+    }
+    markAutoUpdateRunning("sf-omp-checkout");
+    setStatus("Auto Update: git pull --ff-only + npm ci…");
+    const applied = await applyCheckoutUpdate(pi, checkout, {
+      root: options.checkoutRoot,
+      signal: options.signal,
+    });
+    if (options.signal?.aborted && !applied.changed) interrupted = true;
+    if (applied.changed) packageMutationSucceeded = true;
+    results.push({ target: "sf-omp-checkout", result: applied.result, message: applied.message });
+  };
+
   const runSfCliTarget = async (): Promise<void> => {
     if (!mayRun("sf-cli")) {
       interrupted = true;
@@ -214,7 +271,7 @@ export async function runNativeAutoUpdate(
       options.onPlan?.({ offline: true, packages: emptyPackagePlan() });
       results.push(
         {
-          target: "pi-packages",
+          target: omp ? "sf-omp-checkout" : "pi-packages",
           result: "skipped",
           message: "Skipped because PI_OFFLINE is active.",
         },
@@ -225,7 +282,7 @@ export async function runNativeAutoUpdate(
         },
       );
     } else {
-      await runPackageTarget();
+      await (omp ? runCheckoutTarget() : runPackageTarget());
       if (!interrupted) {
         await runSfCliTarget();
       } else {
