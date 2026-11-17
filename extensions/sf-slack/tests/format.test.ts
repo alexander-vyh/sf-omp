@@ -110,6 +110,11 @@ describe("format", () => {
       expect(result[0].text).toBe("spaced text");
       expect(result[0].permalink).toBe("https://slack.com/link");
     });
+
+    it("falls back to channel_id when the hit has no channel name (DMs)", () => {
+      const raw = [{ channel_id: "D0AMDCX0CA2", author_name: "alice", text: "hi", ts: "1" }];
+      expect(extractStructuredMatches(raw)[0].channel).toBe("D0AMDCX0CA2");
+    });
   });
 
   describe("extractStructuredMessages", () => {

@@ -114,7 +114,12 @@ export function formatMessages(
 
 export function extractStructuredMatches(matches: SlackSearchMatch[]): StructuredMatch[] {
   return matches.map((match) => ({
-    channel: match.channel?.name || match.channel_name || match.channel?.id || "unknown",
+    channel:
+      match.channel?.name ||
+      match.channel_name ||
+      match.channel?.id ||
+      match.channel_id ||
+      "unknown",
     author: match.username || match.author_name || match.user || "unknown",
     text: resolveUserMentionsInText(String(match.text || ""))
       .replace(/\s+/g, " ")

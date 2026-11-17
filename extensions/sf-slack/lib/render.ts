@@ -343,11 +343,13 @@ function renderAuthorHeader(
   return `${bulletText} ${badge} ${nameText}  ${timeText}${chip}`;
 }
 
-/** Resolve a channel ID to "#name" or fall back to the ID itself. */
+/** Resolve a channel ID to "#name"; uncached DM IDs render as "DM <id>",
+ *  other uncached IDs fall back to "#<id>". */
 function formatChannelLabel(channelIdOrName: string | undefined): string {
   if (!channelIdOrName) return "";
   if (/^[CGD][A-Z0-9]{8,}$/.test(channelIdOrName)) {
     const name = resolveChannelNameFromCache(channelIdOrName);
+    if (name === channelIdOrName && channelIdOrName.startsWith("D")) return `DM ${name}`;
     return `#${name}`;
   }
   return `#${channelIdOrName.replace(/^#/, "")}`;
@@ -621,7 +623,7 @@ function renderMatchesCollapsed(header: string, matches: StructuredMatch[], them
       match.permalink,
       theme,
     );
-    const chan = theme.fg("accent", `#${match.channel}`);
+    const chan = theme.fg("accent", formatChannelLabel(match.channel));
     lines.push(`${authorHeader}  ${theme.fg("dim", "in")} ${chan}`);
     if (preview) lines.push("    " + theme.fg("text", preview));
   }
@@ -759,7 +761,11 @@ function renderMatchesExpanded(header: string, matches: StructuredMatch[], theme
       match.permalink,
       theme,
     );
-    text += authorHeader + "  " + theme.fg("dim", "in ") + theme.fg("accent", `#${match.channel}`);
+    text +=
+      authorHeader +
+      "  " +
+      theme.fg("dim", "in ") +
+      theme.fg("accent", formatChannelLabel(match.channel));
     for (const line of renderBodyLines(match.text, theme)) {
       text += "\n    " + line;
     }
