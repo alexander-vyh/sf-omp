@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "ompVersion": "18.17.0",
+  "ompVersion": "18.22.0",
   "extensions": {
     "sf-agentscript": {
       "status": "pass",

@@ -61,7 +61,7 @@ From an existing Salesforce project, keep that project as the working directory:
 
 ```bash
 cd /path/to/your/salesforce-project
-bun /path/to/sf-omp/scripts/omp.ts
+/path/to/sf-omp/node_modules/bun/bin/bun.exe /path/to/sf-omp/scripts/omp.ts
 ```
 
 Then enter:
@@ -69,6 +69,24 @@ Then enter:
 ```text
 /sf-pi doctor
 ```
+
+### Resume an existing session
+
+Exit the other OMP process first; never open the same session in two processes.
+Because sf-omp has its own session directory, use the original session file's
+absolute path rather than `--continue` to resume a session from global OMP:
+
+```bash
+/path/to/sf-omp/node_modules/bun/bin/bun.exe \
+  /path/to/sf-omp/scripts/omp.ts --resume /absolute/path/to/session.jsonl
+```
+
+This checkout pins OMP 18.22.0 and matching native packages. Session-rendering
+archives are not guaranteed to be backward compatible: an older reader can fail
+with `unsupported native syntax archive version` during history replay even
+when all extensions load. Align the runtime with the session writer using the
+checkout's reviewed upgrade and `npm ci`; do not edit or delete session history
+to bypass that error.
 
 ## 5. Install Salesforce skills and language servers
 

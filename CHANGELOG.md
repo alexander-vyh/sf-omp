@@ -9,9 +9,11 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ### SF OMP integration
 
-- Added a repository-local OMP 18.17.0/Bun 1.4.4 launcher loading the root-manifest Agentforce/Salesforce extensions, with separate configuration, profiles, sessions, and native caches under `.runtime/`.
+- Added a repository-local OMP 18.22.0/Bun 1.4.4 launcher loading the root-manifest Agentforce/Salesforce extensions, with separate configuration, profiles, sessions, and native caches under `.runtime/`.
 - Ported AgentScript/Code Analyzer settle hooks, Flow final-message rewriting, Brain prompt injection, human-only widgets, canonical session projection, and asynchronous native skill configuration/loading.
 - Added a version-checked local CommonJS loader patch; global OMP is not patched.
+- Upgraded OMP and its native packages from 18.17.0 to 18.22.0 for current-format session replay; retained the reviewed CommonJS loader patch. Host detection, launcher checks, and smoke/parity expectations now share the manifest's exact runtime pin, keeping credential stores and manager commands on the OMP path after upgrades.
+- Upgraded the Agent Script toolchain to agentforce 2.16.5, language 3.15.1, lsp 2.11.26 and agentfabric-dialect 1.5.16, and removed the agentfabric nested-language override that is no longer needed. Diagnostic parity docs and snapshots follow the upstream diagnostic changes.
 - Added real-runtime offline checks for AgentScript compilation, Apex plans/logs, LWC/Flow diagnostics, SOQL syntax, skill gating/rediscovery, and global configuration/install integrity. Live org operations and unprovisioned language servers remain explicitly unverified/blocked.
 - Replaced upstream release/publishing automation with the selected OMP integration's verification workflow.
 - Corrected native skill-settings labels and removed redundant Pi JSON path expansion; coverage and pruning use the shared YAML reader.

@@ -14,6 +14,7 @@
  *   releases load with one process-wide forward-compatibility warning.
  */
 import * as PiRuntime from "@earendil-works/pi-coding-agent";
+import packageManifest from "../../package.json" with { type: "json" };
 import { isExtensionDisabledInOmpConfig } from "./sf-pi-extension-state.ts";
 
 /** Oldest Pi release whose public APIs satisfy every bundled extension. */
@@ -133,7 +134,7 @@ export function isOmpHost(pi: unknown): boolean {
  * status-only credential-store reads. Prefer `isOmpHost(pi)` when `pi` exists.
  */
 export function isOmpRuntime(): boolean {
-  return getInstalledPiVersion() === "18.17.0";
+  return getInstalledPiVersion() === packageManifest.devDependencies["@oh-my-pi/pi-coding-agent"];
 }
 
 /**

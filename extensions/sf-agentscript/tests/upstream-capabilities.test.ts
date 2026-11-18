@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Compact integration contracts for the official Agent Script package seam. */
 import { describe, expect, test } from "vitest";
+import { provideDefinition, provideHover, provideReferences } from "@sf-agentscript/lsp";
 import {
   analyzeAgentScriptSource,
   combineAgentScriptDiagnostics,
@@ -27,6 +28,49 @@ describe("upstream Agent Script capability contracts", () => {
     expect(result.analysis.documentState.service).toBeDefined();
     expect(result.analysis.documentState.store).toBeDefined();
     expect(result.analysis.documentState.compileOutput).toBeDefined();
+  });
+
+  test("preserves Agent Script LSP hover, definition, and reference providers", async () => {
+    const source = `${HEAD}variables:
+  query: mutable string = "example"
+    description: "Search query"
+start_agent main:
+  description: "Main"
+  before_reasoning:
+    set @variables.query = "example"
+  reasoning:
+    instructions: ->
+      | Search for {!@variables.query}
+`;
+    const result = await analyzeAgentScriptSource(source);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(isAgentScriptCompileValid(result.analysis.compileDiagnostics)).toBe(true);
+    const state = result.analysis.documentState;
+    const lines = source.split("\n");
+    const line = lines.findIndex((text) => text.includes("set @variables.query"));
+    const character = lines[line]!.indexOf("@variables.query") + "@variables.".length;
+    const configLine = lines.findIndex((text) => text.includes("agent_name:"));
+    expect(
+      provideHover(state, configLine, lines[configLine]!.indexOf("agent_name")),
+    ).not.toBeNull();
+    const definition = provideDefinition(state, line, character);
+    expect(definition?.uri).toBe(state.uri);
+    expect(definition?.range.start.line).toBe(
+      lines.findIndex((text) => text.includes("query: mutable")),
+    );
+    const references = provideReferences(state, line, character, true);
+    expect(references).toHaveLength(3);
+    expect(references).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          uri: state.uri,
+          range: expect.objectContaining({
+            start: { line, character: lines[line]!.indexOf("@variables.query") },
+          }),
+        }),
+      ]),
+    );
   });
 
   test("defines compile validity by severity-1 errors only", () => {

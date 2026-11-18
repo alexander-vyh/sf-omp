@@ -4,9 +4,10 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import packageManifest from "../package.json" with { type: "json" };
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-export const OMP_VERSION = "18.17.0";
+export const OMP_VERSION = packageManifest.devDependencies["@oh-my-pi/pi-coding-agent"];
 export const BUN_VERSION = "1.4.4";
 
 /** Never use PATH's omp or bun: both executable versions belong to this checkout. */

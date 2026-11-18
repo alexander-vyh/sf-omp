@@ -13,7 +13,7 @@
  */
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { ROOT, localOmpCommand, runtimeEnvironment } from "./omp-runtime.ts";
+import { OMP_VERSION, ROOT, localOmpCommand, runtimeEnvironment } from "./omp-runtime.ts";
 import type { RuntimeSurfaceScenarioModule } from "./runtime-surface/types.ts";
 
 const BASELINE_PATH = path.join(ROOT, "scripts", "omp-parity-baseline.json");
@@ -338,7 +338,7 @@ if (update) {
   const sorted = Object.fromEntries(
     Object.entries(merged).sort(([left], [right]) => left.localeCompare(right)),
   );
-  const baseline = { schemaVersion: 1, ompVersion: "18.17.0", extensions: sorted };
+  const baseline = { schemaVersion: 1, ompVersion: OMP_VERSION, extensions: sorted };
   await writeFile(BASELINE_PATH, `${JSON.stringify(baseline, null, 2)}\n`);
   console.log(`Baseline updated: ${path.relative(ROOT, BASELINE_PATH)}`);
 } else {

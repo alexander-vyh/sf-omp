@@ -1,7 +1,7 @@
 # sf-omp
 
 Salesforce Agentforce and developer tooling from [Salesforce SF Pi](https://github.com/salesforce/sf-pi),
-running natively in a repository-local **OMP 18.17.0** runtime on macOS. This fork is
+running natively in a repository-local **OMP 18.22.0** runtime on macOS. This fork is
 rebased onto SF Pi 0.354.0 and keeps every bundled SF Pi extension: the
 [extension catalog](./docs/extensions.md) lists them and the
 [top-level command inventory](./docs/commands.md) lists their commands.
@@ -65,11 +65,11 @@ permissions; installing packages cannot supply those.
 
 ## Isolation
 
-- The launcher runs this checkout's OMP **18.17.0** with local Bun **1.4.4**, never the global `omp` or `bun`.
+- The launcher runs this checkout's OMP **18.22.0** with local Bun **1.4.4**, never the global `omp` or `bun`.
 - OMP configuration, profiles, agent state, native addon cache, and Bun/npm caches live under ignored `.runtime/`. Global extension discovery is disabled; the root `package.json` `pi.extensions` list selects the extensions.
 - Normal launches keep your real HOME, XDG tool configuration, and Salesforce CLI authentication.
 - Global OMP provider credentials and account policies are shared through OMP's native authenticated broker; the credential database is never copied or symlinked. Global extensions, plugin configuration, and conversation history are not imported.
-- `npm ci` applies one version-checked patch **only inside this checkout's `node_modules`** (`scripts/patch-local-omp.mjs`): OMP 18.17's compatibility loader otherwise returns ESM namespace objects to CommonJS callers. Review or remove it when upgrading OMP.
+- `npm ci` applies one version-checked patch **only inside this checkout's `node_modules`** (`scripts/patch-local-omp.mjs`): OMP 18.22's compatibility loader otherwise returns ESM namespace objects to CommonJS callers. Review or remove it when upgrading OMP.
 
 ## How parity is proven
 

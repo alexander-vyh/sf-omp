@@ -38,7 +38,7 @@ const AUTO_SCAN_TIMEOUT_MS = 30_000;
 const AUTO_APEXGURU_BATCH_TIMEOUT_MS = 60_000;
 
 // Unchanged Salesforce tools retain Pi SDK types. This owned boundary describes
-// the native session_stop API of the pinned OMP 18.17 runtime only.
+// the native session_stop API of the pinned OMP runtime only.
 interface NativeSessionStopAPI {
   on(
     event: "session_stop",

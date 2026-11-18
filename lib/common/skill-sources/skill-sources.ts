@@ -2,7 +2,7 @@
 /**
  * Skill-source discovery and native OMP configuration for SF Skills.
  *
- * OMP 18.17 loads configured roots from skills.customDirectories in YAML:
+ * OMP loads configured roots from skills.customDirectories in YAML:
  * global config lives under the repository-isolated agent directory, and
  * project config lives at <cwd>/.omp/config.yml. SF source registry metadata
  * remains separate. Reads tolerate malformed config; writes refuse to erase it.

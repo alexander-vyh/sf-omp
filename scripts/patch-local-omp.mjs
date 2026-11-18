@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** OMP 18.17's object loader must preserve callable CommonJS require() exports. */
+/** OMP 18.22's object loader must preserve callable CommonJS require() exports. */
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,8 +11,8 @@ if (relative.startsWith("..") || path.isAbsolute(relative)) {
   throw new Error("Refusing to patch OMP outside this checkout's node_modules.");
 }
 const manifest = JSON.parse(readFileSync(path.join(packageRoot, "package.json"), "utf8"));
-if (manifest.version !== "18.17.0")
-  throw new Error("Review the local CJS interoperability patch before changing OMP 18.17.0.");
+if (manifest.version !== "18.22.0")
+  throw new Error("Review the local CJS interoperability patch before changing OMP 18.22.0.");
 
 const patches = [
   {
@@ -36,4 +36,4 @@ const changes = patches.map(({ file, before, after }) => {
   return { target, source: source.replace(before, after), changed: true };
 });
 for (const change of changes) if (change.changed) writeFileSync(change.target, change.source);
-console.log("Repository-local OMP 18.17.0 CommonJS interoperability patch applied.");
+console.log("Repository-local OMP 18.22.0 CommonJS interoperability patch applied.");

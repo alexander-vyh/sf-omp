@@ -14,6 +14,7 @@ import {
   planCheckoutUpdate,
 } from "../../extensions/sf-pi-manager/lib/auto-update-checkout.ts";
 import type { CommandOutput, SmokeApi } from "../omp-smoke-extension.ts";
+import { OMP_VERSION } from "../omp-runtime.ts";
 
 const EXTENSION = "sf-pi-manager";
 
@@ -119,7 +120,7 @@ export default async function managerChecks(api: SmokeApi): Promise<void> {
     }
     api.requireTrue(
       output.text.includes("sf-pi Runtime Doctor") &&
-        output.text.includes("Host runtime:     OMP 18.17.0"),
+        output.text.includes(`Host runtime:     OMP ${OMP_VERSION}`),
       `Runtime doctor did not report the OMP host: ${output.text}`,
     );
     return output.text.split("\n").slice(0, 4);

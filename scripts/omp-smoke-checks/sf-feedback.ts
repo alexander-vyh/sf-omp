@@ -5,6 +5,7 @@
  * diagnostics and emits a prefilled sf-omp issue URL, never creating an issue.
  */
 import type { SmokeApi } from "../omp-smoke-extension.ts";
+import { OMP_VERSION } from "../omp-runtime.ts";
 
 const EXTENSION = "sf-feedback";
 const ISSUE_NEW_PATH = "/alexander-vyh/sf-omp/issues/new";
@@ -77,10 +78,10 @@ export default async function feedbackChecks(api: SmokeApi): Promise<void> {
     api.requireTrue(
       output.title === "SF Feedback diagnostics" &&
         output.body.includes("## Diagnostics") &&
-        output.body.includes("Runtime: OMP 18.17.0"),
+        output.body.includes(`Runtime: OMP ${OMP_VERSION}`),
       `Diagnostics did not identify the OMP host: ${output.body}`,
     );
-    return { title: output.title, runtimeLine: "Runtime: OMP 18.17.0" };
+    return { title: output.title, runtimeLine: `Runtime: OMP ${OMP_VERSION}` };
   });
 
   await api.run("feedback.command.headless-draft", EXTENSION, async () => {
@@ -97,7 +98,7 @@ export default async function feedbackChecks(api: SmokeApi): Promise<void> {
       url.pathname === ISSUE_NEW_PATH &&
         url.searchParams.get("title") === "[Bug] OMP smoke draft" &&
         url.searchParams.get("labels") === "feedback,bug" &&
-        body.includes("Runtime: OMP 18.17.0") &&
+        body.includes(`Runtime: OMP ${OMP_VERSION}`) &&
         body.includes("## Steps to reproduce"),
       `Fallback URL does not target the sf-omp issue form with the drafted body: ${url.origin}${url.pathname}`,
     );

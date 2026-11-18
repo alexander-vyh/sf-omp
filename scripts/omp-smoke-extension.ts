@@ -17,6 +17,7 @@ import { parseSoql } from "../extensions/sf-soql/lib/parser.ts";
 import { updateSkillSources } from "../lib/common/skill-sources/skill-sources.ts";
 import { skillSettingsValues } from "../lib/common/skill-sources/skill-settings.ts";
 import { buildSkillInventory } from "../lib/common/skill-detection/detection.ts";
+import { OMP_VERSION } from "./omp-runtime.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // Smoke loads exactly what the launcher loads: the root manifest's extension list.
@@ -359,7 +360,7 @@ export default async function smoke(pi: ExtensionAPI): Promise<void> {
         );
         const version = Reflect.apply(compat.getInstalledPiVersion as () => unknown, undefined, []);
         requireTrue(
-          version === "18.17.0",
+          version === OMP_VERSION,
           `Extension graph resolved the Pi SDK version ${String(version)}, not the OMP shim.`,
         );
         return { installedPiVersionInExtensionGraph: version };

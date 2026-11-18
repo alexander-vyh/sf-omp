@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { checkAgentScriptSource, isAgentScriptCompileValid } from "../lib/diagnostics.ts";
 
 describe("Agent Script edit-time quality hardening", () => {
-  it("surfaces enabled edit-time High rules without changing compile validity", async () => {
+  it("preserves the official deterministic slot-filling error alongside the High policy", async () => {
     const result = await checkAgentScriptSource(`system:
     instructions: "Help"
     messages:
@@ -35,9 +35,14 @@ start_agent main:
           severity: 2,
           source: "sf-agentscript-quality",
         }),
+        expect.objectContaining({
+          severity: 1,
+          source: "compiler",
+          message: expect.stringContaining("LLM-filled inputs"),
+        }),
       ]),
     );
-    expect(isAgentScriptCompileValid(result.diagnostics)).toBe(true);
+    expect(isAgentScriptCompileValid(result.diagnostics)).toBe(false);
   });
 
   it("surfaces overlong variable descriptions during compile-on-save", async () => {

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Native OMP 18.17 skill settings. SF-only metadata deliberately stays separate. */
+/** Native OMP skill settings. SF-only metadata deliberately stays separate. */
 import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,

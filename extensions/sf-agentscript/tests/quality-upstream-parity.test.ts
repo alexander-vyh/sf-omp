@@ -340,7 +340,7 @@ const plannerActionCases = [
   {
     name: "planner action unknown input",
     absentLocalRule: "deterministic-action-unknown-input" as const,
-    expectedUpstreamCode: "action-unknown-input",
+    expectedUpstreamCodes: ["action-unknown-input"],
     source: agentSource(`start_agent main:
     description: "Main"
     actions:
@@ -359,7 +359,7 @@ const plannerActionCases = [
   {
     name: "planner action missing input",
     absentLocalRule: "deterministic-action-missing-input" as const,
-    expectedUpstreamCode: "action-missing-input",
+    expectedUpstreamCodes: [],
     source: agentSource(`start_agent main:
     description: "Main"
     actions:
@@ -375,9 +375,28 @@ const plannerActionCases = [
             check: @actions.lookup`),
   },
   {
+    name: "planner action explicitly required missing input",
+    absentLocalRule: "deterministic-action-missing-input" as const,
+    expectedUpstreamCodes: ["action-missing-input"],
+    source: agentSource(`start_agent main:
+    description: "Main"
+    actions:
+        lookup:
+            description: "Lookup"
+            inputs:
+                query: string
+                    is_required: True
+            target: "flow://Lookup"
+    reasoning:
+        instructions: ->
+            | Help
+        actions:
+            check: @actions.lookup`),
+  },
+  {
     name: "planner action input type mismatch",
     absentLocalRule: "deterministic-action-input-type-mismatch" as const,
-    expectedUpstreamCode: "type-mismatch",
+    expectedUpstreamCodes: ["type-mismatch"],
     source: agentSource(
       `start_agent main:
     description: "Main"
@@ -496,8 +515,8 @@ describe("quality upstream strict parity", () => {
     expect(local.findings.map((finding) => finding.rule_id)).not.toContain(fixture.absentLocalRule);
     expect(upstream.ok).toBe(true);
     if (!upstream.ok) return;
-    expect(upstream.analysis.compileDiagnostics.map((diagnostic) => diagnostic.code)).toContain(
-      fixture.expectedUpstreamCode,
+    expect(upstream.analysis.compileDiagnostics.map((diagnostic) => diagnostic.code)).toEqual(
+      fixture.expectedUpstreamCodes,
     );
     const quickFixes = await buildQuickFixes(
       fixture.source,
