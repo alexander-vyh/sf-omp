@@ -571,6 +571,28 @@ export class EvalStudioComponent implements Focusable {
     if (this.agentTab === "recent") return this.runLines(this.allRuns(), width);
     if (this.agentTab === "release") {
       const agent = this.selectedAgent();
+      const releaseRuns = this.allRuns().filter((run) => run.release_contract);
+      const dependencyLines = (["generated_baseline", "designated"] as const).flatMap((kind) => {
+        const run = releaseRuns.find((candidate) => candidate.release_contract?.kind === kind);
+        if (!run) return [];
+        const fingerprint = run.dependency_fingerprint;
+        return [
+          `  ${kind} · ${run.run_id} · recorded dependencies`,
+          ...(!fingerprint
+            ? [this.theme.fg("warning", "    no dependency fingerprint, rerun required")]
+            : fingerprint.dependencies.length === 0
+              ? ["    No mutable dependencies invoked."]
+              : fingerprint.dependencies.map((dependency) => {
+                  const version =
+                    dependency.kind === "flow"
+                      ? `v${dependency.version_number} · ${dependency.active_version_id}`
+                      : dependency.kind === "prompt_template"
+                        ? `${dependency.active_version_identifier} · sha256 ${dependency.content_sha256}`
+                        : `${dependency.last_modified_date} · ${dependency.id} · sha256 ${dependency.body_sha256}`;
+                  return `    ${dependency.kind} ${dependency.name} · ${version}`;
+                })),
+        ];
+      });
       return [
         this.theme.fg("toolTitle", this.theme.bold(`${this.glyphs.lifecycle} Release Contract`)),
         this.theme.fg("accent", `  ${agent}`),
@@ -578,6 +600,12 @@ export class EvalStudioComponent implements Focusable {
         `${this.theme.fg("success", this.glyphs.success)}  Generated Baseline`,
         `${this.theme.fg("success", this.glyphs.success)}  Designated Suite`,
         `${this.theme.fg("accent", this.glyphs.actions)}  Press ${this.theme.fg("accent", "g")} to resolve and review the pending exact version`,
+        "",
+        ...dependencyLines,
+        this.theme.fg(
+          "muted",
+          "  Activation rechecks dependencies; recorded fingerprints are not live validation.",
+        ),
         ...(this.activeRunId
           ? [
               "",
@@ -1222,6 +1250,8 @@ export class EvalStudioComponent implements Focusable {
     const verdict = run.current_verdict ?? run.recorded_verdict ?? "unverified";
     if (verdict === "passed") return this.theme.fg("success", `${this.glyphs.success} Passed`);
     if (verdict === "failed") return this.theme.fg("error", `${this.glyphs.error} Failed`);
+    if (verdict === "platform_guard")
+      return this.theme.fg("warning", `${this.glyphs.warning} Platform guard`);
     return this.theme.fg("warning", `${this.glyphs.warning} ${this.tabLabel(verdict)}`);
   }
 }

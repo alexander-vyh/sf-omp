@@ -2,6 +2,7 @@
 import type { EvaluatorCapability } from "../eval/evaluator-catalog.ts";
 import type { EvidenceVerdict, EvalExecutionState } from "../eval/verdict.ts";
 import type { TurnResponseSequence } from "../llm-response-sequence.ts";
+import type { DependencyFingerprint } from "../release-dependencies.ts";
 
 export interface StudioSeed {
   name: string;
@@ -66,6 +67,8 @@ export interface StudioRunSummary {
   source_digest?: string;
   executed_digest?: string;
   bot_version_number?: number;
+  release_contract?: { kind: "generated_baseline" | "designated" };
+  dependency_fingerprint?: DependencyFingerprint;
   result_summary?: string;
   errors?: number;
   p95_ms?: number;

@@ -166,11 +166,14 @@ export async function actionGenerateSpec(
     `${summary.action_tests} action, ${summary.connected_agent_tests} connected, ` +
     `${summary.multi_turn_tests} multi-turn, ${summary.voice_tests} voice, ` +
     `${summary.guardrail_tests} guardrail, ${summary.safety_tests} safety`;
-  const head = `✨ spec generated for ${path.basename(agentFile)}\n${totals}${writtenPath ? `\nWritten: ${writtenPath}` : ""}`;
+  const warningText = summary.rubric_warnings.length
+    ? `\nWarning: ${summary.rubric_warnings.length} wording-sensitive rubric finding(s); review summary.rubric_warnings.`
+    : "";
+  const head = `✨ spec generated for ${path.basename(agentFile)}\n${totals}${warningText}${writtenPath ? `\nWritten: ${writtenPath}` : ""}`;
 
   // Hand back the next-step hint so the LLM chains directly into a run.
   // We don't execute it here so the user can edit the spec first if they
-  // want to refine wording or add multi-turn scenarios.
+  // want to refine behavioral assertions or add multi-turn scenarios.
   const nextStep = writtenPath
     ? `\n\n→ Next: agentscript_eval action='run' spec_path='${writtenPath}'`
     : "";

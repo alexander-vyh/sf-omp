@@ -23,6 +23,7 @@ import {
   type ActionTargetCheck,
   type CheckActionTargetsResult,
 } from "../../preflight/index.ts";
+import { checkPromptTemplateDrift } from "../../preflight/prompt-template-drift.ts";
 import { diagnoseRuntimeSmoke, type RuntimeSmokeResult } from "../../preflight/runtime-smoke.ts";
 import { collectOrgReviewFindings } from "../../review/org-checks.ts";
 import type { AgentScriptQualityResult } from "../../quality/types.ts";
@@ -340,6 +341,11 @@ async function actionCheckTargets(
   const result = timings
     ? await timings.time("action_target_preflight", () => checkActionTargets(conn, targets))
     : await checkActionTargets(conn, targets);
+  const promptTemplateDrift = timings
+    ? await timings.time("prompt_template_drift", () =>
+        checkPromptTemplateDrift(conn, targets, agentFile),
+      )
+    : await checkPromptTemplateDrift(conn, targets, agentFile);
   const connectedGraph = timings
     ? await timings.time("connected_readiness_graph", () =>
         checkConnectedAgentReadinessGraph(conn, agentFile),
@@ -353,6 +359,12 @@ async function actionCheckTargets(
       issue.kind === "depth_limit",
   );
   const summaryLines = renderTargetCheckSummary(result);
+  for (const warning of promptTemplateDrift.warnings) {
+    summaryLines.push(`  ⚠ ${warning.detail}`);
+  }
+  for (const finding of promptTemplateDrift.unverifiable) {
+    summaryLines.push(`  ? ${finding.detail}`);
+  }
   if (connectedGraph.nodes.length > 1) {
     summaryLines.push(
       `Connected graph: ${connectedGraph.nodes.length} node(s) · ${graphIssues.length} transitive warning(s)`,
@@ -373,6 +385,7 @@ async function actionCheckTargets(
         missing: result.missing,
         unverifiable: result.unverifiable,
         targets: result.targets,
+        prompt_template_drift: promptTemplateDrift,
         connected_graph: connectedGraph,
       },
       [

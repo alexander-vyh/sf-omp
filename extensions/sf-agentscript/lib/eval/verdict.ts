@@ -3,15 +3,23 @@
 
 import { evaluatorCatalogEntry, type EvaluatorCapability } from "./evaluator-catalog.ts";
 import { applyScoreThreshold } from "./threshold.ts";
+import { normalizePlatformGuardResult } from "./normalize.ts";
 import {
   summarizeEvalResponseIntegrity,
   type EvalResponseIntegritySummary,
 } from "./response-integrity.ts";
-import type { EvalApiResponse, EvalResult, EvalSpec, EvalTest, TestResult } from "./types.ts";
+import type {
+  EvalApiResponse,
+  EvalResult,
+  EvalSpec,
+  EvalTest,
+  PlatformGuard,
+  TestResult,
+} from "./types.ts";
 
-export const EVAL_VERDICT_SEMANTICS_VERSION = 2;
+export const EVAL_VERDICT_SEMANTICS_VERSION = 3;
 
-export type EvidenceVerdict = "passed" | "failed" | "incomplete" | "unverified";
+export type EvidenceVerdict = "passed" | "failed" | "platform_guard" | "incomplete" | "unverified";
 export type EvalExecutionState =
   "running" | "completed" | "cancelled" | "interrupted" | "infrastructure_failed";
 
@@ -27,6 +35,7 @@ export interface EvaluatorEvidence {
   actual_value?: string;
   error_message?: string;
   explainability?: string;
+  platform_guard?: PlatformGuard;
 }
 
 export interface ScenarioEvidence {
@@ -34,6 +43,7 @@ export interface ScenarioEvidence {
   verdict: EvidenceVerdict;
   evaluators: EvaluatorEvidence[];
   issues: string[];
+  platform_guard?: PlatformGuard;
 }
 
 export interface ResponseIntegrityEvidence {
@@ -66,6 +76,7 @@ function verdictPrecedence(verdicts: Iterable<EvidenceVerdict>): EvidenceVerdict
   const values = new Set(verdicts);
   if (values.has("incomplete")) return "incomplete";
   if (values.has("failed")) return "failed";
+  if (values.has("platform_guard")) return "platform_guard";
   if (values.has("unverified")) return "unverified";
   return "passed";
 }
@@ -99,6 +110,16 @@ function classifyMember(
       type: expected.type || actual.type,
       capability: catalog.capability,
       verdict: "incomplete",
+    };
+  }
+  if (actual.platform_guard) {
+    return {
+      ...actual,
+      id: expected.id,
+      member_ids: [expected.id],
+      type: expected.type || actual.type,
+      capability: catalog.capability,
+      verdict: actual.is_pass === true ? "passed" : "platform_guard",
     };
   }
 
@@ -153,6 +174,11 @@ function classifyMember(
   };
 }
 
+function guardOf(members: EvaluatorEvidence[]): Pick<EvaluatorEvidence, "platform_guard"> {
+  const guard = members.find((member) => member.platform_guard)?.platform_guard;
+  return guard ? { platform_guard: guard } : {};
+}
+
 function collapseAnyOf(evidence: EvaluatorEvidence[]): EvaluatorEvidence[] {
   const groups = new Map<string, EvaluatorEvidence[]>();
   const singles: EvaluatorEvidence[] = [];
@@ -172,6 +198,8 @@ function collapseAnyOf(evidence: EvaluatorEvidence[]): EvaluatorEvidence[] {
     if (members.some((member) => member.verdict === "passed")) verdict = "passed";
     else if (members.some((member) => member.verdict === "incomplete")) verdict = "incomplete";
     else if (members.some((member) => member.verdict === "unverified")) verdict = "unverified";
+    else if (members.some((member) => member.verdict === "platform_guard"))
+      verdict = "platform_guard";
     else verdict = "failed";
     const capability = members.every((member) => member.capability === "live_proven")
       ? "live_proven"
@@ -187,6 +215,7 @@ function collapseAnyOf(evidence: EvaluatorEvidence[]): EvaluatorEvidence[] {
       is_pass: verdict === "passed" ? true : verdict === "failed" ? false : null,
       score: verdict === "passed" ? 1 : verdict === "failed" ? 0 : null,
       explainability: `Any-of: ${members.map((member) => `${member.id}=${member.verdict}`).join(", ")}`,
+      ...guardOf(members),
     });
   }
   return singles;
@@ -202,6 +231,7 @@ function scenarioEvidence(expected: EvalTest, returned: TestResult | undefined):
       issues: ["Expected scenario result was not returned."],
     };
   }
+  returned = normalizePlatformGuardResult(returned);
 
   const expectedRows = expectedEvaluators(expected);
   const expectedIds = expectedRows.map((entry) => entry.id);
@@ -233,7 +263,13 @@ function scenarioEvidence(expected: EvalTest, returned: TestResult | undefined):
     issues.length > 0
       ? "incomplete"
       : verdictPrecedence(evaluators.map((evaluator) => evaluator.verdict));
-  return { id: expected.id, verdict, evaluators, issues };
+  return {
+    id: expected.id,
+    verdict,
+    evaluators,
+    issues,
+    ...(returned.platform_guard ? { platform_guard: returned.platform_guard } : {}),
+  };
 }
 
 function responseIntegrityEvidence(
@@ -285,7 +321,14 @@ export function deriveEvalVerdict(
   const scenarioVerdict =
     issues.length > 0
       ? "incomplete"
-      : verdictPrecedence(scenarios.map((scenario) => scenario.verdict));
+      : verdictPrecedence(
+          scenarios.map((scenario) =>
+            scenario.verdict === "platform_guard" &&
+            spec.sf_pi?.platform_guard?.functional === "allow"
+              ? "passed"
+              : scenario.verdict,
+          ),
+        );
   const responseIntegrity = responseIntegrityEvidence(spec, response);
   const verdict =
     responseIntegrity?.policy.severity === "error"

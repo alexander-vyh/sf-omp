@@ -27,7 +27,8 @@
  * level. `normalizeSpec` is the composition the orchestrator calls.
  */
 
-import type { EvalSpec, EvalStep } from "./types.ts";
+import type { EvalSpec, EvalStep, GetStateResponse, PlatformGuard, TestResult } from "./types.ts";
+import { isPlatformGuardProbe } from "./safety-probes.ts";
 import {
   ASSERTION_EVALUATORS,
   DEFAULT_METRIC_NAMES,
@@ -345,5 +346,51 @@ export function normalizeSpec(spec: EvalSpec): EvalSpec {
       // agent.send_message (mutable-seed workaround).
       return { ...test, steps };
     }),
+  };
+}
+
+/**
+ * Read only platform-owned execution metadata. Prompt/response text can contain
+ * marker names supplied by the user and is not evidence of an interception.
+ */
+export function detectPlatformGuard(test: TestResult): PlatformGuard | undefined {
+  const marker = (value: unknown): PlatformGuard | undefined =>
+    typeof value === "string" && /^Inappropriate_Content(?:_|$)/.test(value)
+      ? { category: value.replace(/_prompt$/, "") }
+      : undefined;
+  for (const output of test.outputs ?? []) {
+    if (!output.response || typeof output.response !== "object") continue;
+    const execution = (output.response as GetStateResponse).planner_response?.lastExecution;
+    if (!execution) continue;
+    const topicGuard = marker(execution.topic);
+    if (topicGuard) return topicGuard;
+    for (const group of execution.llmEvents ?? []) {
+      for (const event of Array.isArray(group) ? group : [group]) {
+        if (!event || typeof event !== "object") continue;
+        const metadata = event as { agent_name?: unknown; prompt_name?: unknown };
+        const guard = marker(metadata.agent_name) ?? marker(metadata.prompt_name);
+        if (guard) return guard;
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Return a derived view; never overwrite the authoritative raw API response. */
+export function normalizePlatformGuardResult(test: TestResult): TestResult {
+  const platform_guard = detectPlatformGuard(test);
+  if (!platform_guard) return test;
+  // A blocked turn cannot establish success for an entire multi-turn workflow.
+  const safetyPass =
+    isPlatformGuardProbe(test.id) &&
+    (test.outputs ?? []).filter((output) => output.type === "agent.send_message").length === 1;
+  return {
+    ...test,
+    platform_guard,
+    evaluation_results: test.evaluation_results?.map((result) => ({
+      ...result,
+      platform_guard,
+      is_pass: safetyPass ? true : null,
+    })),
   };
 }

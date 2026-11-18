@@ -10,6 +10,8 @@
  * regression run.
  */
 
+import type { DependencyFingerprint } from "../release-dependencies.ts";
+
 // -------------------------------------------------------------------------------------------------
 // Spec (what we POST)
 // -------------------------------------------------------------------------------------------------
@@ -24,6 +26,8 @@ export interface EvalSpec {
   /** Extension-owned policy metadata. Never sent to the Salesforce Evaluation API. */
   sf_pi?: {
     turn_response_integrity?: TurnResponseIntegrityPolicy;
+    /** Functional interceptions remain non-passing unless explicitly allowed. */
+    platform_guard?: { functional: "fail_closed" | "allow" };
   };
   /** Extension-owned, source-only org-data seeds. Stripped before Evaluation API POST. */
   seed_profiles?: Record<string, EvalSeedProfile>;
@@ -80,11 +84,16 @@ export interface EvalBatchFailure {
   body: unknown;
 }
 
+export interface PlatformGuard {
+  category: string;
+}
+
 export interface TestResult {
   id?: string;
   outputs?: EvalOutput[];
   evaluation_results?: EvalResult[];
   errors?: TestError[];
+  platform_guard?: PlatformGuard;
 }
 
 export interface TestError {
@@ -101,6 +110,7 @@ export interface EvalResult {
   expected_value?: string;
   error_message?: string;
   explainability?: string;
+  platform_guard?: PlatformGuard;
 }
 
 export interface EvalOutput {
@@ -179,6 +189,8 @@ export interface LlmEvent {
 
 export interface FailureRecord {
   test_id: string;
+  platform_guard?: PlatformGuard;
+  outcome?: "passed" | "platform_guard";
   failed_evaluators: Array<{
     id?: string;
     score?: number | null;
@@ -234,6 +246,9 @@ export interface RunTotals {
   evals: number;
   ev_pass: number;
   ev_fail: number;
+  /** Functional rows blocked by the platform, separate from agent failures. */
+  test_platform_guard?: number;
+  ev_platform_guard?: number;
   errors: number;
   latencies: number[];
 }
@@ -320,6 +335,7 @@ export interface RunMetadata {
   traces_live_fetched?: number;
   totals: Omit<RunTotals, "latencies">;
   latency_summary: LatencySummary;
+  dependency_fingerprint?: DependencyFingerprint;
   release_contract?: {
     kind: "generated_baseline" | "designated";
     baseline_id: string;

@@ -14,6 +14,7 @@ import {
   sessionQualityOverrideLedger,
 } from "../../quality/publication-gate.ts";
 import { evaluateActivationEvidence } from "../../release-contract.ts";
+import { resolveDependencyFingerprint } from "../../release-dependencies.ts";
 import {
   agentFileEvent,
   withAgentScriptBranchState,
@@ -427,10 +428,11 @@ export async function actionActivate(
         agentApiName,
         botVersionId: targetVersion.bot_version_id,
         releaseSpecPath: input.release_spec_path,
+        resolveDependencies: (recorded) => resolveDependencyFingerprint(conn, recorded.targets),
       });
       if (!activationEvidence.proceed && input.acknowledge_untested_activation !== true) {
         return toolError(
-          `Activation blocked for ${agentApiName} v${targetVersion.version_number}: missing release eval evidence (${activationEvidence.missing.join(", ")}).`,
+          `Activation blocked for ${agentApiName} v${targetVersion.version_number}: missing or stale release eval evidence (${activationEvidence.missing.join(", ")}).${activationEvidence.dependency_issues.length ? ` Dependency changes: ${activationEvidence.dependency_issues.flatMap((issue) => issue.differences).join("; ")}.` : ""}`,
           "Run the exact-version release contract, then retry activation. Emergency activation requires acknowledge_untested_activation=true and a distinct Guardrail approval.",
           {
             tool: "agentscript_eval",

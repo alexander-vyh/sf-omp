@@ -6,6 +6,10 @@ import path from "node:path";
 import type { EvalApiResponse, EvalSpec } from "./eval/types.ts";
 import { deriveEvalVerdict, EVAL_VERDICT_SEMANTICS_VERSION } from "./eval/verdict.ts";
 import { evalProjectRoot, writeJsonAtomic } from "./eval/persist.ts";
+import {
+  compareDependencyFingerprints,
+  type DependencyFingerprint,
+} from "./release-dependencies.ts";
 
 export const AGENT_SCRIPT_RELEASE_BASELINE_ID = "sf-agentscript-generated-baseline-v1";
 export type ReleaseContractKind = "generated_baseline" | "designated";
@@ -23,6 +27,7 @@ export interface ActivationEvidenceResult {
   evidence: ReleaseContractEvidence[];
   designated_spec_path?: string;
   designated_spec_digest?: string;
+  dependency_issues: Array<{ kind: ReleaseContractKind; run_id: string; differences: string[] }>;
 }
 
 export async function evaluateActivationEvidence(input: {
@@ -31,6 +36,8 @@ export async function evaluateActivationEvidence(input: {
   agentApiName: string;
   botVersionId: string;
   releaseSpecPath?: string;
+  currentDependencyFingerprint?: DependencyFingerprint;
+  resolveDependencies?: (recorded: DependencyFingerprint) => Promise<DependencyFingerprint>;
 }): Promise<ActivationEvidenceResult> {
   const cwd = evalProjectRoot(input.cwd);
   const requestedDesignatedPath = input.releaseSpecPath
@@ -69,9 +76,10 @@ export async function evaluateActivationEvidence(input: {
     })),
   );
   const evidence: ReleaseContractEvidence[] = [];
+  const dependencyIssues: ActivationEvidenceResult["dependency_issues"] = [];
 
   for (const kind of required) {
-    const match = metadata.find((candidate) => {
+    const candidates = metadata.filter((candidate) => {
       const contract = candidate.release_contract;
       if (!contract || contract.kind !== kind) return false;
       if (candidate.org_id !== input.orgId) return false;
@@ -83,6 +91,28 @@ export async function evaluateActivationEvidence(input: {
         ? contract.spec_digest === baselineDigest
         : contract.spec_digest === designatedDigest;
     });
+    let match: StoredRunEvidence | undefined;
+    for (const candidate of candidates) {
+      let differences: string[];
+      try {
+        const recorded =
+          candidate.manifest_schema_version === 3 ? candidate.dependency_fingerprint : undefined;
+        const current =
+          recorded && input.resolveDependencies
+            ? await input.resolveDependencies(recorded)
+            : input.currentDependencyFingerprint;
+        differences = compareDependencyFingerprints(recorded, current);
+      } catch (error) {
+        differences = [
+          `dependency resolution failed: ${error instanceof Error ? error.message : String(error)}`,
+        ];
+      }
+      if (differences.length === 0) {
+        match = candidate;
+        break;
+      }
+      dependencyIssues.push({ kind, run_id: candidate.run_id, differences });
+    }
     if (match?.release_contract) {
       evidence.push({
         run_id: match.run_id,
@@ -99,6 +129,7 @@ export async function evaluateActivationEvidence(input: {
     required,
     missing,
     evidence,
+    dependency_issues: dependencyIssues.filter((issue) => missing.includes(issue.kind)),
     ...(designatedRequired ? { designated_spec_path: requestedDesignatedPath } : {}),
     ...(designatedDigest ? { designated_spec_digest: designatedDigest } : {}),
   };
@@ -118,7 +149,8 @@ export function defaultReleaseSpecPath(cwd: string, agentApiName: string): strin
 
 interface StoredRunEvidence {
   run_id: string;
-  manifest_schema_version: 2;
+  manifest_schema_version: 2 | 3;
+  dependency_fingerprint?: DependencyFingerprint;
   scope: "suite";
   org_id: string;
   agent_api_name: string;
@@ -151,6 +183,7 @@ async function existingFile(candidate: string): Promise<string | undefined> {
 
 interface ReleaseEvidenceIndexEntry {
   run_id: string;
+  dependency_fingerprint?: DependencyFingerprint;
   org_id: string;
   agent_api_name: string;
   bot_version_id: string;
@@ -160,7 +193,7 @@ interface ReleaseEvidenceIndexEntry {
 }
 
 interface ReleaseEvidenceIndex {
-  schema_version: 1;
+  schema_version: 2;
   entries: ReleaseEvidenceIndexEntry[];
 }
 
@@ -194,7 +227,7 @@ async function readStoredRun(base: string, runId: string): Promise<StoredRunEvid
     if (
       metadata.run_id !== runId ||
       manifest.run_id !== runId ||
-      manifest.schema_version !== 2 ||
+      (manifest.schema_version !== 2 && manifest.schema_version !== 3) ||
       manifest.scope !== "suite" ||
       typeof manifest.org_id !== "string" ||
       typeof manifest.agent_api_name !== "string" ||
@@ -234,7 +267,8 @@ async function readStoredRun(base: string, runId: string): Promise<StoredRunEvid
     return {
       ...metadata,
       run_id: runId,
-      manifest_schema_version: 2,
+      manifest_schema_version: manifest.schema_version,
+      dependency_fingerprint: manifest.dependency_fingerprint,
       scope: "suite",
       org_id: manifest.org_id,
       agent_api_name: manifest.agent_api_name,
@@ -261,6 +295,7 @@ function indexEntry(row: StoredRunEvidence): ReleaseEvidenceIndexEntry {
     kind: row.release_contract.kind,
     spec_digest: row.release_contract.spec_digest,
     baseline_id: row.release_contract.baseline_id,
+    dependency_fingerprint: row.dependency_fingerprint,
   };
 }
 
@@ -269,7 +304,7 @@ async function readReleaseIndex(base: string): Promise<ReleaseEvidenceIndex | un
     const parsed = JSON.parse(
       await readFile(path.join(base, RELEASE_INDEX_FILE), "utf8"),
     ) as ReleaseEvidenceIndex;
-    return parsed.schema_version === 1 && Array.isArray(parsed.entries) ? parsed : undefined;
+    return parsed.schema_version === 2 && Array.isArray(parsed.entries) ? parsed : undefined;
   } catch {
     return undefined;
   }
@@ -292,7 +327,7 @@ async function rebuildReleaseIndex(base: string): Promise<ReleaseEvidenceIndex> 
     if (row) rows.push(row);
   }
   const index: ReleaseEvidenceIndex = {
-    schema_version: 1,
+    schema_version: 2,
     entries: rows.filter((row) => row.terminal_complete).map(indexEntry),
   };
   await writeJsonAtomic(path.join(base, RELEASE_INDEX_FILE), index);
@@ -340,7 +375,7 @@ export async function recordReleaseEvidence(cwd: string, runId: string): Promise
   const row = await readStoredRun(base, runId);
   if (!row || !row.terminal_complete) return;
   await withReleaseIndexLock(base, async () => {
-    const index = (await readReleaseIndex(base)) ?? { schema_version: 1 as const, entries: [] };
+    const index = (await readReleaseIndex(base)) ?? { schema_version: 2 as const, entries: [] };
     index.entries = [indexEntry(row), ...index.entries.filter((entry) => entry.run_id !== runId)];
     await writeJsonAtomic(path.join(base, RELEASE_INDEX_FILE), index);
   });
@@ -383,7 +418,7 @@ async function readReleaseMetadata(
 
 function isCompletePassingRun(metadata: StoredRunEvidence): boolean {
   return (
-    metadata.manifest_schema_version === 2 &&
+    (metadata.manifest_schema_version === 2 || metadata.manifest_schema_version === 3) &&
     metadata.scope === "suite" &&
     metadata.terminal_complete &&
     metadata.execution_state === "completed" &&

@@ -11,6 +11,28 @@ import {
   rewriteReleaseSpecForLatest,
 } from "../lib/release-contract.ts";
 import { EVAL_VERDICT_SEMANTICS_VERSION } from "../lib/eval/verdict.ts";
+import type { DependencyFingerprint } from "../lib/release-dependencies.ts";
+
+const dependencies: DependencyFingerprint = {
+  schema_version: 1,
+  targets: [{ scheme: "flow", ref_name: "AnswerFlow" }],
+  dependencies: [
+    { kind: "flow", name: "AnswerFlow", active_version_id: "synthetic-flow-v1", version_number: 1 },
+    {
+      kind: "prompt_template",
+      name: "AnswerTemplate",
+      active_version_identifier: "v1",
+      content_sha256: "hash-v1",
+    },
+    {
+      kind: "apex",
+      name: "AnswerSearch",
+      id: "synthetic-class",
+      last_modified_date: "2026-01-01",
+      body_sha256: "body-v1",
+    },
+  ],
+};
 
 const dirs: string[] = [];
 function tempCwd(): string {
@@ -97,6 +119,7 @@ describe("Agent Script Release Eval Contract", () => {
       orgId: "00D000000000001",
       agentApiName: agent,
       botVersionId: "0X9000000000001",
+      currentDependencyFingerprint: dependencies,
     });
 
     expect(result).toMatchObject({ proceed: true, required: ["generated_baseline", "designated"] });
@@ -223,9 +246,86 @@ describe("Agent Script Release Eval Contract", () => {
       orgId: "00D000000000001",
       agentApiName: agent,
       botVersionId: "0X9000000000001",
+      currentDependencyFingerprint: dependencies,
     });
 
     expect(result).toMatchObject({ proceed: false, missing: ["designated"] });
+  });
+
+  it.each([
+    [0, "active_version_id", "synthetic-flow-v2", "AnswerFlow"],
+    [1, "content_sha256", "hash-v2", "AnswerTemplate"],
+    [2, "last_modified_date", "2026-01-02", "AnswerSearch"],
+  ])(
+    "blocks activation with a named diff for changed dependency %s",
+    async (index, field, value, name) => {
+      const cwd = tempCwd();
+      writeRun(cwd, "baseline", {
+        kind: "generated_baseline",
+        spec_digest: writeBaselineSource(cwd, "BillingAgent"),
+        baseline_id: AGENT_SCRIPT_RELEASE_BASELINE_ID,
+      });
+      const current = structuredClone(dependencies);
+      Object.assign(current.dependencies[index as number], { [field]: value });
+      const result = await evaluateActivationEvidence({
+        cwd,
+        orgId: "00D000000000001",
+        agentApiName: "BillingAgent",
+        botVersionId: "0X9000000000001",
+        resolveDependencies: async (recorded) => {
+          expect(recorded).toEqual(dependencies);
+          return current;
+        },
+      });
+      expect(result.proceed).toBe(false);
+      expect(result.dependency_issues[0].differences.join("; ")).toContain(name);
+      expect(result.dependency_issues[0].differences.join("; ")).toContain(field);
+    },
+  );
+
+  it("requires a rerun for legacy evidence even if current dependencies are unchanged", async () => {
+    const cwd = tempCwd();
+    writeRun(
+      cwd,
+      "legacy",
+      {
+        kind: "generated_baseline",
+        spec_digest: writeBaselineSource(cwd, "BillingAgent"),
+        baseline_id: AGENT_SCRIPT_RELEASE_BASELINE_ID,
+      },
+      2,
+    );
+    const result = await evaluateActivationEvidence({
+      cwd,
+      orgId: "00D000000000001",
+      agentApiName: "BillingAgent",
+      botVersionId: "0X9000000000001",
+      currentDependencyFingerprint: dependencies,
+    });
+    expect(result.proceed).toBe(false);
+    expect(result.dependency_issues[0].differences).toEqual([
+      "no dependency fingerprint, rerun required",
+    ]);
+  });
+
+  it("blocks activation when dependency resolution fails", async () => {
+    const cwd = tempCwd();
+    writeRun(cwd, "unavailable", {
+      kind: "generated_baseline",
+      spec_digest: writeBaselineSource(cwd, "BillingAgent"),
+      baseline_id: AGENT_SCRIPT_RELEASE_BASELINE_ID,
+    });
+    const result = await evaluateActivationEvidence({
+      cwd,
+      orgId: "00D000000000001",
+      agentApiName: "BillingAgent",
+      botVersionId: "0X9000000000001",
+      resolveDependencies: async () => {
+        throw new Error("AnswerTemplate unavailable");
+      },
+    });
+    expect(result.proceed).toBe(false);
+    expect(result.dependency_issues[0].differences[0]).toContain("AnswerTemplate unavailable");
   });
 });
 
@@ -233,6 +333,7 @@ function writeRun(
   cwd: string,
   runId: string,
   releaseContract: { kind: string; spec_digest: string; baseline_id: string },
+  schemaVersion: 2 | 3 = 3,
 ): void {
   const base = path.join(cwd, ".pi", "state", "sf-agentscript", "runs");
   const run = path.join(base, runId);
@@ -265,7 +366,8 @@ function writeRun(
   writeFileSync(
     path.join(run, "manifest.json"),
     JSON.stringify({
-      schema_version: 2,
+      schema_version: schemaVersion,
+      ...(schemaVersion === 3 ? { dependency_fingerprint: dependencies } : {}),
       run_id: runId,
       scope: "suite",
       org_id: "00D000000000001",

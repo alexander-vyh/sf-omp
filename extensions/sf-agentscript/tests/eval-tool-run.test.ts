@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   inspectFile: vi.fn(async () => ({
     ok: true,
     has_parse_errors: false,
-    components: [],
+    components: { topics: [], subagents: [], variables: [], actions: [] },
   })),
   generateSpec: vi.fn(() => ({
     spec: {
@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
       voice_tests: 0,
       guardrail_tests: 1,
       safety_tests: 0,
+      rubric_warnings: [],
     },
   })),
   resolveAgentIds: vi.fn(async () => ({
@@ -257,6 +258,11 @@ describe("registered agentscript_eval run", () => {
     expect(mocks.runEval.mock.calls[0]?.[0].releaseContract).toMatchObject({
       kind: "generated_baseline",
       spec_digest: expect.any(String),
+    });
+    expect(mocks.runEval.mock.calls[0]?.[0].dependencyFingerprint).toEqual({
+      schema_version: 1,
+      targets: [],
+      dependencies: [],
     });
     expect(mocks.recordRunInIndex).toHaveBeenCalledWith(cwd, "run-public");
     expect(mocks.recordReleaseEvidence).toHaveBeenCalledWith(cwd, "run-public");

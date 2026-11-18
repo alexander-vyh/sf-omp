@@ -258,7 +258,11 @@ export async function readEvalRunArtifact(
 
   if (manifestValue !== undefined) {
     const manifest = manifestValue as Partial<EvalRunManifest>;
-    if (manifest.schema_version !== 2 || manifest.run_id !== runId || !manifest.scope) {
+    if (
+      (manifest.schema_version !== 2 && manifest.schema_version !== 3) ||
+      manifest.run_id !== runId ||
+      !manifest.scope
+    ) {
       return {
         summary: {
           run_id: runId,
@@ -291,6 +295,9 @@ export async function readEvalRunArtifact(
         source_digest: currentManifest.source_digest,
         executed_digest: currentManifest.executed_digest,
         bot_version_number: metadata?.bot_version_number,
+        release_contract: currentManifest.release_contract,
+        dependency_fingerprint:
+          currentManifest.schema_version === 3 ? currentManifest.dependency_fingerprint : undefined,
         result_summary: metadata?.totals
           ? `${metadata.totals.test_pass}/${metadata.totals.tests}`
           : undefined,

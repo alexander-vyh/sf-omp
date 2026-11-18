@@ -51,6 +51,46 @@ Use `inspect/review` before publish or after behavioral changes. It composes com
 
 Use `inspect/runtime_smoke` only after a test call or message. It is read-only and diagnoses VoiceCall, AgentWork, and MessagingSession records from the previous day; `phone_number` narrows the VoiceCall query, and AgentWork is correlated through `WorkItemId` instead of combining unrelated latest records. It does not place calls, send messages, or replace preview/eval.
 
+## Versioning prompt templates
+
+**Platform redeploy behaviour: not yet org-verified.** No non-production org
+was available to test whether redeploying changed content under a reused
+`versionIdentifier` creates or activates a new version. Do not assume either
+success or failure from an identifier alone.
+
+For `generatePromptResponse://Example_Reply`, `inspect/check_targets` adds a
+read-only, local-first comparison of the referenced `GenAiPromptTemplate`.
+It looks in the nearest `sfdx-project.json` package directories, under
+`main/default/genAiPromptTemplates` or directly under `genAiPromptTemplates`.
+It reads only the named source files (up to 1 MiB each, across at most 100
+package directories); missing local source produces no drift warning.
+Ambiguous, malformed, oversized, or unreadable evidence is reported as
+unverifiable, not as a match.
+
+The comparison selects the local version whose `versionIdentifier` matches
+`activeVersionIdentifier` and hashes its XML-decoded `content`, preserving
+whitespace. The org copy comes from the bounded Metadata API reader shared
+with release dependency fingerprints, not Tooling `Prompt`/`PromptVersion`.
+Repeated action references share one lookup per check. This is an explicit
+inspection, not a startup or background org read.
+
+If the content hashes differ but the active identifiers match, the check
+warns **content differs but active version unchanged** without blocking
+publication. Consider a new `templateVersions/versionIdentifier` with a matching
+`activeVersionIdentifier`, or inspect the deployment and activation path.
+Matching content or differing identifiers produces no such warning; neither
+case proves that the intended prompt is running.
+
+`enableEinsteinGPTDeployPromptTemplatesAsActive` is the org setting associated
+with deploying prompt templates as active. Treat it as part of the deployment
+and activation configuration, not evidence that a particular content version
+became active. This check neither reads nor changes the setting and never
+deploys or activates a template. Its interaction with reused identifiers,
+and the exact activation steps needed with the setting on versus off,
+remain **not yet org-verified**. Verify those behaviours in a scratch or sandbox
+org using the active `GenAiPromptTemplate` Metadata API content before adopting
+a deployment rule; do not use a production org for that experiment.
+
 ## Mutate
 
 Prefer `agentscript_authoring` mutate over generic file editing when the change matches a supported mode. It survives whitespace drift and returns post-mutation diagnostics.

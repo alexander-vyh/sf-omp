@@ -44,6 +44,7 @@ import {
 } from "./scenario.ts";
 import type { EvalSpec, EvalTest } from "./types.ts";
 import { GUARDRAIL_PROBE, SAFETY_PROBES, type SafetyProbe } from "./safety-probes.ts";
+import { lintEvalRubrics, type RubricLintWarning } from "./rubric-lint.ts";
 
 // -------------------------------------------------------------------------------------------------
 // Public API
@@ -128,6 +129,8 @@ export interface GeneratedSpecSummary {
     component: string;
     reason: "no_provable_state_update" | "no_matching_state_branch";
   }>;
+  /** Advisory only; generated source references may still contain literal wording. */
+  rubric_warnings: RubricLintWarning[];
 }
 
 export function generateSpec(opts: GenerateSpecOptions): GenerateSpecResult {
@@ -278,20 +281,21 @@ export function generateSpec(opts: GenerateSpecOptions): GenerateSpecResult {
     }
   }
 
-  return {
-    spec: {
-      ...(isVoice
-        ? {
-            sf_pi: {
-              turn_response_integrity: {
-                max_nonempty_llm_contents: 1,
-                severity: "error" as const,
-              },
+  const spec: EvalSpec = {
+    ...(isVoice
+      ? {
+          sf_pi: {
+            turn_response_integrity: {
+              max_nonempty_llm_contents: 1,
+              severity: "error" as const,
             },
-          }
-        : {}),
-      tests,
-    },
+          },
+        }
+      : {}),
+    tests,
+  };
+  return {
+    spec,
     summary: {
       total_tests: tests.length,
       subagent_tests: subagentCount,
@@ -307,6 +311,7 @@ export function generateSpec(opts: GenerateSpecOptions): GenerateSpecResult {
       skipped_actions: skippedActions,
       skipped_connected_agents: skippedConnectedAgents,
       skipped_multi_turn: skippedMultiTurn,
+      rubric_warnings: lintEvalRubrics(spec),
     },
   };
 }
@@ -334,8 +339,8 @@ function buildRoutingTest(
                 response: {
                   id: `eval_response_${slug}`,
                   rubric:
-                    `The agent's response should be relevant to the user's request to "${escapeForRubric(utterance)}". ` +
-                    `A passing response stays on the supported domain and is allowed to ask clarifying questions, ask whether the user wants human assistance, request identity verification, request missing inputs, or explain prerequisite workflow steps instead of completing the path immediately.`,
+                    "The response addresses the meaning of the user's request within the supported domain. " +
+                    "It may ask clarifying questions, offer human assistance, request identity verification or missing inputs, or explain prerequisite workflow steps instead of completing the path immediately. Judge behavior, not specific wording.",
                 },
               }),
         },
@@ -397,8 +402,8 @@ function buildConnectedAgentTest(input: ConnectedTestInput): {
             response: {
               id: `eval_response_connected_agent_${input.slug}`,
               rubric:
-                `The agent should invoke or delegate to the connected agent "${input.connected.name}" in response to the request. ` +
-                `A passing response returns the connected agent's result or asks for inputs required before delegation.`,
+                "The response presents the connected agent's result or requests inputs needed before delegation. " +
+                "It does not claim that external work succeeded without evidence. Judge behavior, not specific wording; response text alone does not prove connected-agent invocation.",
             },
           }),
     },
@@ -408,7 +413,10 @@ function buildConnectedAgentTest(input: ConnectedTestInput): {
       utterance: "What is the status of that request now?",
       response: {
         id: `eval_second_turn_connected_agent_${input.slug}`,
-        rubric: `The response should follow this Agent Script instruction activated by prior state: "${escapeForRubric(branch.instructions)}"`,
+        rubric:
+          "The response carries out the behavior described by the state-activated instruction below. " +
+          "Paraphrases are valid: do not require literal phrases, quoted examples, formatting, or specific wording from the instruction. " +
+          `Source instruction (behavior only): ${branch.instructions}`,
       },
       state: checkpoints.map((checkpoint) => ({
         ...checkpoint,
@@ -617,14 +625,4 @@ function slugify(name: string): string {
     .replace(/[^a-zA-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
-}
-
-/**
- * The bot_response_rating rubric is sent as a single quoted string in the
- * eval API payload; backslash + double-quote in the synthesized utterance
- * could land badly when we drop it back into the rubric. Normalize to
- * single quotes.
- */
-function escapeForRubric(s: string): string {
-  return s.replace(/"/g, "'").replace(/\\/g, "");
 }

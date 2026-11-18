@@ -64,7 +64,10 @@ export async function readPublicFailures(
   } catch {
     throw new Error(`Unable to safely expose failure evidence for run '${runId}'.`);
   }
-  if (manifest.schema_version !== 2 || manifest.run_id !== runId) {
+  if (
+    (manifest.schema_version !== 2 && manifest.schema_version !== 3) ||
+    manifest.run_id !== runId
+  ) {
     throw new Error(`Unable to safely expose failure evidence for run '${runId}'.`);
   }
   const rows = manifest.seed_provenance ?? [];

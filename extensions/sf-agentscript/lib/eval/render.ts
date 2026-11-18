@@ -28,6 +28,7 @@ import type {
   TurnSummary,
 } from "./types.ts";
 import { groupEvaluators } from "./threshold.ts";
+import { normalizePlatformGuardResult } from "./normalize.ts";
 import { summarizeLastExecution } from "../preview/trace-digest.ts";
 import { buildLlmResponseSequence } from "../llm-response-sequence.ts";
 
@@ -195,6 +196,7 @@ export function buildFailureRecord(
   groupedEvals: EvalResult[],
   opts: BuildOptions = {},
 ): FailureRecord {
+  test = normalizePlatformGuardResult(test);
   const outputs = test.outputs ?? [];
 
   // Pair each agent.send_message with the *next* agent.get_state by execution
@@ -231,7 +233,7 @@ export function buildFailureRecord(
   }
 
   const failed_evaluators = groupedEvals
-    .filter((e) => e.is_pass === false)
+    .filter((e) => !test.platform_guard && e.is_pass === false)
     .map((e) => ({
       id: e.id,
       score: e.score,
@@ -254,6 +256,16 @@ export function buildFailureRecord(
 
   return {
     test_id: String(test.id ?? "?"),
+    ...(test.platform_guard
+      ? {
+          platform_guard: test.platform_guard,
+          outcome: (test.evaluation_results?.length &&
+          test.evaluation_results.every((result) => result.is_pass === true) &&
+          !test.errors?.length
+            ? "passed"
+            : "platform_guard") as "passed" | "platform_guard",
+        }
+      : {}),
     failed_evaluators,
     step_errors,
     turns,
@@ -276,17 +288,27 @@ export function summarize(
     evals: 0,
     ev_pass: 0,
     ev_fail: 0,
+    test_platform_guard: 0,
+    ev_platform_guard: 0,
     errors: 0,
     latencies: [],
   };
   const failures: FailureRecord[] = [];
   const groupedByTest = new Map<string, EvalResult[]>();
 
-  for (const test of merged.results ?? []) {
+  for (const rawTest of merged.results ?? []) {
+    const test = normalizePlatformGuardResult(rawTest);
     totals.tests++;
     const tid = String(test.id ?? "?");
     const errs = test.errors ?? [];
-    const grouped = groupEvaluators(test.evaluation_results ?? []);
+    const grouped = groupEvaluators(test.evaluation_results ?? []).map((result) =>
+      test.platform_guard
+        ? {
+            ...result,
+            is_pass: test.evaluation_results?.every((row) => row.is_pass === true) ? true : null,
+          }
+        : result,
+    );
     groupedByTest.set(tid, grouped);
 
     let evPass = 0;
@@ -298,6 +320,10 @@ export function summarize(
     totals.evals += grouped.length;
     totals.ev_pass += evPass;
     totals.ev_fail += evFail;
+    const platformBlocked =
+      !!test.platform_guard && (grouped.length === 0 || evPass !== grouped.length);
+    if (platformBlocked)
+      totals.ev_platform_guard = (totals.ev_platform_guard ?? 0) + grouped.length;
     totals.errors += errs.length;
 
     for (const o of test.outputs ?? []) {
@@ -307,12 +333,11 @@ export function summarize(
       if (typeof lat === "number") totals.latencies.push(Math.round(lat));
     }
 
-    const passed = errs.length === 0 && evFail === 0;
-    if (passed) totals.test_pass++;
-    else {
-      totals.test_fail++;
-      failures.push(buildFailureRecord(test, grouped, opts));
-    }
+    const passed = errs.length === 0 && evFail === 0 && !platformBlocked;
+    if (platformBlocked) totals.test_platform_guard = (totals.test_platform_guard ?? 0) + 1;
+    else if (passed) totals.test_pass++;
+    else totals.test_fail++;
+    if (!passed || test.platform_guard) failures.push(buildFailureRecord(test, grouped, opts));
   }
 
   return { totals, failures, groupedByTest };
@@ -345,19 +370,27 @@ export function renderReport(
   const lines: string[] = [];
   const { totals, failures, groupedByTest } = summarize(merged, opts);
 
-  for (const test of merged.results ?? []) {
+  for (const rawTest of merged.results ?? []) {
+    const test = normalizePlatformGuardResult(rawTest);
     const tid = String(test.id ?? "?");
     const errs = test.errors ?? [];
     const grouped = groupedByTest.get(tid) ?? [];
     const evFail = grouped.filter((e) => e.is_pass === false).length;
     const evPass = grouped.filter((e) => e.is_pass === true).length;
-    const passed = errs.length === 0 && evFail === 0;
-    const marker = passed ? "✅" : "❌";
+    const platformBlocked =
+      !!test.platform_guard && (grouped.length === 0 || evPass !== grouped.length);
+    const passed = errs.length === 0 && evFail === 0 && !platformBlocked;
+    const marker = platformBlocked ? "[PLATFORM]" : passed ? "✅" : "❌";
 
     const headerExtras = errs.length > 0 ? `, ${errs.length} step error(s)` : "";
     lines.push(
       `\n${marker} ${tid}  (${evPass}/${grouped.length} evaluators passed${headerExtras})`,
     );
+    if (test.platform_guard) {
+      lines.push(
+        `    platform_guard (${test.platform_guard.category})${passed ? " — safe refusal passed" : " — functional coverage blocked"}`,
+      );
+    }
 
     if (!passed || opts.verbose) {
       const rec =
@@ -416,6 +449,7 @@ export function renderReport(
   lines.push(
     `Tests: ${totals.test_pass}/${totals.tests} passed  |  ` +
       `Evaluators: ${totals.ev_pass}/${totals.evals} passed  |  ` +
+      `Platform guard: ${totals.test_platform_guard ?? 0} functional row(s)  |  ` +
       `Step errors: ${totals.errors}`,
   );
   const lat = latencySummary(totals.latencies);

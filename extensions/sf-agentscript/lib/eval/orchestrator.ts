@@ -129,6 +129,7 @@ export interface RunEvalOptions {
   runScope?: EvalRunScope;
   /** Immutable release-contract identity known before execution begins. */
   releaseContract?: RunMetadata["release_contract"];
+  dependencyFingerprint?: RunMetadata["dependency_fingerprint"];
   /** One-run acknowledgement; it never promotes capability or release eligibility. */
   unverifiedEvaluatorAcknowledged?: boolean;
   /** Exact Studio owner identity for orphan recovery; omitted on direct runs. */
@@ -558,7 +559,7 @@ export async function runEval(opts: RunEvalOptions): Promise<RunEvalResult> {
           sourceSpec: opts.sourceSpec ?? opts.spec,
           executedSpec: spec,
           manifest: {
-            schema_version: 2,
+            schema_version: opts.releaseContract ? 3 : 2,
             run_id: runId,
             created: startedAt.toISOString(),
             scope,
@@ -586,6 +587,7 @@ export async function runEval(opts: RunEvalOptions): Promise<RunEvalResult> {
               })),
             },
             release_contract: opts.releaseContract,
+            dependency_fingerprint: opts.dependencyFingerprint,
             unverified_evaluator_acknowledged: opts.unverifiedEvaluatorAcknowledged,
             coordinator: opts.coordinator,
             seed_provenance:
@@ -853,13 +855,16 @@ export async function runEval(opts: RunEvalOptions): Promise<RunEvalResult> {
         tests: totals.tests,
         test_pass: totals.test_pass,
         test_fail: totals.test_fail,
+        test_platform_guard: totals.test_platform_guard,
         evals: totals.evals,
         ev_pass: totals.ev_pass,
         ev_fail: totals.ev_fail,
+        ev_platform_guard: totals.ev_platform_guard,
         errors: totals.errors,
       },
       latency_summary: lat,
       release_contract: opts.releaseContract,
+      dependency_fingerprint: opts.dependencyFingerprint,
     };
 
     // 8. Persist (unless disabled)

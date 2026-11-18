@@ -34,6 +34,7 @@ import type {
   SessionContext,
 } from "./types.ts";
 import { buildLlmResponseSequence } from "../llm-response-sequence.ts";
+import { detectPlatformGuard } from "./normalize.ts";
 
 export const DEFAULT_RUN_BASE_REL = path.join(".pi", "state", "sf-agentscript", "runs");
 
@@ -53,7 +54,7 @@ export function resolveRunDir(cwd: string, runId: string, base?: string): string
 export type EvalRunScope = "suite" | "scenario" | "ad_hoc";
 
 export interface EvalRunManifest {
-  schema_version: 2;
+  schema_version: 2 | 3;
   run_id: string;
   created: string;
   scope: EvalRunScope;
@@ -72,6 +73,7 @@ export interface EvalRunManifest {
     scenarios: Array<{ id: string; evaluator_ids: string[] }>;
   };
   release_contract?: RunMetadata["release_contract"];
+  dependency_fingerprint?: RunMetadata["dependency_fingerprint"];
   seed_provenance?: Array<{
     scenario_id: string;
     names: string[];
@@ -283,6 +285,7 @@ export async function writeRun(input: PersistInput): Promise<void> {
           utterance: utteranceFromResponse ?? utteranceFromSpec ?? null,
           agent_response: reply,
           topic: le.topic,
+          platform_guard: stateOut ? detectPlatformGuard({ outputs: [stateOut] }) : undefined,
           invoked_actions: le.invokedActions,
           latency_ms: le.latency,
           plan_id: planIdForTurn,
@@ -297,7 +300,7 @@ export async function writeRun(input: PersistInput): Promise<void> {
     await atomicWriteFile(path.join(runDir, "transcript.jsonl"), transcriptLines.join("\n") + "\n");
   }
 
-  // failures.jsonl — one line per failed test, LLM-shaped
+  // failures.jsonl — failed tests and platform-guard outcomes, including safe refusals
   if (failures.length > 0) {
     const lines = failures.map((f) => JSON.stringify(f));
     await atomicWriteFile(path.join(runDir, "failures.jsonl"), lines.join("\n") + "\n");

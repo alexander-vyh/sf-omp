@@ -36,6 +36,7 @@ import {
   rewriteReleaseSpecForLatest,
 } from "../../release-contract.ts";
 import { actionGenerateSpec, type GenerateEvalSpecActionInput } from "./generation.ts";
+import { fingerprintAgentFile, type DependencyFingerprint } from "../../release-dependencies.ts";
 
 const EVAL_TOOL_NAME = "agentscript_eval";
 
@@ -65,6 +66,7 @@ export interface RunEvalActionInput extends GenerateEvalSpecActionInput {
   version?: number;
   agent_file?: string;
   release_contract_kind?: "generated_baseline" | "designated";
+  dependency_fingerprint?: DependencyFingerprint;
 }
 
 export async function actionRunRelease(
@@ -154,6 +156,17 @@ export async function actionRunRelease(
       "Publish an inactive version before running the release contract.",
     );
   }
+  let dependencyFingerprint: DependencyFingerprint;
+  try {
+    dependencyFingerprint = await fingerprintAgentFile(
+      conn,
+      path.resolve(ctx.cwd, input.agent_file as string),
+    );
+  } catch (error) {
+    return toolError(
+      `Release dependency resolution failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   const common: RunEvalActionInput = {
     ...input,
     action: "run",
@@ -162,6 +175,7 @@ export async function actionRunRelease(
     version: exactVersion.version_number,
     acknowledge_inactive_version: true,
     overwrite_agent_ids: true,
+    dependency_fingerprint: dependencyFingerprint,
   };
   const baseline = await actionRun(
     ctx,
@@ -312,6 +326,7 @@ export async function actionRun(
       version: input.version,
       overwriteAgentIds: input.overwrite_agent_ids,
       releaseContract,
+      dependencyFingerprint: input.dependency_fingerprint,
       coordinator: input.coordinator_token
         ? { kind: "studio", owner_token: input.coordinator_token }
         : undefined,
