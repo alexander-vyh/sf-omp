@@ -57,6 +57,11 @@ From this checkout:
 npm start
 ```
 
+With the direnv shell hook enabled, `direnv allow .` once at the checkout root
+puts `tools/bin` first on PATH. Here and in subdirectories, `omp` then runs this
+checkout's pinned Bun and OMP with the current working directory and arguments;
+leaving the checkout restores the global `omp`.
+
 From an existing Salesforce project, keep that project as the working directory:
 
 ```bash

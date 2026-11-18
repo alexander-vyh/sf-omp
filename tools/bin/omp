@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+sf_omp="$(cd "$here/../.." && pwd)"
+exec "$sf_omp/node_modules/bun/bin/bun.exe" "$sf_omp/scripts/omp.ts" "$@"

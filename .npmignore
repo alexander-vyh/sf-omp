@@ -12,6 +12,10 @@ research.md
 generated-cat.jpg
 *.log
 
+# Checkout-scoped direnv launcher; not part of the package.
+.envrc
+tools/bin/
+
 # Local documentation build caches.
 docs/.vitepress/cache/
 docs/.vitepress/dist/
