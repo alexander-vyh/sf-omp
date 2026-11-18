@@ -18,7 +18,7 @@
  *   <agentDir>/sf-pi/sf-welcome/sf-skills-status.json
  * which is exactly what the splash will read on the next launch.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -30,9 +30,12 @@ import {
   detectSfSkillsStatus,
   readCachedSfSkillsStatus,
   reconcileCachedSfSkillsStatus,
-  readLocalGitHead,
   writeCachedSfSkillsStatus,
 } from "../lib/sf-skills-status.ts";
+import {
+  readLocalGitHead,
+  syncEffectiveSkills,
+} from "../../sf-skills/lib/invocation/effective-tree.ts";
 
 const PI_AGENT_ENV = "PI_CODING_AGENT_DIR";
 
@@ -255,6 +258,17 @@ describe("detectInstallStateLocal", () => {
     expect(status.wired).toBe(false);
   });
 
+  it("reports missing effective skills without repairing during local detection", () => {
+    const { skillsPath } = createManagedGlobal();
+    const skill = path.join(skillsPath, "sample-skill");
+    mkdirSync(skill);
+    writeFileSync(path.join(skill, "SKILL.md"), "---\nname: sample-skill\n---\n");
+    const status = detectInstallStateLocal(homeDir);
+    expect(status.effectiveState).toBe("missing");
+    expect(status.skillCount).toBe(0);
+    expect(existsSync(path.join(tmpDir, "sf-skills", "effective"))).toBe(false);
+  });
+
   it("startup availability probe omits git and skill-count fields", () => {
     const { rootPath, skillsPath } = createManagedGlobal();
     writeFileSync(path.join(tmpDir, "settings.json"), JSON.stringify({ skills: [] }));
@@ -332,6 +346,41 @@ describe("detectSfSkillsStatus", () => {
     writeFileSync(path.join(rootPath, ".sf-skills-managed"), "managed\n");
     writeFileSync(path.join(tmpDir, "settings.json"), JSON.stringify({ skills: [skillsPath] }));
   }
+
+  it("repairs an empty effective tree in the deferred refresh, even offline", async () => {
+    setupManagedGlobal("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const cloneSkills = path.join(tmpDir, "sf-skills", "forcedotcom", "skills");
+    mkdirSync(path.join(cloneSkills, "sample-skill"));
+    writeFileSync(
+      path.join(cloneSkills, "sample-skill", "SKILL.md"),
+      "---\nname: sample-skill\n---\n",
+    );
+    mkdirSync(path.join(tmpDir, "sf-skills", "effective", "skills"), { recursive: true });
+    expect(detectInstallStateLocal(homeDir).effectiveState).toBe("empty");
+    const status = await detectSfSkillsStatus(homeDir, async () => undefined, { PI_OFFLINE: "1" });
+    expect(status.effectiveState).toBe("ready");
+    expect(status.skillCount).toBe(1);
+    expect(status.checkSkipped).toBe(true);
+  });
+
+  it("repairs a stale effective tree when the clone HEAD changes", async () => {
+    setupManagedGlobal("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const root = path.join(tmpDir, "sf-skills", "forcedotcom");
+    const cloneSkills = path.join(root, "skills");
+    mkdirSync(path.join(cloneSkills, "sample-skill"));
+    writeFileSync(path.join(cloneSkills, "sample-skill", "SKILL.md"), "# old\n");
+    syncEffectiveSkills(cloneSkills);
+    writeFileSync(
+      path.join(root, ".git", "refs", "heads", "main"),
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n",
+    );
+    mkdirSync(path.join(cloneSkills, "another-skill"));
+    writeFileSync(path.join(cloneSkills, "another-skill", "SKILL.md"), "# new\n");
+    expect(detectInstallStateLocal(homeDir).effectiveState).toBe("stale");
+    const status = await detectSfSkillsStatus(homeDir, async () => undefined);
+    expect(status.effectiveState).toBe("ready");
+    expect(status.skillCount).toBe(2);
+  });
 
   it("reports latest when the compare API returns behind_by=0", async () => {
     const sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -449,6 +498,7 @@ describe("readCachedSfSkillsStatus / writeCachedSfSkillsStatus", () => {
       commitsBehind: 0,
       skillCount: 12,
       wired: false,
+      effectiveState: "ready",
       freshness: "latest",
       loading: false,
     });
@@ -459,6 +509,7 @@ describe("readCachedSfSkillsStatus / writeCachedSfSkillsStatus", () => {
       commitsBehind: 0,
       skillCount: 12,
       wired: false,
+      effectiveState: "ready",
       loading: false,
     });
   });

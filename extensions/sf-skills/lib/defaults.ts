@@ -37,6 +37,7 @@ import {
   type SkillSourceScope,
 } from "../../../lib/common/skill-sources/skill-sources.ts";
 import {
+  managedCloneRoot,
   managedEffectiveSettingsValue,
   managedEffectiveSkillsPath,
   syncEffectiveSkills,
@@ -107,7 +108,7 @@ export function managedClonePath(scope: SkillSourceScope, cwd?: string): string 
     if (!cwd) throw new Error("managedClonePath: cwd is required for scope='project'");
     return projectConfigPath(cwd, "sf-skills", REPO_DIR_NAME);
   }
-  return globalAgentPath("sf-skills", REPO_DIR_NAME);
+  return managedCloneRoot();
 }
 
 /** Settings value (portable form) we write for the managed effective skills dir. */
@@ -406,7 +407,11 @@ export interface UpdateOptions {
  * checkout (no sentinel) — those are the user's working tree.
  */
 export async function updateDefaults(options: UpdateOptions): Promise<UpdateResult> {
-  const clone = inspectManagedClone(options.scope, options.cwd);
+  // Like install, update shared content globally; scope only controls wiring.
+  const clone = { ...inspectManagedClone("global"), scope: options.scope };
+  clone.wired =
+    isManagedWired(options.scope, options.cwd, managedEffectiveSkillsPath()) ||
+    isManagedWired(options.scope, options.cwd, clone.skillsPath);
   if (!clone.exists) {
     return {
       ok: false,
@@ -438,7 +443,13 @@ export async function updateDefaults(options: UpdateOptions): Promise<UpdateResu
   }
   return {
     ok: result.success,
-    clone: { ...inspectManagedClone("global"), scope: options.scope },
+    clone: {
+      ...inspectManagedClone("global"),
+      scope: options.scope,
+      wired:
+        isManagedWired(options.scope, options.cwd, managedEffectiveSkillsPath()) ||
+        isManagedWired(options.scope, options.cwd, clone.skillsPath),
+    },
     message: result.success
       ? "Pulled latest forcedotcom/sf-skills and restamped the effective skill tree."
       : `git pull failed: ${result.stderr || result.stdout || "unknown error"}`,

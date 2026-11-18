@@ -2,13 +2,20 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { classifyInvocationMode } from "../lib/invocation/frontmatter.ts";
-import { syncEffectiveSkills } from "../lib/invocation/effective-tree.ts";
+import {
+  ensureEffectiveSkills,
+  inspectEffectiveSkills,
+  managedCloneRoot,
+  managedEffectiveSkillsPath,
+  syncEffectiveSkills,
+} from "../lib/invocation/effective-tree.ts";
 import type { SkillInvocationPolicy } from "../lib/invocation/types.ts";
 
 const tempDirs: string[] = [];
 const originalHome = process.env.HOME;
+const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 
 function makeHome(): string {
   const dir = mkdtempSync(path.join(tmpdir(), "sf-skills-effective-"));
@@ -19,6 +26,8 @@ function makeHome(): string {
 afterEach(() => {
   if (originalHome === undefined) delete process.env.HOME;
   else process.env.HOME = originalHome;
+  if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+  else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -113,5 +122,52 @@ describe("effective tree", () => {
         "utf8",
       ),
     ).toThrow();
+  });
+  it("keeps the existing effective tree and warns when the clone skills path is missing", () => {
+    const home = makeHome();
+    process.env.HOME = home;
+    const cloneSkills = path.join(home, "clone", "skills");
+    writeSkill(cloneSkills, "keep-me");
+    const initial = syncEffectiveSkills(cloneSkills);
+    const effectiveFile = initial.skills[0]!.effectiveFile;
+    const original = readFileSync(effectiveFile, "utf8");
+    rmSync(cloneSkills, { recursive: true });
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      syncEffectiveSkills(cloneSkills);
+      expect(readFileSync(effectiveFile, "utf8")).toBe(original);
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining(cloneSkills));
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it("uses one overridden agent root and skips an unchanged effective tree", () => {
+    const home = makeHome();
+    process.env.HOME = home;
+    process.env.PI_CODING_AGENT_DIR = path.join(home, "runtime", "agent");
+    const cloneSkills = path.join(managedCloneRoot(), "skills");
+    writeSkill(cloneSkills, "sample-skill");
+    expect(managedEffectiveSkillsPath()).toBe(
+      path.join(process.env.PI_CODING_AGENT_DIR, "sf-skills", "effective", "skills"),
+    );
+    expect(inspectEffectiveSkills()).toBe("missing");
+    expect(ensureEffectiveSkills()?.copied).toBe(1);
+    expect(inspectEffectiveSkills()).toBe("ready");
+    expect(ensureEffectiveSkills()).toBeUndefined();
+    rmSync(managedEffectiveSkillsPath(), { recursive: true });
+    mkdirSync(managedEffectiveSkillsPath());
+    expect(inspectEffectiveSkills()).toBe("empty");
+    expect(ensureEffectiveSkills()?.copied).toBe(1);
+    expect(inspectEffectiveSkills()).toBe("ready");
+  });
+
+  it("keeps an existing tree when first-turn repair has no clone", () => {
+    const home = makeHome();
+    process.env.HOME = home;
+    const effectiveFile = writeSkill(managedEffectiveSkillsPath(), "keep-me");
+    expect(inspectEffectiveSkills()).toBe("missing-clone");
+    expect(ensureEffectiveSkills()).toBeUndefined();
+    expect(readFileSync(effectiveFile, "utf8")).toContain("keep-me");
   });
 });

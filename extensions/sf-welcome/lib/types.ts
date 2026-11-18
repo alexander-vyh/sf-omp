@@ -90,6 +90,8 @@ export interface SfSkillsStatusInfo {
   commitsBehind?: number;
   /** Number of skill subdirs under <skillsPath>/ (each with a SKILL.md). */
   skillCount?: number;
+  /** Local managed projection health, independent of upstream freshness. */
+  effectiveState?: "ready" | "missing-clone" | "missing" | "empty" | "stale";
   freshness: SfSkillsFreshness;
   loading: boolean;
   checkSkipped?: boolean;

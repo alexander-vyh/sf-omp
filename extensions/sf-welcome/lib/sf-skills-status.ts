@@ -3,8 +3,8 @@
  * forcedotcom/sf-skills install + freshness status for the welcome splash.
  *
  * The companion `sf-skills` extension owns the install / update / link
- * lifecycle. This module is a strictly read-only sibling that surfaces a
- * single splash row:
+ * lifecycle. This sibling surfaces local projection health and refreshes
+ * the managed effective tree only from its deferred detection path:
  *
  *     📚 SF Skills    ✓ sf-skills installed · latest
  *     📚 SF Skills    ✓ sf-skills available
@@ -34,12 +34,14 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { homedir } from "node:os";
 import { createStateStore } from "../../../lib/common/state-store.ts";
-import {
-  globalAgentPath,
-  globalSettingsPath,
-  projectSettingsPath,
-} from "../../../lib/common/pi-paths.ts";
+import { globalSettingsPath, projectSettingsPath } from "../../../lib/common/pi-paths.ts";
 import { legacyManagedClonePath, managedClonePath } from "../../sf-skills/lib/defaults.ts";
+import {
+  ensureEffectiveSkills,
+  inspectEffectiveSkills,
+  managedEffectiveSkillsPath,
+  readLocalGitHead,
+} from "../../sf-skills/lib/invocation/effective-tree.ts";
 import type { SfSkillsStatusInfo } from "./types.ts";
 
 // -------------------------------------------------------------------------------------------------
@@ -119,6 +121,14 @@ function parseCachedStatus(value: unknown): SfSkillsStatusInfo | null {
       typeof record.skillCount === "number" && Number.isFinite(record.skillCount)
         ? record.skillCount
         : undefined,
+    effectiveState:
+      record.effectiveState === "ready" ||
+      record.effectiveState === "missing-clone" ||
+      record.effectiveState === "missing" ||
+      record.effectiveState === "empty" ||
+      record.effectiveState === "stale"
+        ? record.effectiveState
+        : undefined,
     wired:
       typeof record.wired === "boolean"
         ? record.wired
@@ -160,47 +170,6 @@ export function writeCachedSfSkillsStatus(status: SfSkillsStatusInfo): void {
 // -------------------------------------------------------------------------------------------------
 // Local detection (sync, FS-only)
 // -------------------------------------------------------------------------------------------------
-
-/**
- * Read the commit SHA pointed to by HEAD without spawning git.
- *
- * Depth-1 clones produced by `/sf-skills defaults install` always have the
- * branch tip in a loose ref under .git/refs/heads/<branch>, so this returns
- * a SHA in the common case. Falls back to packed-refs and finally to
- * `undefined` so the caller can degrade to freshness:"unknown".
- */
-export function readLocalGitHead(rootPath: string): string | undefined {
-  try {
-    const headPath = path.join(rootPath, ".git", "HEAD");
-    if (!existsSync(headPath)) return undefined;
-    const head = readFileSync(headPath, "utf8").trim();
-    // Detached HEAD or already-resolved SHA.
-    if (/^[0-9a-f]{7,64}$/.test(head)) return head;
-    // Symbolic ref: "ref: refs/heads/main"
-    const match = head.match(/^ref:\s*(.+)$/);
-    if (!match) return undefined;
-    const refPath = match[1].trim();
-    const loose = path.join(rootPath, ".git", refPath);
-    if (existsSync(loose)) {
-      const sha = readFileSync(loose, "utf8").trim();
-      if (/^[0-9a-f]{7,64}$/.test(sha)) return sha;
-    }
-    // Fall back to packed-refs lookup.
-    const packed = path.join(rootPath, ".git", "packed-refs");
-    if (existsSync(packed)) {
-      const lines = readFileSync(packed, "utf8").split("\n");
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith("#")) continue;
-        const [sha, ref] = trimmed.split(/\s+/);
-        if (ref === refPath && /^[0-9a-f]{7,64}$/.test(sha)) return sha;
-      }
-    }
-    return undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 /**
  * Count subdirectories under <skillsPath>/ that contain a SKILL.md.
@@ -350,7 +319,7 @@ function managedCloneAvailability(
   if (!isDirectory(rootPath)) return null;
   if (!existsSync(path.join(rootPath, MANAGED_SENTINEL_FILE))) return null;
   const skillsPath = path.join(rootPath, SKILLS_SUBDIR);
-  const effectiveSkillsPath = path.join(globalAgentPath("sf-skills", "effective"), SKILLS_SUBDIR);
+  const effectiveSkillsPath = managedEffectiveSkillsPath();
   const wiring =
     kind === "current"
       ? orWiring(
@@ -461,6 +430,9 @@ export function detectInstallStateLocal(cwd: string): SfSkillsStatusInfo {
   }
 
   return {
+    ...(existsSync(managedEffectiveSkillsPath())
+      ? { effectiveState: "missing-clone" as const }
+      : {}),
     installKind: "not-installed",
     freshness: "unknown",
     loading: false,
@@ -473,6 +445,8 @@ function buildManagedStatus(
   scope: "global" | "project",
   wired: boolean,
 ): SfSkillsStatusInfo {
+  const effectiveState =
+    rootPath === managedClonePath("global") ? inspectEffectiveSkills(skillsPath) : undefined;
   return {
     installKind: "managed",
     scope,
@@ -480,7 +454,10 @@ function buildManagedStatus(
     skillsPath,
     rootPath,
     localSha: readLocalGitHead(rootPath),
-    skillCount: countSkillsInDir(skillsPath),
+    effectiveState,
+    skillCount: effectiveState
+      ? (countSkillsInDir(managedEffectiveSkillsPath()) ?? 0)
+      : countSkillsInDir(skillsPath),
     // The remote comparison runs in detectSfSkillsStatus(); local-only
     // detection leaves this unknown so the row paints "Installed" / "Available"
     // while the network probe is in flight.
@@ -579,6 +556,15 @@ export async function detectSfSkillsStatus(
   fetchCompare: SfSkillsFetchCompareFn = fetchUpstreamCompare,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<SfSkillsStatusInfo> {
+  // Called by the welcome timer, not first paint. One cache-gated local
+  // repair per refresh; no catalog load, git subprocess, or network needed.
+  try {
+    if (findManagedSourceAvailability(cwd)?.rootPath === managedClonePath("global")) {
+      ensureEffectiveSkills();
+    }
+  } catch (error) {
+    console.warn(`[sf-skills] Could not refresh the effective skill tree: ${String(error)}`);
+  }
   const local = detectInstallStateLocal(cwd);
   if (local.installKind === "not-installed" || local.installKind === "linked") {
     // Linked checkouts: don't poke the network — user owns the tree.

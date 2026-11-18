@@ -58,8 +58,10 @@ report-only because SF Skills does not move user files.
 - `sfPi.skillInvocation`: global default/pack/skill visibility for the managed library.
 
 The full Skill Funnel remains an action surface because applying staged changes
-can update native settings and reload Pi. Catalog loading and disk scans happen
-only when the user opens the funnel; startup uses lightweight in-memory context.
+can update native settings and reload Pi. Catalog loading stays on explicit
+actions. Startup reads cached local state; the deferred welcome refresh and
+first turn repair a missing, empty, or stale managed effective tree from the
+same runtime agent root. A revision receipt avoids copying unchanged content.
 
 ## Troubleshooting
 
@@ -81,6 +83,12 @@ per-root scans; that work stays off the startup path.
 **Toggles vanished after update:** `/sf-skills defaults update` restamps the
 effective tree from `sfPi.skillInvocation`. The clone is never the preference
 store. If flags are missing, check that settings key and rerun `/sf-skills toggle`.
+
+**The managed library is cloned but skills are missing:** The welcome status
+reports effective-tree health separately from upstream freshness and counts the
+effective skills, not just the clone. A deferred refresh or first turn repairs
+the projection; reload to refresh runtime discovery. A missing clone never
+deletes an existing projection and an explicit sync warns with both paths.
 
 **An MCP-backed skill cannot reach its tools:** Run `/mcp` to inspect Pi's native
 server state, authentication, exposure, and connection errors. Use `pi mcp` for

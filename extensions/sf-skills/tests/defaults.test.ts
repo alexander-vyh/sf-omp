@@ -275,6 +275,18 @@ describe("updateDefaults", () => {
     const result = await updateDefaults({ scope: "global", spawn: fakeGit });
     expect(result.ok).toBe(true);
   });
+
+  it("updates the shared global clone when enabled only in project scope", async () => {
+    const home = makeHome();
+    process.env.HOME = home;
+    const cwd = makeCwd();
+    await installDefaults({ scope: "project", cwd, spawn: fakeGit });
+    const result = await updateDefaults({ scope: "project", cwd, spawn: fakeGit });
+    expect(result.ok).toBe(true);
+    expect(result.clone.rootPath).toBe(managedClonePath("global"));
+    expect(result.clone.scope).toBe("project");
+    expect(result.clone.wired).toBe(true);
+  });
 });
 
 describe("unlinkCheckout", () => {

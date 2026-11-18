@@ -283,6 +283,7 @@ Jump to an extension's Troubleshooting section to see the full fix. This index i
 - A custom source vanished
 - The funnel is slow to open
 - Toggles vanished after update
+- The managed library is cloned but skills are missing
 - An MCP-backed skill cannot reach its tools
 
 **[SF Welcome](./extensions/sf-welcome.md#troubleshooting)**

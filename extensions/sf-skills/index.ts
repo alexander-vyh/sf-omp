@@ -73,7 +73,7 @@ import {
   inspectManagedClone,
   rewireCloneToEffective,
 } from "./lib/defaults.ts";
-import { syncEffectiveSkills } from "./lib/invocation/effective-tree.ts";
+import { ensureEffectiveSkills, syncEffectiveSkills } from "./lib/invocation/effective-tree.ts";
 import {
   buildToggleInventory,
   scannedSkillsForToggle,
@@ -405,6 +405,18 @@ export default function sfSkills(pi: ExtensionAPI) {
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
+    // Keep startup cache-first; check the small revision receipt on first use.
+    try {
+      const repaired = ensureEffectiveSkills();
+      if (repaired && ctx.hasUI) {
+        ctx.ui.notify(
+          `Restored ${repaired.copied} managed skills. Reload to refresh skill discovery.`,
+          "info",
+        );
+      }
+    } catch (error) {
+      console.warn(`[sf-skills] Could not refresh the effective skill tree: ${String(error)}`);
+    }
     // Bump persistent counters on explicit /skill:<name> invocations.
     // We mirror sf-skills-hud's signal model (explicit only) so the
     // counter never drifts ahead of what the HUD calls "used".
