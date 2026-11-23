@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Added launcher support for a repository-local JDK under `.runtime/toolchains/java`, without global Java registration or shell-profile changes, and documented isolated Salesforce prerequisites.
 - SF Brain now drops constitution guidance and routing for extensions the user disabled, read from the running host's own configuration (OMP `disabledExtensions`), and labels disabled tool owners with their `/sf-pi enable` path separately from owners whose tools did not register.
 - Slack message search honors rate-limit cooldowns and falls back across Slack-approved workspaces for organization-wide installs.
+- Agent Script eval suites can designate exact single-turn safety test IDs whose platform interception counts as a safe refusal; unlisted functional tests remain fail-closed.
 
 ### Full SF Pi parity in OMP
 

@@ -792,6 +792,7 @@ export async function runEval(opts: RunEvalOptions): Promise<RunEvalResult> {
       tracesDir:
         runDir && tracesMode !== "off" && traces.size > 0 ? path.join(runDir, "traces") : undefined,
       utteranceIndex,
+      designatedSafetyTests: spec.sf_pi?.platform_guard?.safety_tests,
     };
     const { totals, failures } = opts.timings
       ? await opts.timings.time("summarize_eval_results", () => summarize(merged, buildOpts))

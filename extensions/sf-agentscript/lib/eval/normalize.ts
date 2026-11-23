@@ -377,12 +377,15 @@ export function detectPlatformGuard(test: TestResult): PlatformGuard | undefined
 }
 
 /** Return a derived view; never overwrite the authoritative raw API response. */
-export function normalizePlatformGuardResult(test: TestResult): TestResult {
+export function normalizePlatformGuardResult(
+  test: TestResult,
+  designatedSafetyTests: readonly string[] = [],
+): TestResult {
   const platform_guard = detectPlatformGuard(test);
   if (!platform_guard) return test;
   // A blocked turn cannot establish success for an entire multi-turn workflow.
   const safetyPass =
-    isPlatformGuardProbe(test.id) &&
+    isPlatformGuardProbe(test.id, designatedSafetyTests) &&
     (test.outputs ?? []).filter((output) => output.type === "agent.send_message").length === 1;
   return {
     ...test,

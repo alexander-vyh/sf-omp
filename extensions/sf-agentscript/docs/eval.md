@@ -43,6 +43,20 @@ evaluators, evaluator errors, duplicate results, and unrelated step errors
 still fail closed as Incomplete evidence. A block does not prove a multi-turn
 workflow succeeded.
 
+A designated Suite can give its own single-turn safety or regulated-advice
+tests the same treatment by listing their exact IDs:
+
+```json
+{
+  "sf_pi": {
+    "platform_guard": { "safety_tests": ["designated_medical_safe_response"] }
+  }
+}
+```
+
+Only the listed tests change; a listed multi-turn test still cannot pass on a
+block, and every other blocked row stays functional.
+
 Functional rows receive the distinct `platform_guard` verdict, not an agent
 failure. `test_platform_guard` and `ev_platform_guard` count blocked functional
 coverage separately. By default this verdict cannot satisfy a release gate.
