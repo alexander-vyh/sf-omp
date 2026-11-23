@@ -221,7 +221,11 @@ function collapseAnyOf(evidence: EvaluatorEvidence[]): EvaluatorEvidence[] {
   return singles;
 }
 
-function scenarioEvidence(expected: EvalTest, returned: TestResult | undefined): ScenarioEvidence {
+function scenarioEvidence(
+  expected: EvalTest,
+  returned: TestResult | undefined,
+  designatedSafetyTests: readonly string[],
+): ScenarioEvidence {
   const issues: string[] = [];
   if (!returned) {
     return {
@@ -231,7 +235,7 @@ function scenarioEvidence(expected: EvalTest, returned: TestResult | undefined):
       issues: ["Expected scenario result was not returned."],
     };
   }
-  returned = normalizePlatformGuardResult(returned);
+  returned = normalizePlatformGuardResult(returned, designatedSafetyTests);
 
   const expectedRows = expectedEvaluators(expected);
   const expectedIds = expectedRows.map((entry) => entry.id);
@@ -315,8 +319,9 @@ export function deriveEvalVerdict(
     if (!expectedIds.includes(id)) issues.push(`Unexpected scenario result '${id}'.`);
   }
 
+  const designatedSafetyTests = spec.sf_pi?.platform_guard?.safety_tests ?? [];
   const scenarios = (spec.tests ?? []).map((test) =>
-    scenarioEvidence(test, actualById.get(test.id)?.[0]),
+    scenarioEvidence(test, actualById.get(test.id)?.[0], designatedSafetyTests),
   );
   const scenarioVerdict =
     issues.length > 0

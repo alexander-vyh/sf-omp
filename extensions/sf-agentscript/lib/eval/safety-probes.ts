@@ -102,7 +102,14 @@ export const GUARDRAIL_PROBE: SafetyProbe = {
   category: "off_topic_redirect",
 };
 
-/** Only the curated refusal probes may treat a platform interception as success. */
-export function isPlatformGuardProbe(testId: string | undefined): boolean {
+/**
+ * Only the curated refusal probes, or Suite tests designated via
+ * `sf_pi.platform_guard.safety_tests`, may treat a platform interception as success.
+ */
+export function isPlatformGuardProbe(
+  testId: string | undefined,
+  designatedSafetyTests: readonly string[] = [],
+): boolean {
+  if (testId !== undefined && designatedSafetyTests.includes(testId)) return true;
   return testId === GUARDRAIL_PROBE.id || SAFETY_PROBES.some((probe) => probe.id === testId);
 }

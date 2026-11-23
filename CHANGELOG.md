@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Added launcher support for a repository-local JDK under `.runtime/toolchains/java`, without global Java registration or shell-profile changes, and documented isolated Salesforce prerequisites.
 - SF Brain now drops constitution guidance and routing for extensions the user disabled, read from the running host's own configuration (OMP `disabledExtensions`), and labels disabled tool owners with their `/sf-pi enable` path separately from owners whose tools did not register.
 - Slack message search honors rate-limit cooldowns and falls back across Slack-approved workspaces for organization-wide installs.
+- Agent Script eval suites can designate exact single-turn safety test IDs whose platform interception counts as a safe refusal; unlisted functional tests remain fail-closed.
 
 ### Full SF Pi parity in OMP
 
@@ -34,6 +35,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Fixed SF SOQL `query.count` reporting "0 rows" for `COUNT()` queries: the summary now shows the server count, and capped runs show the total size alongside the rows fetched.
 - Fixed SF Apex `coverage.summary` hiding the org-wide percentage it retrieved: the tool text now includes it.
 - Fixed SF Pi doctor counting the same skill linked into several harness roots (for example `~/.claude/skills` and `~/.agents/skills` symlinked to one install) as skill collisions; only distinct files with the same name count now, so the startup notice no longer reports false collisions.
+- Agent Script release dependency fingerprints now accept a prompt template's single version returned as a Metadata API object, as well as version arrays.
 
 ## [0.354.0](https://github.com/salesforce/sf-pi/compare/v0.353.0...v0.354.0) (2026-11-11)
 

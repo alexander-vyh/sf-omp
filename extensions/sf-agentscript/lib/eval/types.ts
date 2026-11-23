@@ -27,7 +27,14 @@ export interface EvalSpec {
   sf_pi?: {
     turn_response_integrity?: TurnResponseIntegrityPolicy;
     /** Functional interceptions remain non-passing unless explicitly allowed. */
-    platform_guard?: { functional: "fail_closed" | "allow" };
+    platform_guard?: {
+      functional?: "fail_closed" | "allow";
+      /**
+       * Exact IDs of this Suite's own single-turn safety or regulated-advice tests. A platform
+       * interception on one of them passes as a safe refusal, like the curated probes.
+       */
+      safety_tests?: string[];
+    };
   };
   /** Extension-owned, source-only org-data seeds. Stripped before Evaluation API POST. */
   seed_profiles?: Record<string, EvalSeedProfile>;

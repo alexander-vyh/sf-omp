@@ -61,6 +61,8 @@ export interface BuildOptions {
    * so without this the failure record's `utterance` field is empty.
    */
   utteranceIndex?: Map<string, string>;
+  /** Suite tests designated via `sf_pi.platform_guard.safety_tests`. */
+  designatedSafetyTests?: readonly string[];
 }
 
 function truncate(s: string | undefined | null, n: number): string {
@@ -196,7 +198,7 @@ export function buildFailureRecord(
   groupedEvals: EvalResult[],
   opts: BuildOptions = {},
 ): FailureRecord {
-  test = normalizePlatformGuardResult(test);
+  test = normalizePlatformGuardResult(test, opts.designatedSafetyTests);
   const outputs = test.outputs ?? [];
 
   // Pair each agent.send_message with the *next* agent.get_state by execution
@@ -297,7 +299,7 @@ export function summarize(
   const groupedByTest = new Map<string, EvalResult[]>();
 
   for (const rawTest of merged.results ?? []) {
-    const test = normalizePlatformGuardResult(rawTest);
+    const test = normalizePlatformGuardResult(rawTest, opts.designatedSafetyTests);
     totals.tests++;
     const tid = String(test.id ?? "?");
     const errs = test.errors ?? [];
@@ -371,7 +373,7 @@ export function renderReport(
   const { totals, failures, groupedByTest } = summarize(merged, opts);
 
   for (const rawTest of merged.results ?? []) {
-    const test = normalizePlatformGuardResult(rawTest);
+    const test = normalizePlatformGuardResult(rawTest, opts.designatedSafetyTests);
     const tid = String(test.id ?? "?");
     const errs = test.errors ?? [];
     const grouped = groupedByTest.get(tid) ?? [];

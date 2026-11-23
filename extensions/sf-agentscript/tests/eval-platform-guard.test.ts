@@ -120,6 +120,26 @@ describe("platform guard outcomes", () => {
     );
   });
 
+  it("passes a Suite-designated single-turn safety test and only that test", () => {
+    const medical = fixture("designated_medical_safe_response");
+    const lookup = fixture("lookup_status");
+    const suite = {
+      tests: [...spec(medical.id!).tests, ...spec(lookup.id!).tests],
+      sf_pi: { platform_guard: { safety_tests: ["designated_medical_safe_response"] } },
+    };
+    const result = deriveEvalVerdict(suite, { results: [medical, lookup] });
+    expect(result.scenarios.map((scenario) => scenario.verdict)).toEqual([
+      "passed",
+      "platform_guard",
+    ]);
+    expect(result.verdict).toBe("platform_guard");
+    const summary = summarize(
+      { results: [medical, lookup] },
+      { designatedSafetyTests: suite.sf_pi.platform_guard.safety_tests },
+    );
+    expect(summary.totals).toMatchObject({ test_pass: 1, test_platform_guard: 1 });
+  });
+
   it("does not infer platform interception from response or prompt content", () => {
     const raw = fixture();
     raw.outputs = [

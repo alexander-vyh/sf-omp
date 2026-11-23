@@ -141,13 +141,21 @@ export async function resolveDependencyFingerprint(
       const row = (Array.isArray(result) ? result[0] : result) as
         | {
             activeVersionIdentifier?: unknown;
-            templateVersions?: Array<{ versionIdentifier?: string; content?: string }>;
+            templateVersions?:
+              | Array<{ versionIdentifier?: string; content?: string }>
+              | { versionIdentifier?: string; content?: string };
           }
         | undefined;
       if (typeof row?.activeVersionIdentifier !== "string" || !row.activeVersionIdentifier) {
         throw new Error(`Prompt template '${name}' has no resolvable active version identifier.`);
       }
-      const active = row.templateVersions?.filter(
+      // Metadata API read returns a lone <templateVersions> element as an object, not a one-item array.
+      const versions = Array.isArray(row.templateVersions)
+        ? row.templateVersions
+        : row.templateVersions
+          ? [row.templateVersions]
+          : [];
+      const active = versions.filter(
         (version) => version.versionIdentifier === row.activeVersionIdentifier,
       );
       if (active?.length !== 1 || typeof active[0].content !== "string") {
