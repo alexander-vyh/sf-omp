@@ -171,6 +171,19 @@ describe("release dependency fingerprints", () => {
       expect.stringContaining("prompt_template 'AnswerTemplate' content_sha256:"),
     ]);
   });
+  it("resolves a template whose single version the Metadata API returns as an object", async () => {
+    const read = vi.fn().mockResolvedValue({
+      activeVersionIdentifier: "v1",
+      templateVersions: { versionIdentifier: "v1", content: "Only version." },
+    });
+    const conn = { metadata: { read } } as unknown as Connection;
+    const result = await resolveDependencyFingerprint(conn, [
+      { scheme: "generatePromptResponse", ref_name: "AnswerTemplate" },
+    ]);
+    expect(result.dependencies).toEqual([
+      expect.objectContaining({ kind: "prompt_template", active_version_identifier: "v1" }),
+    ]);
+  });
   it("names prompt templates when the metadata transport fails", async () => {
     const conn = {
       metadata: { read: vi.fn().mockRejectedValue(new Error("Request failed")) },
