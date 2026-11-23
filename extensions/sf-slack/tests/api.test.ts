@@ -1,10 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/**
- * Tests for sf-slack api module.
- *
- * Tests pure helpers (clampLimit, tsToLabel, relativeTime, summarizeSlackError).
- * Network calls are not tested here — they require a live Slack token.
- */
+/** Behavior proofs for the Slack API client and its message-search callers. */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   clampLimit,
@@ -20,6 +15,7 @@ import {
   getTeamId,
   setDetectedTeamId,
   slackApi,
+  slackApiJson,
   detectTokenType,
   getGrantedScopes,
   hasScope,
@@ -28,6 +24,162 @@ import {
   _resetGrantedScopes,
   DEFAULT_ASSISTANT_CHANNEL_TYPES,
 } from "../lib/api.ts";
+import { registerResearchTool } from "../lib/research-tool.ts";
+import { registerSlackTool } from "../lib/tools.ts";
+import type { SlackToolResult } from "../lib/types.ts";
+
+describe("Slack message search rate limits", () => {
+  const callers = [
+    { name: "slack", register: registerSlackTool, params: { action: "search" } },
+    { name: "slack_research", register: registerResearchTool, params: { max_queries: 1 } },
+  ];
+
+  beforeEach(() => {
+    vi.stubEnv("SLACK_TEAM_ID", "");
+    setDetectedTeamId(undefined);
+  });
+
+  function invokeSearch(
+    register: typeof registerSlackTool,
+    params: Record<string, unknown>,
+  ): Promise<SlackToolResult> {
+    let execute!: (...args: never[]) => Promise<SlackToolResult>;
+    register({
+      registerTool(definition: { execute: typeof execute }) {
+        execute = definition.execute;
+      },
+    } as never);
+    return execute(
+      ...([
+        "search-test",
+        { query: "release", limit: 5, fields: "full", ...params },
+        undefined,
+        undefined,
+        {
+          cwd: "/tmp",
+          hasUI: false,
+          modelRegistry: { getApiKeyForProvider: async () => "xoxp-test" },
+        },
+      ] as never[]),
+    );
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    setDetectedTeamId(undefined);
+  });
+
+  it("retries a short Slack cooldown only after the server's deadline", async () => {
+    vi.useFakeTimers();
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { ok: false, error: "ratelimited" },
+          { status: 429, headers: { "Retry-After": "2" } },
+        ),
+      )
+      .mockResolvedValueOnce(Response.json({ ok: true, results: { messages: [] } }));
+    vi.stubGlobal("fetch", fetch);
+
+    const pending = slackApiJson("assistant.search.context", "xoxp-test", { query: "checklist" });
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(501);
+    await expect(pending).resolves.toMatchObject({ ok: true });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(callers)(
+    "$name searches all authorized workspaces during a real-time cooldown",
+    async ({ register, params }) => {
+      setDetectedTeamId("EORGEXAMPLE");
+      const workspaceQueries: Array<[string | null, string | null]> = [];
+      const shared = { channel: { id: "CEXAMPLE", name: "releases" }, ts: "1700000000.0" };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init: RequestInit) => {
+          const body = new URLSearchParams(String(init.body));
+          switch (new URL(url).pathname) {
+            case "/api/assistant.search.context":
+              expect(JSON.parse(String(init.body))).toMatchObject({
+                query: "release",
+                limit: 5,
+                channel_types: "public_channel,private_channel,mpim,im",
+              });
+              return Response.json({}, { status: 429, headers: { "Retry-After": "288" } });
+            case "/api/auth.teams.list":
+              expect(body.has("team_id")).toBe(false);
+              return Response.json(
+                body.get("cursor") === "next"
+                  ? { ok: true, teams: [{ id: "TSECOND" }] }
+                  : {
+                      ok: true,
+                      teams: [{ id: "TFIRST" }],
+                      response_metadata: { next_cursor: "next" },
+                    },
+              );
+            case "/api/search.messages":
+              workspaceQueries.push([body.get("team_id"), body.get("query")]);
+              return Response.json({
+                ok: true,
+                messages: {
+                  matches:
+                    body.get("team_id") === "TFIRST"
+                      ? [{ ...shared, text: "Shared release" }]
+                      : [
+                          { ...shared, text: "Shared release" },
+                          { text: "Second workspace release" },
+                        ],
+                },
+              });
+            default:
+              throw new Error(`Unexpected Slack request: ${url}`);
+          }
+        }),
+      );
+      const result = await invokeSearch(register, params);
+
+      expect(result.details).toMatchObject({ ok: true, count: 2 });
+      expect(result.content[0].text).toContain("Second workspace release");
+      expect(workspaceQueries).toEqual([
+        ["TFIRST", "release"],
+        ["TSECOND", "release"],
+      ]);
+    },
+  );
+
+  it.each(callers)(
+    "$name preserves Slack's cooldown if legacy search fails",
+    async ({ register, params }) => {
+      vi.useFakeTimers();
+      const fetch = vi.fn(async (url: string) =>
+        url.endsWith("/assistant.search.context")
+          ? Response.json(
+              { ok: false, error: "ratelimited" },
+              {
+                status: 429,
+                headers: { "Retry-After": "288" },
+              },
+            )
+          : Response.json({ ok: false, error: "team_access_not_granted" }),
+      );
+      vi.stubGlobal("fetch", fetch);
+      const pending = invokeSearch(register, { ...params, query: '"release checklist" guide' });
+      await vi.advanceTimersByTimeAsync(287_000);
+      const result = await pending;
+
+      expect(result.details).toMatchObject({ ok: false, reason: "rate_limited" });
+      expect(result.content[0].text).toContain("288 seconds");
+      expect(fetch.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
+        "/api/assistant.search.context",
+        "/api/search.messages",
+      ]);
+    },
+  );
+});
 
 describe("api", () => {
   describe("clampLimit", () => {

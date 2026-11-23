@@ -27,6 +27,10 @@ when needed. Relative dates should pass through `slack_time_range`; fuzzy
 entities should pass through `slack_resolve`. Low-confidence matches require
 clarification instead of silently broadening or choosing a target.
 
+If real-time message search is unavailable, the legacy fallback searches the
+same query in the app's approved workspaces. `SLACK_TEAM_ID` pins that fallback
+to one workspace. A failed fallback does not hide a real-time rate limit.
+
 For an exact message link supplied by the user, call `slack` with
 `action: "thread"` and `message_url`. SF Slack strictly parses canonical
 workspace message permalinks and sends the resulting conversation ID and

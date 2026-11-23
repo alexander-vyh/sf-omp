@@ -42,13 +42,7 @@ describe("channel_types default on assistant.search.context", () => {
     expect(api).toMatch(/DEFAULT_ASSISTANT_CHANNEL_TYPES\s*=\s*"[^"]*mpim[^"]*"/);
   });
 
-  for (const fileName of [
-    "tools.ts",
-    "research-tool.ts",
-    "channel-tool.ts",
-    "resolve.ts",
-    "api.ts",
-  ]) {
+  for (const fileName of ["channel-tool.ts", "resolve.ts", "api.ts"]) {
     it(`${fileName} references DEFAULT_ASSISTANT_CHANNEL_TYPES before every assistant.search.context call`, () => {
       const source = read(fileName);
       const windows = assistantParamLiterals(source);

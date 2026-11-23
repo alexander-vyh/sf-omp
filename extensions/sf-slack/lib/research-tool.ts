@@ -11,9 +11,7 @@ import {
   SlackResearchParams,
   DEFAULT_SEARCH_LIMIT,
   DEFAULT_HISTORY_LIMIT,
-  type AssistantSearchContextResponse,
   type ConversationsRepliesResponse,
-  type SearchMessagesResponse,
   type SlackMessage,
   type SlackSearchMatch,
   type ResolvedChannel,
@@ -21,13 +19,11 @@ import {
 import { requireAuth } from "./auth.ts";
 import {
   slackApi,
-  slackApiJson,
   clampLimit,
-  getTeamId,
   warmUserCacheForIds,
   warmChannelCacheFromMatches,
   getUserCache,
-  DEFAULT_ASSISTANT_CHANNEL_TYPES,
+  searchSlackMessages,
   errorResult,
 } from "./api.ts";
 import {
@@ -157,11 +153,16 @@ export function registerResearchTool(pi: ExtensionAPI): void {
       const unique = new Map<string, SlackSearchMatch>();
       const queryCounts: Array<{ query: string; count: number; api: string }> = [];
       const searchErrors: ApiErr[] = [];
+      let rateLimit: ApiErr | undefined;
 
       for (const query of candidateQueries) {
         const search = await runSearch(auth.token, query, limit, signal, plan.resolved.channelId);
         executedQueries.push(query);
         queryCounts.push({ query, count: search.matches.length, api: search.api });
+        if (search.error?.error === "rate_limited") {
+          rateLimit = search.error;
+          break;
+        }
         if (search.error) searchErrors.push(search.error);
         // Harvest {channel_id → channel_name} from every hit into the shared
         // cache so a follow-up slack action:'history' / 'thread' on any of
@@ -181,8 +182,8 @@ export function registerResearchTool(pi: ExtensionAPI): void {
           break;
       }
 
-      if (unique.size === 0 && searchErrors.length === candidateQueries.length) {
-        const firstError = searchErrors[0];
+      if (unique.size === 0 && (rateLimit || searchErrors.length === candidateQueries.length)) {
+        const firstError = rateLimit ?? searchErrors[0];
         return errorResult(
           firstError.error,
           firstError.needed,
@@ -284,51 +285,12 @@ async function runSearch(
   signal?: AbortSignal,
   channelId?: string,
 ): Promise<{ api: string; matches: SlackSearchMatch[]; error?: ApiErr }> {
-  const assistantParams: Record<string, string | number> = {
-    // Real-time search requires mention syntax for ID filters; legacy
-    // search.messages retains the raw-ID operator used by the search plan.
-    query: channelId ? query.replace(`in:${channelId}`, `in:<#${channelId}>`) : query,
-    count: clampLimit(limit, DEFAULT_SEARCH_LIMIT, 20),
-    // Include DMs + MPIMs so research doesn't silently drop DM content.
-    channel_types: DEFAULT_ASSISTANT_CHANNEL_TYPES,
-  };
-  const teamId = getTeamId();
-  if (teamId) assistantParams.team_id = teamId;
-
-  const assistantResult = await slackApiJson<AssistantSearchContextResponse>(
-    "assistant.search.context",
-    token,
-    assistantParams,
-    signal,
-  );
-  if (assistantResult.ok) {
-    return {
-      api: "assistant.search.context",
-      matches: Array.isArray(assistantResult.data.results?.messages)
-        ? assistantResult.data.results.messages
-        : [],
-    };
-  }
-
-  const result = await slackApi<SearchMessagesResponse>(
-    "search.messages",
-    token,
-    { query, count: clampLimit(limit, DEFAULT_SEARCH_LIMIT, 20) },
-    signal,
-  );
-  if (!result.ok) {
-    const error = result as ApiErr;
-    return {
-      api: `error:${error.error}`,
-      matches: [],
-      error,
-    };
-  }
-
-  return {
-    api: "search.messages",
-    matches: Array.isArray(result.data.messages?.matches) ? result.data.messages.matches : [],
-  };
+  // Real-time search requires mention syntax for ID filters; the legacy
+  // endpoint retains the raw-ID operator used by the plan.
+  const assistantQuery = channelId ? query.replace(`in:${channelId}`, `in:<#${channelId}>`) : query;
+  const result = await searchSlackMessages(token, query, limit, signal, assistantQuery);
+  if (result.ok === false) return { api: `error:${result.error}`, matches: [], error: result };
+  return result.data;
 }
 
 async function fetchThreadsForMatches(

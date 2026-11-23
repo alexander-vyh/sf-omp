@@ -15,26 +15,22 @@ import {
   DEFAULT_SEARCH_LIMIT,
   DEFAULT_HISTORY_LIMIT,
   type ApiErr,
-  type AssistantSearchContextResponse,
   type ChatGetPermalinkResponse,
   type ConversationsHistoryResponse,
   type ConversationsRepliesResponse,
-  type SearchMessagesResponse,
   type SlackMessage,
   type SlackSearchMatch,
 } from "./types.ts";
 import { requireAuth } from "./auth.ts";
 import {
   slackApi,
-  slackApiJson,
   clampLimit,
-  getTeamId,
   errorResult,
   resolveChannelName,
   getUserCache,
   warmUserCacheForIds,
   warmChannelCacheFromMatches,
-  DEFAULT_ASSISTANT_CHANNEL_TYPES,
+  searchSlackMessages,
 } from "./api.ts";
 import {
   formatSearchResults,
@@ -134,62 +130,21 @@ export function registerSlackTool(pi: ExtensionAPI): void {
           };
         }
 
-        const assistantParams: Record<string, string | number> = {
-          query: params.query,
-          count: clampLimit(params.limit, DEFAULT_SEARCH_LIMIT, 20),
-          // Include DMs and multi-party IMs by default — Slack's default for
-          // assistant.search.context is public+private channels only, which
-          // silently hides DM content from search.
-          channel_types: DEFAULT_ASSISTANT_CHANNEL_TYPES,
-        };
-        const teamId = getTeamId();
-        if (teamId) assistantParams.team_id = teamId;
-
-        const assistantResult = await slackApiJson<AssistantSearchContextResponse>(
-          "assistant.search.context",
+        const result = await searchSlackMessages(
           auth.token,
-          assistantParams,
+          params.query,
+          clampLimit(params.limit, DEFAULT_SEARCH_LIMIT, 20),
           signal,
         );
-
-        if (assistantResult.ok) {
-          const matches = Array.isArray(assistantResult.data.results?.messages)
-            ? assistantResult.data.results.messages
-            : [];
-          return buildSearchSuccessResult(
-            action,
-            params.query,
-            "assistant.search.context",
-            matches,
-            resolveFields(params.fields, ctx.cwd),
-            auth.token,
-            signal,
-          );
+        if (result.ok === false) {
+          return errorResult(result.error, result.needed, result.provided, result.messages);
         }
 
-        const result = await slackApi<SearchMessagesResponse>(
-          "search.messages",
-          auth.token,
-          {
-            query: params.query,
-            count: clampLimit(params.limit, DEFAULT_SEARCH_LIMIT, 20),
-          },
-          signal,
-        );
-
-        if (!result.ok) {
-          const error = result as ApiErr;
-          return errorResult(error.error, error.needed, error.provided, error.messages);
-        }
-
-        const matches = Array.isArray(result.data.messages?.matches)
-          ? result.data.messages.matches
-          : [];
         return buildSearchSuccessResult(
           action,
           params.query,
-          "search.messages",
-          matches,
+          result.data.api,
+          result.data.matches,
           resolveFields(params.fields, ctx.cwd),
           auth.token,
           signal,

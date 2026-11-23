@@ -11,9 +11,8 @@
  * - All outgoing Slack calls flow through `withSlot()` — a tiny in-process
  *   semaphore (MAX_CONCURRENT=6) so parallel tool calls do not burst past
  *   Slack's tier-2/3 budgets.
- * - On HTTP 429 we honor the `Retry-After` header and retry once. If the
- *   second attempt also fails we surface `error: "rate_limited"` so the
- *   render path can show a friendly ⏳ inline message instead of http_429.
+ * - On HTTP 429 we retry once only when Slack's Retry-After fits the local
+ *   wait budget. Longer waits surface as rate-limit errors with the cooldown.
  */
 import {
   SLACK_API_BASE,
@@ -27,6 +26,9 @@ import {
   type ConversationsListResponse,
   type ConversationsOpenResponse,
   type AssistantSearchContextResponse,
+  type AuthTeamsListResponse,
+  type SearchMessagesResponse,
+  type SlackSearchMatch,
   type JsonCompatibleParams,
   type UsersInfoResponse,
   type UsersListResponse,
@@ -152,8 +154,8 @@ export function detectTokenType(token: string | undefined): SlackTokenType {
  *  leave plenty of headroom; tier-2 endpoints (conversations.list,
  *  users.list) we only issue one-at-a-time anyway. */
 const MAX_CONCURRENT = 6;
-/** Cap the honored Retry-After so we never hang a tool call indefinitely. */
-const MAX_RETRY_AFTER_SECONDS = 30;
+/** Don't wait more than this long before retrying an HTTP 429. */
+const MAX_RETRY_WAIT_SECONDS = 25;
 /** Per-request timeout (ms). Bounds a single Slack HTTP call so a half-open
  *  TCP connection or middlebox stall can't hang a tool invocation forever.
  *  Slack p99 for the endpoints we call is well under 10 s; 30 s is generous. */
@@ -189,9 +191,15 @@ function withRequestTimeout(signal: AbortSignal | undefined): {
   return { signal: combined, timeoutSignal };
 }
 
-/** Fetch with a single automatic retry on HTTP 429, honoring Retry-After.
- *  The request builder callback is re-invoked on retry so body streams don't
- *  get consumed twice.
+function readRetryAfter(response: Response): number | undefined {
+  const value = response.headers.get("retry-after")?.trim();
+  if (!value) return undefined;
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
+}
+
+/** Retry an HTTP 429 once when Retry-After fits the local wait budget.
+ *  The request builder is re-invoked so body streams don't get consumed twice.
  *
  *  Each attempt is bounded by REQUEST_TIMEOUT_MS via AbortSignal.timeout
  *  composed with the caller's signal. This is the primary defense against
@@ -206,12 +214,8 @@ async function fetchWithRetry(
 
   if (response.status !== 429) return response;
 
-  const headerValue = response.headers.get("retry-after");
-  const parsed = headerValue ? Number.parseFloat(headerValue) : NaN;
-  // Leave at least 5 s of budget for the retry request itself so a slow
-  // Retry-After + slow response don't consume the whole timeout envelope.
-  const maxWait = Math.max(1, MAX_RETRY_AFTER_SECONDS - 5);
-  const waitSeconds = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), maxWait) : 2;
+  const waitSeconds = Math.max(1, readRetryAfter(response) ?? 2);
+  if (waitSeconds > MAX_RETRY_WAIT_SECONDS) return response;
 
   await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000 + 100));
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
@@ -291,13 +295,25 @@ export async function slackApi<T>(
   signal?: AbortSignal,
 ): Promise<ApiResult<T>> {
   const teamId = getTeamId();
-  const paramsWithTeam = teamId ? { ...params, team_id: params.team_id || teamId } : params;
+  return slackApiForm<T>(
+    endpoint,
+    token,
+    teamId ? { ...params, team_id: params.team_id || teamId } : params,
+    signal,
+  );
+}
 
+async function slackApiForm<T>(
+  endpoint: string,
+  token: string,
+  params: FormParams,
+  signal?: AbortSignal,
+): Promise<ApiResult<T>> {
   return withSlot(async () => {
     try {
       const response = await fetchWithRetry(() => {
         const body = new URLSearchParams();
-        for (const [key, value] of Object.entries(paramsWithTeam)) {
+        for (const [key, value] of Object.entries(params)) {
           if (value !== undefined && value !== "") body.set(key, String(value));
         }
         return {
@@ -357,6 +373,118 @@ export async function slackApiJson<T>(
   });
 }
 
+export async function searchSlackMessages(
+  token: string,
+  query: string,
+  limit: number,
+  signal?: AbortSignal,
+  assistantQuery = query,
+): Promise<ApiResult<{ api: string; matches: SlackSearchMatch[] }>> {
+  const assistantParams = {
+    query: assistantQuery,
+    limit,
+    channel_types: DEFAULT_ASSISTANT_CHANNEL_TYPES,
+  };
+  const realtime = await slackApiJson<AssistantSearchContextResponse>(
+    "assistant.search.context",
+    token,
+    assistantParams,
+    signal,
+  );
+  if (realtime.ok === true) {
+    const matches = realtime.data.results?.messages;
+    return {
+      ok: true,
+      data: { api: "assistant.search.context", matches: boundedMatches(matches, limit) },
+    };
+  }
+
+  const legacy = await searchLegacyMessages(token, query, limit, signal);
+  if (legacy.ok === true) {
+    return { ok: true, data: { api: "search.messages", matches: legacy.data } };
+  }
+  return realtime.error === "rate_limited" ? realtime : legacy;
+}
+
+async function searchLegacyMessages(
+  token: string,
+  query: string,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<ApiResult<SlackSearchMatch[]>> {
+  const team = getTeamId();
+  const search = async (teamId?: string): Promise<ApiResult<SlackSearchMatch[]>> => {
+    const result = await slackApiForm<SearchMessagesResponse>(
+      "search.messages",
+      token,
+      { query, count: limit, team_id: teamId },
+      signal,
+    );
+    if (result.ok === false) return result;
+    return { ok: true, data: boundedMatches(result.data.messages?.matches, limit) };
+  };
+
+  // Legacy search requires a workspace ID for org tokens. An enterprise ID
+  // from the cached identity is not a workspace; use Slack's approved list.
+  if (!team.startsWith("E")) {
+    const result = await search(team || undefined);
+    if (team || result.ok === true || result.error !== "missing_argument") return result;
+  }
+
+  const teams = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const page = await slackApiForm<AuthTeamsListResponse>(
+      "auth.teams.list",
+      token,
+      { limit: 100, cursor },
+      signal,
+    );
+    if (page.ok === false) return page;
+    for (const entry of page.data.teams ?? []) {
+      if (entry.id?.startsWith("T")) teams.add(entry.id);
+    }
+    cursor = page.data.response_metadata?.next_cursor;
+  } while (cursor);
+  if (!teams.size) return { ok: false, error: "team_access_not_granted" };
+
+  const rows: SlackSearchMatch[][] = [];
+  for (const result of await Promise.all(Array.from(teams, search))) {
+    if (result.ok === false) return result;
+    rows.push(result.data);
+  }
+  if (rows.length === 1) return { ok: true, data: rows[0] };
+
+  // Slack scores are workspace-local. Interleave ranks, deduping shared messages
+  // by channel + timestamp even when their permalinks use different domains.
+  const matches: SlackSearchMatch[] = [];
+  const seen = new Set<string>();
+  for (let rank = 0; rank < limit && matches.length < limit; rank++) {
+    for (const row of rows) {
+      const match = row[rank];
+      if (!match) continue;
+      const channel = match.channel_id || match.channel?.id;
+      const ts = match.ts || match.message_ts;
+      const key = channel && ts ? `${channel}:${ts}` : match.permalink;
+      if (key) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      matches.push(match);
+      if (matches.length === limit) break;
+    }
+  }
+  return { ok: true, data: matches };
+}
+
+function boundedMatches(
+  matches: SlackSearchMatch[] | undefined,
+  limit: number,
+): SlackSearchMatch[] {
+  if (!Array.isArray(matches)) return [];
+  return matches.length > limit ? matches.slice(0, limit) : matches;
+}
+
 /** Turn a thrown fetch error into a typed ApiResult. Re-throws caller-triggered
  *  aborts so user cancel semantics are preserved; maps timeout-triggered aborts
  *  (no caller abort) to `request_timeout`, and any other fetch failure (DNS,
@@ -388,7 +516,13 @@ function toApiResult<T>(response: Response, json: unknown): ApiResult<T> {
   // Slack sometimes surfaces rate limits as HTTP 429 (with no JSON body) and
   // sometimes as an ok:false envelope with error="ratelimited". Normalize both.
   if (response.status === 429 || envelope.error === "ratelimited") {
-    return { ok: false, error: "rate_limited" };
+    const retryAfter = readRetryAfter(response);
+    return {
+      ok: false,
+      error: "rate_limited",
+      messages:
+        retryAfter === undefined ? undefined : [`Retry after ${Math.ceil(retryAfter)} seconds.`],
+    };
   }
 
   if (!response.ok) {
@@ -827,7 +961,7 @@ export function summarizeSlackError(
       return "Slack could not find that scheduled message, or it is already posted/deleted or too close to posting to delete.";
     case "rate_limited":
     case "http_429":
-      return "Slack is rate-limiting this workspace — the call retried once and was still throttled. Wait a few seconds and try again.";
+      return `Slack is rate-limiting this request.${detailSuffix || " Retry later."}`;
     case "team_access_not_granted":
       return (
         "Slack granted the required scope, but blocked this broad directory call with team_access_not_granted — typical on Enterprise Grid when the target lives in another workspace. " +

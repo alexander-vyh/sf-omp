@@ -220,6 +220,11 @@ export interface SearchMessagesResponse {
   };
 }
 
+export interface AuthTeamsListResponse {
+  teams?: { id?: string }[];
+  response_metadata?: SlackResponseMetadata;
+}
+
 export interface AuthTestResponse {
   user_id?: string;
   user?: string;
