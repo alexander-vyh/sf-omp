@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Strict parsing for canonical Slack message permalinks used as exact reads. */
 
-const SLACK_WORKSPACE_HOST_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.slack\.com$/i;
+// Workspace hosts are `<workspace>.slack.com`; Enterprise Grid org hosts are
+// `<org>.enterprise.slack.com`.
+const SLACK_WORKSPACE_HOST_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.enterprise)?\.slack\.com$/i;
 const MESSAGE_PATH_RE = /^\/archives\/([CGD][A-Z0-9]{8,})\/p(\d{10,})(\d{6})\/?$/;
 
 export interface SlackMessageLocator {

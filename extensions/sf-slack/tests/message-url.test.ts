@@ -26,6 +26,17 @@ describe("parseSlackMessageUrl", () => {
     });
   });
 
+  it.each(["", "?thread_ts=1600000000.200002&cid=C01ABCDEF23"])(
+    "parses an Enterprise Grid org permalink with query %j",
+    (query) => {
+      expect(
+        parseSlackMessageUrl(
+          `https://example.enterprise.slack.com/archives/C01ABCDEF23/p1700000000100001${query}`,
+        ),
+      ).toEqual({ conversationId: "C01ABCDEF23", ts: "1700000000.100001" });
+    },
+  );
+
   it("accepts a trailing slash and preserves a future longer seconds component", () => {
     expect(
       parseSlackMessageUrl("https://example.slack.com/archives/C01ABCDEF23/p11700000000100001/"),
@@ -39,6 +50,8 @@ describe("parseSlackMessageUrl", () => {
     "http://example.slack.com/archives/C01ABCDEF23/p1700000000100001",
     "https://slack.com/archives/C01ABCDEF23/p1700000000100001",
     "https://example.slack.com.evil.test/archives/C01ABCDEF23/p1700000000100001",
+    "https://evil.example.slack.com/archives/C01ABCDEF23/p1700000000100001",
+    "https://example.enterprise.slack.com.evil.test/archives/C01ABCDEF23/p1700000000100001",
     "https://user@example.slack.com/archives/C01ABCDEF23/p1700000000100001",
     "https://example.slack.com:8443/archives/C01ABCDEF23/p1700000000100001",
     "https://example.slack.com/client/T01ABCDEF23/C01ABCDEF23",
