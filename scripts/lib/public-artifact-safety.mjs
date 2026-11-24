@@ -141,7 +141,8 @@ function isExplicitGenericFixture(id, value) {
   if (id === "salesforce-org-id") return /^00D[01]+(?:AAA)?$/.test(value);
   if (id === "slack-permalink") {
     try {
-      return new URL(value).hostname === "example.slack.com";
+      const host = new URL(value).hostname;
+      return host === "example.slack.com" || host === "example.enterprise.slack.com";
     } catch {
       return false;
     }

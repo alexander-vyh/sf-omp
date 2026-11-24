@@ -17,6 +17,7 @@
 import {
   SLACK_API_BASE,
   ENV_TEAM_ID,
+  type ApiErr,
   type ApiResult,
   type ChatDeleteScheduledMessageResponse,
   type ChatPostMessageResponse,
@@ -24,10 +25,12 @@ import {
   type ChatScheduledMessagesListResponse,
   type ConversationsInfoResponse,
   type ConversationsListResponse,
+  type ConversationsMembersResponse,
   type ConversationsOpenResponse,
   type AssistantSearchContextResponse,
   type AuthTeamsListResponse,
   type SearchMessagesResponse,
+  type SlackConversation,
   type SlackSearchMatch,
   type JsonCompatibleParams,
   type UsersInfoResponse,
@@ -702,9 +705,25 @@ export async function resolveChannelName(
     return info.data.channel.name;
   }
 
-  // Fallback: search. Include DMs + MPIMs so ID-to-name resolution works
-  // for conversations that wouldn't appear under the default public/private
-  // filter.
+  const name = await searchChannelName(token, channelId, signal);
+  if (name) {
+    channelCache.set(channelId, name);
+    return name;
+  }
+
+  // Cache the ID as its own "name" to avoid repeat lookups this session.
+  channelCache.set(channelId, channelId);
+  return channelId;
+}
+
+/** Search fallback for a channel name. Include DMs + MPIMs so ID-to-name
+ *  resolution works for conversations that wouldn't appear under the default
+ *  public/private filter. */
+async function searchChannelName(
+  token: string,
+  channelId: string,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
   const searchParams: Record<string, string | number> = {
     query: `in:${channelId}`,
     count: 1,
@@ -720,15 +739,122 @@ export async function resolveChannelName(
     signal,
   );
   const hit = search.ok ? search.data.results?.messages?.[0] : undefined;
-  const name = hit?.channel_name || hit?.channel?.name;
-  if (name) {
-    channelCache.set(channelId, name);
-    return name;
+  return hit?.channel_name || hit?.channel?.name || undefined;
+}
+
+// ─── Conversation display labels ────────────────────────────────────────────────
+//
+// A channel name can't label every conversation: Slack gives DMs no name and
+// group DMs only a generated `mpdm-a--b--c-1` slug that includes the caller.
+// Labels live apart from `channelCache`, which `resolve.ts` matches against
+// user-typed channel names.
+
+const conversationLabelCache = new Map<string, string>(); // id → display label
+let detectedUserId = "";
+
+/** Remember the authenticated user so group DM labels can leave them out.
+ *  A different user invalidates labels built for the previous one. */
+export function setDetectedUserId(userId: string | undefined): void {
+  const next = typeof userId === "string" ? userId.trim() : "";
+  if (next !== detectedUserId) conversationLabelCache.clear();
+  detectedUserId = next;
+}
+
+export function getConversationLabelCache(): Map<string, string> {
+  return conversationLabelCache;
+}
+
+/** Synchronous lookup of a resolved label (`#name`, `DM with …`, `Group DM with …`). */
+export function resolveConversationLabelFromCache(conversationId: string): string | undefined {
+  if (!conversationId) return undefined;
+  return conversationLabelCache.get(conversationId);
+}
+
+/** Build and cache the display label for a conversation object: channels as
+ *  `#name`, DMs after the other member, and group DMs after their members
+ *  other than the caller. Group DMs fall back to Slack's slug only when the
+ *  member list or every member name is unavailable. Returns undefined when no
+ *  human-readable label exists. */
+export async function labelConversation(
+  token: string,
+  conversation: SlackConversation,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  const id = conversation.id;
+  if (!id) return undefined;
+  const cached = conversationLabelCache.get(id);
+  if (cached) return cached;
+  if (conversation.name) channelCache.set(id, conversation.name);
+
+  let label: string | undefined;
+  if (conversation.is_im) {
+    if (conversation.user) {
+      const name = await resolveUserName(token, conversation.user, signal);
+      if (name !== conversation.user) label = `DM with ${name}`;
+    }
+  } else if (conversation.is_mpim) {
+    label = await labelGroupDm(token, id, signal);
+    if (!label && conversation.name) label = `#${conversation.name}`;
+  } else if (conversation.name) {
+    label = `#${conversation.name}`;
   }
 
-  // Cache the ID as its own "name" to avoid repeat lookups this session.
-  channelCache.set(channelId, channelId);
-  return channelId;
+  if (label) conversationLabelCache.set(id, label);
+  return label;
+}
+
+async function labelGroupDm(
+  token: string,
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  const members = await slackApi<ConversationsMembersResponse>(
+    "conversations.members",
+    token,
+    { channel: conversationId, limit: 100 },
+    signal,
+  );
+  if (!members.ok || !Array.isArray(members.data.members)) return undefined;
+  const others = members.data.members.filter((id) => id && id !== detectedUserId);
+  if (others.length === 0) return undefined;
+  const names = await resolveUserNames(token, others, signal);
+  const labels = others.map((id) => names.get(id) || id);
+  if (labels.every((label, index) => label === others[index])) return undefined;
+  return `Group DM with ${labels.join(", ")}`;
+}
+
+/** Resolve a conversation ID to its display label (see `labelConversation`).
+ *  Uses one `conversations.info` call, plus user lookups for DMs and group
+ *  DMs; falls back to search only when the token lacks the info scope.
+ *  Returns undefined when Slack offers no readable label. */
+export async function resolveConversationLabel(
+  token: string,
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  if (!conversationId) return undefined;
+  const cached = conversationLabelCache.get(conversationId);
+  if (cached) return cached;
+
+  const info = await slackApi<ConversationsInfoResponse>(
+    "conversations.info",
+    token,
+    { channel: conversationId },
+    signal,
+  );
+  if (info.ok && info.data.channel) {
+    return labelConversation(token, { ...info.data.channel, id: conversationId }, signal);
+  }
+  if (!info.ok && (info as ApiErr).error === "missing_scope") {
+    const name = await searchChannelName(token, conversationId, signal);
+    if (name) {
+      channelCache.set(conversationId, name);
+      const label = `#${name}`;
+      conversationLabelCache.set(conversationId, label);
+      return label;
+    }
+  }
+  return undefined;
 }
 
 export async function resolveUserName(

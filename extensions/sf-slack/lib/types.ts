@@ -165,6 +165,10 @@ export interface SlackConversation {
   is_archived?: boolean;
   created?: number | string;
   creator?: string;
+  is_im?: boolean;
+  is_mpim?: boolean;
+  /** The other member of a DM (`is_im`). */
+  user?: string;
 }
 
 export interface SlackUserProfile {
@@ -351,6 +355,8 @@ export interface StructuredChannel {
   isArchived: boolean;
   created: string;
   creator: string;
+  /** Human-readable label when it differs from `#name` (DMs, group DMs). */
+  label?: string;
 }
 
 export interface StructuredUser {

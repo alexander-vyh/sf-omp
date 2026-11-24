@@ -41,7 +41,11 @@ import { Text } from "@earendil-works/pi-tui";
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { SlackReaction, StructuredMatch, StructuredMessage } from "./types.ts";
 import { getPreferences } from "./preferences.ts";
-import { resolveChannelNameFromCache, resolveUserNameFromCache } from "./api.ts";
+import {
+  resolveChannelNameFromCache,
+  resolveConversationLabelFromCache,
+  resolveUserNameFromCache,
+} from "./api.ts";
 import { shortcodeToGlyph } from "./emoji.ts";
 import { parseSlackMessageUrl } from "./message-url.ts";
 
@@ -64,6 +68,8 @@ interface SlackToolResultDetails {
   query?: string;
   permalink?: string;
   channel?: string;
+  /** Persisted conversation label; survives session replay with a cold cache. */
+  channel_label?: string;
   ts?: string;
   has_more?: boolean;
   matches?: StructuredMatch[];
@@ -348,6 +354,8 @@ function renderAuthorHeader(
 function formatChannelLabel(channelIdOrName: string | undefined): string {
   if (!channelIdOrName) return "";
   if (/^[CGD][A-Z0-9]{8,}$/.test(channelIdOrName)) {
+    const label = resolveConversationLabelFromCache(channelIdOrName);
+    if (label) return label;
     const name = resolveChannelNameFromCache(channelIdOrName);
     if (name === channelIdOrName && channelIdOrName.startsWith("D")) return `DM ${name}`;
     return `#${name}`;
@@ -541,7 +549,7 @@ export function renderResult(
       return new Text(theme.fg("warning", `${ICON_THREAD} No messages in thread`), 0, 0);
     }
 
-    const channelLabel = formatChannelLabel(details.channel);
+    const channelLabel = details.channel_label || formatChannelLabel(details.channel);
     const chips = [
       theme.fg("accent", channelLabel),
       theme.fg("muted", `${count} msg${count !== 1 ? "s" : ""}`),
@@ -571,7 +579,7 @@ export function renderResult(
       return new Text(theme.fg("warning", `${ICON_HISTORY} No messages in this range`), 0, 0);
     }
 
-    const channelLabel = formatChannelLabel(details.channel);
+    const channelLabel = details.channel_label || formatChannelLabel(details.channel);
     const chips: string[] = [];
     if (channelLabel) chips.push(theme.fg("accent", channelLabel));
 

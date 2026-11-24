@@ -131,11 +131,6 @@ async function runScenario(
     ctx as never,
   )) as ToolResult;
 
-  // The legacy branch performs a best-effort, fire-and-forget channel-name
-  // lookup after the read. Give it a turn to settle so the A metrics include
-  // that extra resolver call and cannot leak into the B measurement.
-  await new Promise<void>((resolve) => setImmediate(resolve));
-
   return {
     result,
     endpointCalls,
@@ -215,7 +210,8 @@ describe("direct permalink A/B behavior", () => {
       count: 1,
     });
     expect(count(directB, "conversations.replies")).toBe(1);
-    expect(directB.endpointCalls).toEqual(["conversations.replies"]);
+    // The only call after the read is the awaited conversation-label lookup.
+    expect(directB.endpointCalls).toEqual(["conversations.replies", "conversations.info"]);
     const directReadParams = new URLSearchParams(directB.requestBodies[0].body);
     expect(directReadParams.get("channel")).toBe(CHANNEL_ID);
     expect(directReadParams.get("ts")).toBe(MESSAGE_TS);
@@ -225,25 +221,19 @@ describe("direct permalink A/B behavior", () => {
     expect(directB.inputCalls).toBe(0);
 
     // Branch-effectiveness comparison: B preserves the successful read while
-    // reducing the current resolver fanout to one API call and no dialog.
-    expect({
-      legacyA: {
-        apiCalls: legacyA.endpointCalls.length,
-        resolverCalls: legacyA.endpointCalls.filter(
-          (endpoint) => endpoint !== "conversations.replies",
-        ).length,
-        selectCalls: legacyA.selectCalls,
-      },
-      directB: {
-        apiCalls: directB.endpointCalls.length,
-        resolverCalls: directB.endpointCalls.filter(
-          (endpoint) => endpoint !== "conversations.replies",
-        ).length,
-        selectCalls: directB.selectCalls,
-      },
-    }).toEqual({
-      legacyA: { apiCalls: 8, resolverCalls: 7, selectCalls: 1 },
-      directB: { apiCalls: 1, resolverCalls: 0, selectCalls: 0 },
+    // removing every pre-read resolver call and the dialog. Both branches then
+    // make the same single post-read label lookup.
+    const shape = (metrics: ScenarioMetrics) => {
+      const readIndex = metrics.endpointCalls.indexOf("conversations.replies");
+      return {
+        preReadCalls: readIndex,
+        postReadCalls: metrics.endpointCalls.slice(readIndex + 1),
+        selectCalls: metrics.selectCalls,
+      };
+    };
+    expect({ legacyA: shape(legacyA), directB: shape(directB) }).toEqual({
+      legacyA: { preReadCalls: 5, postReadCalls: ["conversations.info"], selectCalls: 1 },
+      directB: { preReadCalls: 0, postReadCalls: ["conversations.info"], selectCalls: 0 },
     });
   });
 

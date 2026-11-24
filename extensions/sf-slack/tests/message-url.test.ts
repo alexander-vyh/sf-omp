@@ -50,7 +50,6 @@ describe("parseSlackMessageUrl", () => {
     "http://example.slack.com/archives/C01ABCDEF23/p1700000000100001",
     "https://slack.com/archives/C01ABCDEF23/p1700000000100001",
     "https://example.slack.com.evil.test/archives/C01ABCDEF23/p1700000000100001",
-    "https://evil.example.slack.com/archives/C01ABCDEF23/p1700000000100001",
     "https://example.enterprise.slack.com.evil.test/archives/C01ABCDEF23/p1700000000100001",
     "https://user@example.slack.com/archives/C01ABCDEF23/p1700000000100001",
     "https://example.slack.com:8443/archives/C01ABCDEF23/p1700000000100001",

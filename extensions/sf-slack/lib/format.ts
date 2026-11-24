@@ -152,9 +152,10 @@ export function extractStructuredMessages(
 
 // ─── Channel info (text for LLM) ────────────────────────────────────────────────
 
-export function formatChannelInfo(channel: SlackConversation): string {
+/** `label` names conversations without a channel name (DMs, group DMs). */
+export function formatChannelInfo(channel: SlackConversation, label?: string): string {
   return [
-    `Channel: #${channel.name || "unknown"}`,
+    `Channel: ${label || `#${channel.name || "unknown"}`}`,
     `ID: ${channel.id || "unknown"}`,
     `Topic: ${channel.topic?.value || "(none)"}`,
     `Purpose: ${channel.purpose?.value || "(none)"}`,
@@ -166,7 +167,10 @@ export function formatChannelInfo(channel: SlackConversation): string {
   ].join("\n");
 }
 
-export function extractStructuredChannel(channel: SlackConversation): StructuredChannel {
+export function extractStructuredChannel(
+  channel: SlackConversation,
+  label?: string,
+): StructuredChannel {
   return {
     id: channel.id || "unknown",
     name: channel.name || "unknown",
@@ -177,6 +181,7 @@ export function extractStructuredChannel(channel: SlackConversation): Structured
     isArchived: !!channel.is_archived,
     created: tsToLabel(toOptionalString(channel.created)),
     creator: channel.creator || "unknown",
+    ...(label ? { label } : {}),
   };
 }
 
