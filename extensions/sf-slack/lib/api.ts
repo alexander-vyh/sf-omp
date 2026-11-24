@@ -752,9 +752,12 @@ async function searchChannelName(
 const conversationLabelCache = new Map<string, string>(); // id → display label
 let detectedUserId = "";
 
-/** Remember the authenticated user so group DM labels can leave them out. */
+/** Remember the authenticated user so group DM labels can leave them out.
+ *  A different user invalidates labels built for the previous one. */
 export function setDetectedUserId(userId: string | undefined): void {
-  detectedUserId = typeof userId === "string" ? userId.trim() : "";
+  const next = typeof userId === "string" ? userId.trim() : "";
+  if (next !== detectedUserId) conversationLabelCache.clear();
+  detectedUserId = next;
 }
 
 export function getConversationLabelCache(): Map<string, string> {

@@ -115,6 +115,29 @@ describe("resolveConversationLabel", () => {
     );
   });
 
+  it("relabels group DMs for a newly authenticated user", async () => {
+    stubSlack({
+      "conversations.info": () => ({
+        ok: true,
+        channel: { id: "C01GROUP001", is_mpim: true, name: "mpdm-alice--me--bob-1" },
+      }),
+      "conversations.members": () => ({
+        ok: true,
+        members: ["U01ALICE001", SELF_ID, "U01BOB00001"],
+      }),
+    });
+
+    setDetectedUserId(SELF_ID);
+    await expect(resolveConversationLabel("xoxp-test", "C01GROUP001")).resolves.toBe(
+      "Group DM with alice, bob",
+    );
+
+    setDetectedUserId("U01ALICE001");
+    await expect(resolveConversationLabel("xoxp-test", "C01GROUP001")).resolves.toBe(
+      "Group DM with me, bob",
+    );
+  });
+
   it("falls back to the group DM slug when membership is unavailable", async () => {
     stubSlack({
       "conversations.info": () => ({
