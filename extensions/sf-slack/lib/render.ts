@@ -68,6 +68,8 @@ interface SlackToolResultDetails {
   query?: string;
   permalink?: string;
   channel?: string;
+  /** Persisted conversation label; survives session replay with a cold cache. */
+  channel_label?: string;
   ts?: string;
   has_more?: boolean;
   matches?: StructuredMatch[];
@@ -547,7 +549,7 @@ export function renderResult(
       return new Text(theme.fg("warning", `${ICON_THREAD} No messages in thread`), 0, 0);
     }
 
-    const channelLabel = formatChannelLabel(details.channel);
+    const channelLabel = details.channel_label || formatChannelLabel(details.channel);
     const chips = [
       theme.fg("accent", channelLabel),
       theme.fg("muted", `${count} msg${count !== 1 ? "s" : ""}`),
@@ -577,7 +579,7 @@ export function renderResult(
       return new Text(theme.fg("warning", `${ICON_HISTORY} No messages in this range`), 0, 0);
     }
 
-    const channelLabel = formatChannelLabel(details.channel);
+    const channelLabel = details.channel_label || formatChannelLabel(details.channel);
     const chips: string[] = [];
     if (channelLabel) chips.push(theme.fg("accent", channelLabel));
 

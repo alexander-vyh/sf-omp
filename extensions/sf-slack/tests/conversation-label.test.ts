@@ -14,13 +14,19 @@ import {
   setDetectedUserId,
 } from "../lib/api.ts";
 import { registerSlackTool } from "../lib/tools.ts";
+import { renderResult } from "../lib/render.ts";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 
 type Payload = Record<string, unknown>;
 
-const SELF_ID = "U01SELF0001";
+// Generic placeholder IDs (docs/public-sanitization.md).
+const SELF_ID = "U01ABCDEF3";
+const ALICE_ID = "U01ABCDEF1";
+const BOB_ID = "U01ABCDEF2";
+const GROUP_ID = "C01ABCDEF45";
 const users: Record<string, string> = {
-  U01ALICE001: "alice",
-  U01BOB00001: "bob",
+  [ALICE_ID]: "alice",
+  [BOB_ID]: "bob",
   [SELF_ID]: "me",
 };
 
@@ -86,7 +92,7 @@ describe("resolveConversationLabel", () => {
     stubSlack({
       "conversations.info": () => ({
         ok: true,
-        channel: { id: "D01ABCDEF23", is_im: true, user: "U01ALICE001" },
+        channel: { id: "D01ABCDEF23", is_im: true, user: ALICE_ID },
       }),
     });
 
@@ -102,15 +108,15 @@ describe("resolveConversationLabel", () => {
     stubSlack({
       "conversations.info": () => ({
         ok: true,
-        channel: { id: "C01GROUP001", is_mpim: true, name: "mpdm-alice--me--bob-1" },
+        channel: { id: GROUP_ID, is_mpim: true, name: "mpdm-alice--me--bob-1" },
       }),
       "conversations.members": () => ({
         ok: true,
-        members: ["U01ALICE001", SELF_ID, "U01BOB00001"],
+        members: [ALICE_ID, SELF_ID, BOB_ID],
       }),
     });
 
-    await expect(resolveConversationLabel("xoxp-test", "C01GROUP001")).resolves.toBe(
+    await expect(resolveConversationLabel("xoxp-test", GROUP_ID)).resolves.toBe(
       "Group DM with alice, bob",
     );
   });
@@ -119,21 +125,21 @@ describe("resolveConversationLabel", () => {
     stubSlack({
       "conversations.info": () => ({
         ok: true,
-        channel: { id: "C01GROUP001", is_mpim: true, name: "mpdm-alice--me--bob-1" },
+        channel: { id: GROUP_ID, is_mpim: true, name: "mpdm-alice--me--bob-1" },
       }),
       "conversations.members": () => ({
         ok: true,
-        members: ["U01ALICE001", SELF_ID, "U01BOB00001"],
+        members: [ALICE_ID, SELF_ID, BOB_ID],
       }),
     });
 
     setDetectedUserId(SELF_ID);
-    await expect(resolveConversationLabel("xoxp-test", "C01GROUP001")).resolves.toBe(
+    await expect(resolveConversationLabel("xoxp-test", GROUP_ID)).resolves.toBe(
       "Group DM with alice, bob",
     );
 
-    setDetectedUserId("U01ALICE001");
-    await expect(resolveConversationLabel("xoxp-test", "C01GROUP001")).resolves.toBe(
+    setDetectedUserId(ALICE_ID);
+    await expect(resolveConversationLabel("xoxp-test", GROUP_ID)).resolves.toBe(
       "Group DM with me, bob",
     );
   });
@@ -142,12 +148,12 @@ describe("resolveConversationLabel", () => {
     stubSlack({
       "conversations.info": () => ({
         ok: true,
-        channel: { id: "C01GROUP001", is_mpim: true, name: "mpdm-alice--me--bob-1" },
+        channel: { id: GROUP_ID, is_mpim: true, name: "mpdm-alice--me--bob-1" },
       }),
       "conversations.members": () => ({ ok: false, error: "missing_scope" }),
     });
 
-    await expect(resolveConversationLabel("xoxp-test", "C01GROUP001")).resolves.toBe(
+    await expect(resolveConversationLabel("xoxp-test", GROUP_ID)).resolves.toBe(
       "#mpdm-alice--me--bob-1",
     );
   });
@@ -193,11 +199,11 @@ async function runSlackTool(params: Record<string, unknown>): Promise<ToolResult
 
 const DM_INFO = {
   ok: true,
-  channel: { id: "D01ABCDEF23", is_im: true, user: "U01ALICE001" },
+  channel: { id: "D01ABCDEF23", is_im: true, user: ALICE_ID },
 };
 const ALICE_MESSAGE = {
   type: "message",
-  user: "U01ALICE001",
+  user: ALICE_ID,
   text: "hello",
   ts: "1700000000.100001",
 };
@@ -249,5 +255,40 @@ describe("slack thread/history conversation header", () => {
       channel_label: "DM with alice",
     });
     expect(result.content[0].text.split("\n")[0]).toBe("Conversation: DM with alice (D01ABCDEF23)");
+  });
+});
+
+describe("conversation label rendering", () => {
+  beforeEach(resetCaches);
+  afterEach(resetCaches);
+
+  it("uses the persisted label when a replayed session has a cold cache", () => {
+    const theme = {
+      fg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+      italic: (text: string) => text,
+      strikethrough: (text: string) => text,
+    } as unknown as Theme;
+    const render = (action: "thread" | "history") =>
+      renderResult(
+        {
+          content: [],
+          details: {
+            ok: true,
+            action,
+            channel: "D01ABCDEF23",
+            channel_label: "DM with alice",
+            messages: [{ author: "alice", text: "hello", time: "now", ts: "1700000000.100001" }],
+          },
+        },
+        { expanded: false, isPartial: false },
+        theme,
+      )
+        .render(120)
+        .join("\n");
+
+    expect(render("thread")).toContain("DM with alice");
+    expect(render("history")).toContain("DM with alice");
+    expect(render("thread")).not.toContain("DM D01ABCDEF23");
   });
 });
