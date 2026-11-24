@@ -68,6 +68,7 @@ describe("tracked public artifact safety", () => {
           source: [
             "https://example--dev.sandbox.my.salesforce.com",
             "https://example.slack.com/archives/C01ABCEXAMPLE/p1700000000000000",
+            "https://example.enterprise.slack.com/archives/C01ABCEXAMPLE/p1700000000000000",
             "C0123456789 U0123456789 C0AAA00001 U0BBB00002",
             "00D000000000000AAA 00D000000000001",
           ].join("\n"),
