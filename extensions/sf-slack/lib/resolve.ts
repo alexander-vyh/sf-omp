@@ -272,9 +272,14 @@ async function resolveChannelById(
     { channel: channelId, include_num_members: true },
     signal,
   );
-  if (info.ok && info.data.channel?.name) {
-    const channel = toResolvedChannel(info.data.channel, 1, "conversations.info");
-    getChannelCache().set(channel.id, channel.name);
+  const conversation = info.ok ? info.data.channel : undefined;
+  // Slack gives DMs no name; a successful lookup still verifies the ID.
+  if (conversation && (conversation.name || conversation.is_im)) {
+    const channel = toResolvedChannel(
+      { ...conversation, id: conversation.id || channelId },
+      1,
+      "conversations.info",
+    );
     return { channel };
   }
   if (!info.ok) {

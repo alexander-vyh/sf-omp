@@ -67,6 +67,7 @@ import {
   prewarmUserCache,
   prewarmChannelCache,
   setDetectedTeamId,
+  setDetectedUserId,
   detectTokenType,
   getGrantedScopes,
   seedGrantedScopesForStartup,
@@ -365,6 +366,7 @@ export default function sfSlack(pi: ExtensionAPI) {
         teamId: authResult.data?.team_id || authResult.data?.enterprise_id || "",
       };
       setDetectedTeamId(authResult.data?.team_id);
+      setDetectedUserId(authResult.data?.user_id);
 
       const probeResult = await gateToolsFromGrantedScopes(pi, requestedScopes, tokenType);
       const grantedScopes = getGrantedScopes();
@@ -519,6 +521,7 @@ export default function sfSlack(pi: ExtensionAPI) {
     if (!auth.ok) {
       // No token → hide any Slack tools left active from an earlier session.
       setDetectedTeamId("");
+      setDetectedUserId("");
       await deactivateSlackTools(pi);
       updateStatus(ctx, "disconnected", generation);
       return;
@@ -539,6 +542,7 @@ export default function sfSlack(pi: ExtensionAPI) {
       identity = cached.identity;
       tokenType = cached.tokenType;
       setDetectedTeamId(cached.identity.teamId);
+      setDetectedUserId(cached.identity.userId);
       seedGrantedScopesForStartup(cached.grantedScopes);
       const probeResult = await gateToolsFromGrantedScopes(pi, requestedScopes, tokenType);
       const grantedScopes = getGrantedScopes();
@@ -609,6 +613,7 @@ export default function sfSlack(pi: ExtensionAPI) {
     await deactivateSlackTools(pi);
     clearSlackStatus();
     setDetectedTeamId("");
+    setDetectedUserId("");
     missingGrantedScopeCount = 0;
     grantedScopeCount = 0;
     requestedScopeCount = 0;
@@ -782,6 +787,7 @@ export default function sfSlack(pi: ExtensionAPI) {
               teamId: authResult.data?.team_id || authResult.data?.enterprise_id || "",
             };
             setDetectedTeamId(authResult.data?.team_id);
+            setDetectedUserId(authResult.data?.user_id);
             const requestedScopes = oauthScopes()
               .split(",")
               .map((scope) => scope.trim())

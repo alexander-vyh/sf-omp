@@ -27,6 +27,7 @@ import {
   resolveUserNames,
   getTeamId,
   errorResult,
+  labelConversation,
   DEFAULT_ASSISTANT_CHANNEL_TYPES,
 } from "./api.ts";
 import { formatChannelInfo, extractStructuredChannel } from "./format.ts";
@@ -116,7 +117,7 @@ export function registerChannelTool(pi: ExtensionAPI): void {
 
         let text =
           theme.fg("success", "✓ ") +
-          theme.fg("accent", `#${channel.name || "unknown"}`) +
+          theme.fg("accent", channel.label || `#${channel.name || "unknown"}`) +
           theme.fg("dim", ` (${channel.id || "?"})`);
         text += "\n" + theme.fg("borderMuted", "  ─────────────────────────────────────");
         text +=
@@ -230,13 +231,14 @@ export function registerChannelTool(pi: ExtensionAPI): void {
           };
         }
 
+        const label = await labelConversation(auth.token, channel, signal).catch(() => undefined);
         return buildSlackTextResult(
-          formatChannelInfo(channel),
+          formatChannelInfo(channel, label),
           {
             ok: true,
             action,
             channel_id: channel.id,
-            channelData: extractStructuredChannel(channel),
+            channelData: extractStructuredChannel(channel, label),
           },
           { prefix: "pi-slack-channel-info" },
         );

@@ -26,7 +26,7 @@ import {
   slackApi,
   clampLimit,
   errorResult,
-  resolveChannelName,
+  resolveConversationLabel,
   getUserCache,
   warmUserCacheForIds,
   warmChannelCacheFromMatches,
@@ -239,15 +239,20 @@ export function registerSlackTool(pi: ExtensionAPI): void {
           messages,
           signal,
         );
-        // A direct permalink's read is its channel validation. Keep the legacy
-        // name fill only for resolved channel refs; otherwise it would re-add
-        // the conversations.info preflight this exact-locator path avoids.
-        if (!directMessageUrl) {
-          void resolveChannelName(auth.token, conversationId, signal).catch(() => {});
-        }
+        // The read itself validated access, so the label lookup runs only after
+        // it succeeds; a bad direct permalink still fails on its first call.
+        const channelLabel = await resolveConversationLabel(
+          auth.token,
+          conversationId,
+          signal,
+        ).catch(() => undefined);
 
         const fields = resolveFields(params.fields, ctx.cwd);
-        let text = formatMessages(messages, userNames, fields);
+        let text = withConversationHeader(
+          formatMessages(messages, userNames, fields),
+          conversationId,
+          channelLabel,
+        );
         if (hasMore && nextCursor) {
           text += `\n\n--- More replies available. Use cursor: "${nextCursor}" to fetch the next page. ---`;
         }
@@ -260,6 +265,7 @@ export function registerSlackTool(pi: ExtensionAPI): void {
             action,
             count: messages.length,
             channel: conversationId,
+            ...(channelLabel ? { channel_label: channelLabel } : {}),
             channel_ref: params.channel,
             ts: messageTs,
             ...(directMessageUrl ? { locator: "message_url" } : {}),
@@ -313,10 +319,18 @@ export function registerSlackTool(pi: ExtensionAPI): void {
           messages,
           signal,
         );
-        void resolveChannelName(auth.token, resolvedChannel.id, signal).catch(() => {});
+        const channelLabel = await resolveConversationLabel(
+          auth.token,
+          resolvedChannel.id,
+          signal,
+        ).catch(() => undefined);
 
         const fields = resolveFields(params.fields, ctx.cwd);
-        let text = formatMessages(messages, userNames, fields);
+        let text = withConversationHeader(
+          formatMessages(messages, userNames, fields),
+          resolvedChannel.id,
+          channelLabel,
+        );
         if (hasMore && nextCursor) {
           text += `\n\n--- More messages available. Use cursor: "${nextCursor}" to fetch the next page. ---`;
         }
@@ -329,6 +343,7 @@ export function registerSlackTool(pi: ExtensionAPI): void {
             action,
             count: messages.length,
             channel: resolvedChannel.id,
+            ...(channelLabel ? { channel_label: channelLabel } : {}),
             channel_ref: params.channel,
             has_more: hasMore,
             next_cursor: nextCursor,
@@ -391,6 +406,12 @@ export function registerSlackTool(pi: ExtensionAPI): void {
       };
     },
   });
+}
+
+/** Prefix thread/history text with the conversation it came from; message
+ *  rows carry no channel name of their own. */
+function withConversationHeader(text: string, conversationId: string, label?: string): string {
+  return label ? `Conversation: ${label} (${conversationId})\n\n${text}` : text;
 }
 
 // Unified channel-ref resolution for slack action=thread/history/permalink.

@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Fixed SF Pi doctor counting the same skill linked into several harness roots (for example `~/.claude/skills` and `~/.agents/skills` symlinked to one install) as skill collisions; only distinct files with the same name count now, so the startup notice no longer reports false collisions.
 - Agent Script release dependency fingerprints now accept a prompt template's single version returned as a Metadata API object, as well as version arrays.
 - Fixed SF Slack rejecting Enterprise Grid permalinks (`<org>.enterprise.slack.com`) as `message_url` for thread reads.
+- SF Slack `thread` and `history` results now name the conversation they came from (`Conversation: #channel`, `DM with <person>`, or `Group DM with <members>` excluding you), and the TUI header shows the same label; `slack_channel info` labels DMs and group DMs instead of `#unknown`. Direct permalink reads make the label lookup only after the read succeeds. DM IDs verified by `conversations.info` now resolve as channel references, so headless `history`/`slack_channel` calls accept them instead of failing for lack of a channel name.
 
 ## [0.354.0](https://github.com/salesforce/sf-pi/compare/v0.353.0...v0.354.0) (2026-11-11)
 

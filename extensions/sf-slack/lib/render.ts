@@ -41,7 +41,11 @@ import { Text } from "@earendil-works/pi-tui";
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { SlackReaction, StructuredMatch, StructuredMessage } from "./types.ts";
 import { getPreferences } from "./preferences.ts";
-import { resolveChannelNameFromCache, resolveUserNameFromCache } from "./api.ts";
+import {
+  resolveChannelNameFromCache,
+  resolveConversationLabelFromCache,
+  resolveUserNameFromCache,
+} from "./api.ts";
 import { shortcodeToGlyph } from "./emoji.ts";
 import { parseSlackMessageUrl } from "./message-url.ts";
 
@@ -348,6 +352,8 @@ function renderAuthorHeader(
 function formatChannelLabel(channelIdOrName: string | undefined): string {
   if (!channelIdOrName) return "";
   if (/^[CGD][A-Z0-9]{8,}$/.test(channelIdOrName)) {
+    const label = resolveConversationLabelFromCache(channelIdOrName);
+    if (label) return label;
     const name = resolveChannelNameFromCache(channelIdOrName);
     if (name === channelIdOrName && channelIdOrName.startsWith("D")) return `DM ${name}`;
     return `#${name}`;
