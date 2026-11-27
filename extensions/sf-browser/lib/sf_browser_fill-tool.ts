@@ -3,7 +3,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { runAgentBrowser } from "./agent-browser.ts";
-import { renderBrowserToolCall, renderBrowserToolResult } from "./browser-render.ts";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
+import { browserToolRenderers } from "./browser-render.ts";
 import { throwWithFailureDiagnostics } from "./failure-diagnostics.ts";
 import { STALE_REF_HINT } from "./guidance.ts";
 import { requireFreshBrowserRef } from "./ref-freshness.ts";
@@ -15,7 +16,7 @@ import { okText } from "./tool-support.ts";
 export const SF_BROWSER_FILL_TOOL_NAME = "sf_browser_fill";
 
 export function registerSfBrowserFillTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool(pi, {
     name: SF_BROWSER_FILL_TOOL_NAME,
     label: "SF Browser Fill",
     description:
@@ -24,9 +25,7 @@ export function registerSfBrowserFillTool(pi: ExtensionAPI): void {
     promptGuidelines: [
       "Use sf_browser_fill for normal text inputs. For Salesforce lookup or combobox controls, fill, wait for options, snapshot, then click the option ref.",
     ],
-    renderCall: (args, theme) => renderBrowserToolCall(SF_BROWSER_FILL_TOOL_NAME, args, theme),
-    renderResult: (result, options, theme, context) =>
-      renderBrowserToolResult(SF_BROWSER_FILL_TOOL_NAME, result, options, theme, context),
+    ...browserToolRenderers(SF_BROWSER_FILL_TOOL_NAME),
     parameters: Type.Object({
       ref: Type.String({ description: "Input ref from sf_browser_snapshot, for example @e4." }),
       value: Type.String({ description: "Value to fill." }),

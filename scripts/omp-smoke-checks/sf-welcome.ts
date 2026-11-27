@@ -2,12 +2,20 @@
 /**
  * sf-welcome offline behavior in native OMP: real /sf-welcome and
  * /sf-setup-fonts handlers (headless paths print or notify), and the startup
- * splash on OMP, whose setHeader is a no-op and whose session_start carries no
- * reason, so the splash must mount as an above-editor widget for a new session
- * and dismiss on agent_start. The font installer itself is not run: on macOS it
- * clears the user's system font cache (atsutil), outside the smoke sandbox.
+ * splash on OMP whose session_start carries no reason. The splash mounts as
+ * an above-editor widget for a new session and dismisses on agent_start. The
+ * font installer itself is not run: on macOS it clears the user's system font
+ * cache (atsutil), outside the smoke sandbox.
  */
+import type {
+  ExtensionRows,
+  ExtensionUIContext,
+  ExtensionWidgetContent,
+  ExtensionWidgetOptions,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { stripEscapes } from "@oh-my-pi/pi-tui/text/ansi";
 import type { SmokeApi } from "../omp-smoke-extension.ts";
+import { mountWidgetRows } from "./widget-rows.ts";
 
 const ID = "sf-welcome";
 
@@ -15,8 +23,7 @@ interface Note {
   message: string;
   level?: string;
 }
-type Component = { render(width: number): string[] };
-type WidgetFactory = (tui: unknown, theme: unknown) => Component;
+type Widget = { view: ExtensionRows; placement?: ExtensionWidgetOptions["placement"] };
 
 async function captureInfo(action: () => Promise<unknown>): Promise<string[]> {
   const lines: string[] = [];
@@ -35,7 +42,7 @@ async function captureInfo(action: () => Promise<unknown>): Promise<string[]> {
 export default async function welcomeChecks(api: SmokeApi): Promise<void> {
   const { requireTrue } = api;
   const base = api.ctx as object;
-  const baseUi = Reflect.get(base, "ui") as object;
+  const baseUi = Reflect.get(base, "ui") as ExtensionUIContext;
   const notes: Note[] = [];
   const notifyUi = new Proxy(baseUi, {
     get: (target, key) =>
@@ -85,16 +92,21 @@ export default async function welcomeChecks(api: SmokeApi): Promise<void> {
   });
 
   await api.run("welcome.omp.splash-widget-and-dismiss", ID, async () => {
-    const widgets = new Map<string, { component: Component; placement?: string }>();
+    const widgets = new Map<string, Widget>();
     const headerCalls: unknown[] = [];
     const ui = new Proxy(baseUi, {
       get: (target, key) => {
         if (key === "setWidget")
-          return (name: string, content: unknown, options?: { placement?: string }) => {
+          return (
+            name: string,
+            content: ExtensionWidgetContent,
+            options?: ExtensionWidgetOptions,
+          ) => {
+            widgets.get(name)?.view.dispose?.();
             widgets.delete(name);
-            if (typeof content === "function")
+            if (content !== undefined)
               widgets.set(name, {
-                component: (content as WidgetFactory)({ requestRender() {} }, undefined),
+                view: mountWidgetRows(content, baseUi.theme, 140),
                 placement: options?.placement,
               });
           };
@@ -112,9 +124,9 @@ export default async function welcomeChecks(api: SmokeApi): Promise<void> {
     for (const handler of api.handlers(ID, "session_start"))
       await handler({ type: "session_start" }, ctx);
     const splash = widgets.get("sf-welcome");
-    requireTrue(headerCalls.length === 0, "sf-welcome used OMP's no-op setHeader.");
+    requireTrue(headerCalls.length === 0, "sf-welcome replaced the native OMP header.");
     requireTrue(splash?.placement === "aboveEditor", "Splash is not an above-editor widget.");
-    const rendered = splash.component.render(140).join("\n");
+    const rendered = stripEscapes(splash.view.render(140).join("\n"));
     requireTrue(
       rendered.includes("Welcome back!") && rendered.includes("Press Esc to dismiss"),
       `Unexpected splash: ${rendered.slice(0, 400)}`,

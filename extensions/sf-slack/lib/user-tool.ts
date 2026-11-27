@@ -2,8 +2,8 @@
 /**
  * slack_user tool — info, email, presence, list.
  */
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { callLabel, registerSlackUiTool, slackText } from "./render.ts";
 import {
   SlackUserParams,
   type ApiErr,
@@ -53,16 +53,8 @@ interface UserToolRenderResult {
   };
 }
 
-function callLabel(label: string, summary: string, theme: Theme): Text {
-  return new Text(
-    theme.fg("toolTitle", theme.bold(label + " ")) + theme.fg("muted", summary),
-    0,
-    0,
-  );
-}
-
 export function registerUserTool(pi: ExtensionAPI): void {
-  pi.registerTool<typeof SlackUserParams>({
+  registerSlackUiTool<typeof SlackUserParams>(pi, {
     name: "slack_user",
     label: "Slack User",
     description:
@@ -80,7 +72,7 @@ export function registerUserTool(pi: ExtensionAPI): void {
     ],
     parameters: SlackUserParams,
 
-    renderCall(args: UserToolCallArgs, theme: Theme) {
+    renderCall(args: UserToolCallArgs, _options, theme) {
       const action = args.action || "info";
       switch (action) {
         case "info":
@@ -103,28 +95,22 @@ export function registerUserTool(pi: ExtensionAPI): void {
       }
     },
 
-    renderResult(
-      result: UserToolRenderResult,
-      opts: { expanded: boolean; isPartial: boolean },
-      theme: Theme,
-    ) {
+    renderResult(result: UserToolRenderResult, opts, theme) {
       if (opts.isPartial) {
-        return new Text(theme.fg("warning", "Slack user lookup running…"), 0, 0);
+        return slackText(theme.fg("warning", "Slack user lookup running…"));
       }
 
       const details = result.details || {};
       if (!details.ok) {
-        return new Text(
+        return slackText(
           theme.fg("error", "✗ " + (getFirstText(result.content) || "User lookup failed")),
-          0,
-          0,
         );
       }
       const action = details.action || "info";
 
       if (action === "presence") {
         const presence = details.presence;
-        if (!presence) return new Text(theme.fg("warning", "No presence data"), 0, 0);
+        if (!presence) return slackText(theme.fg("warning", "No presence data"));
 
         const icon = presence.online ? "🟢" : presence.presence === "away" ? "🟡" : "⚫";
         const color = presence.online
@@ -149,19 +135,17 @@ export function registerUserTool(pi: ExtensionAPI): void {
           text +=
             "\n  " + theme.fg("muted", "Last active: ") + theme.fg("dim", presence.lastActivity);
         }
-        return new Text(text, 0, 0);
+        return slackText(text);
       }
 
       if (action === "list") {
         const users = details.users || [];
         if (!users.length) {
-          return new Text(
+          return slackText(
             theme.fg(
               "warning",
               "No users found" + (details.filter ? ` matching "${details.filter}"` : ""),
             ),
-            0,
-            0,
           );
         }
         let text = theme.fg("success", `✓ ${users.length} user${users.length !== 1 ? "s" : ""}`);
@@ -176,11 +160,11 @@ export function registerUserTool(pi: ExtensionAPI): void {
             text += "  " + theme.fg("mdLink", user.email);
         }
         text += "\n" + theme.fg("borderMuted", "  ─────────────────────────────────────");
-        return new Text(text, 0, 0);
+        return slackText(text);
       }
 
       const user = details.userData;
-      if (!user) return new Text(theme.fg("warning", "No user data"), 0, 0);
+      if (!user) return slackText(theme.fg("warning", "No user data"));
 
       let text =
         theme.fg("success", "✓ ") +
@@ -208,7 +192,7 @@ export function registerUserTool(pi: ExtensionAPI): void {
       if (user.isAdmin) flags.push(theme.fg("warning", "admin"));
       if (flags.length) text += "\n  " + theme.fg("muted", "Flags:        ") + flags.join(", ");
       text += "\n" + theme.fg("borderMuted", "  ─────────────────────────────────────");
-      return new Text(text, 0, 0);
+      return slackText(text);
     },
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {

@@ -1,5 +1,4 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import type { Theme } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import {
   formatAnswer,
@@ -14,7 +13,7 @@ import {
 const passthroughTheme = {
   fg: (_color: string, text: string) => text,
   bold: (text: string) => text,
-} as unknown as Theme;
+};
 
 describe("sf-docs render", () => {
   it("distinguishes retrieval failure from a safety block", () => {
@@ -36,17 +35,15 @@ describe("sf-docs render", () => {
 
   it("renders thrown execution errors with the original action and slice", () => {
     const component = renderToolResult(
-      { content: [{ type: "text", text: "fetch failed" }], details: {} },
-      {
-        isError: true,
-        args: {
-          action: "search",
-          collection: "admin",
-          version: "current",
-          locale: "en-us",
-        },
-      },
+      { content: [{ type: "text", text: "fetch failed" }], details: {}, isError: true },
+      {},
       passthroughTheme,
+      {
+        action: "search",
+        collection: "admin",
+        version: "current",
+        locale: "en-us",
+      },
     );
     const text = component.render(120).join("\n");
 

@@ -4,4 +4,4 @@
 [[IgnoredVulns]]
 id = "GHSA-mrhx-c7xc-m3w5"
 ignoreUntil = 2027-02-15
-reason = "zod 3.25.76 is a development-only transitive of the pinned OMP 18.22.0 runtime (puppeteer-core -> chromium-bidi 16, which declares zod ^3). No 3.x fix exists; forcing zod 4 would be an unsupported major override. Remove when an OMP upgrade brings chromium-bidi with zod >=4.6.6."
+reason = "zod 3.25.76 is a development-only transitive of the pinned OMP 19.2.1 npm host (puppeteer-core -> chromium-bidi 16, which declares zod ^3). No 3.x fix exists; forcing zod 4 would be an unsupported major override. Remove when an OMP upgrade brings chromium-bidi with zod >=4.6.6."

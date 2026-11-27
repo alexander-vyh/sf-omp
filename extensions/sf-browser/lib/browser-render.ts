@@ -1,28 +1,32 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Compact, evidence-first TUI cards shared by SF Browser tools. */
-import { existsSync, readFileSync } from "node:fs";
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { Container, Image, Spacer, Text, type Component } from "@earendil-works/pi-tui";
+import { readFileSync } from "node:fs";
+import { settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import type {
+  ExtensionTheme,
+  ToolRenderResultOptions,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { cfgTerminalShowImages } from "@oh-my-pi/pi-coding-agent/modes/settings";
+import { nativeRendering, UiNode } from "@oh-my-pi/pi-tui";
 import {
   renderSfPiResultCardText,
   renderSfPiToolCallLine,
   type SfPiArtifact,
   type SfPiResultCard,
 } from "../../../lib/common/display/result-card.ts";
+import { evidenceImage } from "./evidence-image.ts";
+
+type RenderTheme = Pick<ExtensionTheme, "fg" | "bg" | "bold">;
 
 interface ToolResultLike {
-  content?: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
+  content?: readonly { type: string; text?: string; data?: string; mimeType?: string }[];
   details?: unknown;
+  isError?: boolean;
 }
 
 interface RenderOptions {
   expanded?: boolean;
   isPartial?: boolean;
-}
-
-interface RenderContextLike {
-  args?: unknown;
-  isError?: boolean;
 }
 
 export const SF_BROWSER_IMAGE_WIDTH_CELLS = 90;
@@ -41,69 +45,112 @@ const TOOL_META: Record<string, { action: string; icon: string; label: string }>
   sf_browser_resolve_path: { action: "Resolve", icon: "🗺", label: "SF Browser" },
 };
 
-export function renderBrowserToolCall(toolName: string, args: unknown, theme: Theme): Component {
+export function browserToolRenderers(toolName: string) {
+  return {
+    renderCall: (args: unknown, _options: ToolRenderResultOptions, theme: RenderTheme) =>
+      renderBrowserToolCall(toolName, args, theme),
+    renderResult: (
+      result: ToolResultLike,
+      options: ToolRenderResultOptions,
+      theme: RenderTheme,
+      args?: unknown,
+    ) =>
+      renderBrowserToolResult(
+        toolName,
+        result,
+        options,
+        theme,
+        args,
+        cfgTerminalShowImages.get(settings),
+      ),
+  };
+}
+
+export function renderBrowserToolCall(toolName: string, args: unknown, theme: RenderTheme): UiNode {
   const meta = metaFor(toolName);
-  return new Text(
-    renderSfPiToolCallLine(
+  const input = asRecord(args);
+  return new UiNode("ansi", {
+    text: renderSfPiToolCallLine(
       {
         icon: meta.icon,
         label: meta.label,
         action: meta.action,
-        subject: callSubject(toolName, asRecord(args)),
-        scope: stringValue(asRecord(args).target_org),
+        subject: callSubject(toolName, input),
+        scope: stringValue(input.target_org),
       },
       theme,
     ),
-    0,
-    0,
-  );
+  });
 }
 
 export function renderBrowserToolResult(
   toolName: string,
   result: ToolResultLike,
   options: RenderOptions,
-  theme: Theme,
-  context: RenderContextLike = {},
-): Component {
+  theme: RenderTheme,
+  args?: unknown,
+  showInlineImages = true,
+): UiNode {
   const details = asRecord(result.details);
   if (options.isPartial) {
     const phase = stringValue(details.phase) ?? `Running ${metaFor(toolName).action.toLowerCase()}`;
-    return new Text(theme.fg("warning", `⏳ SF Browser · ${phase}`), 0, 0);
+    return new UiNode("ansi", { text: theme.fg("warning", `⏳ SF Browser · ${phase}`) });
   }
 
-  const card = buildBrowserResultCard(toolName, result, context);
-  const container = new Container();
-  container.addChild(
-    new Text(renderSfPiResultCardText(card, { expanded: options.expanded }, theme), 0, 0),
-  );
-  const thumbnailPath = result.content?.some((item) => item.type === "image")
-    ? undefined
-    : latestThumbnailPath(asRecord(result.details));
-  if (thumbnailPath && existsSync(thumbnailPath)) {
-    const mimeType = /\.jpe?g$/iu.test(thumbnailPath) ? "image/jpeg" : "image/png";
-    container.addChild(new Spacer(1));
-    container.addChild(
-      new Image(
-        readFileSync(thumbnailPath).toString("base64"),
-        mimeType,
-        { fallbackColor: (text) => theme.fg("toolOutput", text) },
-        { maxWidthCells: SF_BROWSER_IMAGE_WIDTH_CELLS, filename: thumbnailPath },
-      ),
-    );
+  const card = buildBrowserResultCard(toolName, result, args);
+  const text = new UiNode("ansi", {
+    text: renderSfPiResultCardText(card, { expanded: options.expanded }, theme),
+  });
+  const terminalDrawsAttachments = !nativeRendering();
+  if (terminalDrawsAttachments && !showInlineImages) return text;
+  const thumbnailPath = latestThumbnailPath(details);
+  const previews: UiNode<"image">[] = [];
+  let attached = false;
+  for (const part of result.content ?? []) {
+    if (part.type !== "image" || !part.data || !part.mimeType) continue;
+    attached = true;
+    // Tern appends result images itself; the terminal's custom tool look paints only our view.
+    if (terminalDrawsAttachments) {
+      previews.push(
+        evidenceImage(
+          Buffer.from(part.data, "base64"),
+          part.mimeType,
+          SF_BROWSER_IMAGE_WIDTH_CELLS,
+        ),
+      );
+    }
   }
-  return container;
+  if (!attached && thumbnailPath) {
+    const bytes = readThumbnail(thumbnailPath);
+    if (bytes) {
+      const mimeType = /\.jpe?g$/iu.test(thumbnailPath) ? "image/jpeg" : "image/png";
+      previews.push(
+        evidenceImage(bytes, mimeType, SF_BROWSER_IMAGE_WIDTH_CELLS, undefined, thumbnailPath),
+      );
+    }
+  }
+  return previews.length === 0
+    ? text
+    : new UiNode("col", { gap: "xs", children: [text, ...previews] });
 }
 
-export function buildBrowserResultCard(
+function readThumbnail(filePath: string): Buffer | undefined {
+  try {
+    return readFileSync(filePath);
+  } catch {
+    return undefined;
+  }
+}
+
+function buildBrowserResultCard(
   toolName: string,
   result: ToolResultLike,
-  context: RenderContextLike = {},
+  rawArgs?: unknown,
 ): SfPiResultCard {
   const details = asRecord(result.details);
-  const args = asRecord(context.args);
+  const args = asRecord(rawArgs);
   const meta = metaFor(toolName);
-  const failed = context.isError === true || details.ok === false;
+  const failed = result.isError === true || details.ok === false;
   const duration = stringValue(details.durationText);
   const artifacts = collectArtifacts(details);
   const title = resultTitle(toolName, args, details, result);

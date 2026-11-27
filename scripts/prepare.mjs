@@ -9,8 +9,8 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 const HUSKY_BIN = path.join(ROOT, "node_modules", "husky", "bin.js");
 
-// pi installs git packages with runtime dependencies only. In that mode Husky is
-// intentionally absent, so the prepare hook must stay silent for end users.
+// Git package consumers install only runtime dependencies. Husky is intentionally
+// absent in that mode, so the prepare hook must stay silent for end users.
 if (!existsSync(HUSKY_BIN) || !existsSync(path.join(ROOT, ".git"))) {
   process.exit(0);
 }

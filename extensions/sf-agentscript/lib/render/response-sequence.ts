@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Human-only rendering for parsed LLM response-sequence evidence. */
 
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
 import type { LlmResponseEventEvidence, TurnResponseSequence } from "../llm-response-sequence.ts";
 import { clipLine } from "./shared.ts";
 

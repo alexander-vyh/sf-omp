@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager Settings panel for SF Welcome startup surface. */
-import { type Focusable, matchesKey } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import {
   readEffectiveWelcomeSettings,
   writeScopedWelcomeSettings,
@@ -10,7 +10,7 @@ import {
   type WelcomeSettingsScope,
 } from "./welcome-settings.ts";
 
-class SfWelcomeConfigPanel implements Focusable {
+class SfWelcomeConfigPanel implements RowsPanel {
   focused = false;
 
   private mode: WelcomeStartupMode;
@@ -32,7 +32,7 @@ class SfWelcomeConfigPanel implements Focusable {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.done(undefined);
       return;
     }
@@ -41,7 +41,7 @@ class SfWelcomeConfigPanel implements Focusable {
       this.message = "";
       return;
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "s") {
+    if (matchesKey(data, "enter") || matchesKey(data, "s")) {
       this.save();
     }
   }
@@ -68,8 +68,6 @@ class SfWelcomeConfigPanel implements Focusable {
   render(): string[] {
     return this.renderContent();
   }
-
-  invalidate(): void {}
 
   private save(): void {
     if (this.mode === this.savedMode) {

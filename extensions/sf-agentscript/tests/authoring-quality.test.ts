@@ -3,7 +3,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ExtensionRows, ExtensionTheme } from "@oh-my-pi/pi-coding-agent";
+import type { TSchema } from "typebox";
+import type { NativeUiTool } from "../../../lib/common/native-ui-tool.ts";
 import { createToolTestContext } from "../../../lib/common/tests/extension-tool-context.ts";
 import { registerAuthoringTool } from "../lib/authoring-tool.ts";
 import { AGENT_SCRIPT_QUALITY_RULES } from "../lib/quality/catalog.ts";
@@ -15,10 +17,10 @@ beforeEach(async () => {
 });
 afterEach(async () => rm(workDir, { recursive: true, force: true }));
 
-function captureTool(): ToolDefinition {
-  let tool: ToolDefinition | undefined;
+function captureTool(): NativeUiTool<TSchema, unknown> {
+  let tool: NativeUiTool<TSchema, unknown> | undefined;
   registerAuthoringTool({
-    registerTool: (definition: ToolDefinition) => (tool = definition),
+    registerTool: (definition: NativeUiTool<TSchema, unknown>) => (tool = definition),
   } as never);
   if (!tool) throw new Error("tool not registered");
   return tool;
@@ -35,7 +37,7 @@ const theme = {
   fg: (_color: string, value: string) => value,
   bg: (_color: string, value: string) => value,
   bold: (value: string) => value,
-} as Theme;
+} as ExtensionTheme;
 
 describe("agentscript_authoring inspect/quality", () => {
   it("is a valid read-only authoring mode", () => {
@@ -88,12 +90,25 @@ start_agent main:
       expect.arrayContaining([expect.objectContaining({ rule_id: "unused-action" })]),
     );
 
-    const component = tool.renderResult?.(result as never, { expanded: true } as never, theme, {
+    const view = tool.renderResult?.(
+      result as never,
+      { expanded: true, isPartial: false },
+      theme,
       args,
-    } as never);
-    const rendered = component?.render(120).join("\n") ?? "";
+    ) as ExtensionRows;
+    const rendered = view.render(120).join("\n");
     expect(rendered).toContain("Agent Script Quality");
     expect(rendered).toContain("Unused Action");
+  });
+
+  it("routes streamed compile rendering using the native renderer's raw call args", () => {
+    const view = captureTool().renderResult?.(
+      { content: [], details: {} },
+      { expanded: false, isPartial: true },
+      theme,
+      { verb: "compile", agent_file: "Demo.agent" },
+    ) as ExtensionRows;
+    expect(view.render(80).join("\n")).toContain("compile · running");
   });
 
   it("promotes upstream instruction template diagnostics into quality findings", async () => {

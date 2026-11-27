@@ -3,7 +3,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { renderBrowserToolCall, renderBrowserToolResult } from "./browser-render.ts";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
+import { browserToolRenderers } from "./browser-render.ts";
 import { runEditorOperation } from "./editor-surfaces.ts";
 
 export const SF_BROWSER_EDITOR_TOOL_NAME = "sf_browser_editor";
@@ -14,7 +15,7 @@ const EditorAction = StringEnum(["detect", "read", "write"] as const, {
 });
 
 export function registerSfBrowserEditorTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool(pi, {
     name: SF_BROWSER_EDITOR_TOOL_NAME,
     label: "SF Browser Editor",
     description:
@@ -25,9 +26,7 @@ export function registerSfBrowserEditorTool(pi: ExtensionAPI): void {
       "Detect before editor read/write; editor indexes are render-scoped and writes never imply Save/Apply persistence.",
       "After writing, use the explicit commit control and verify the result; use the installed Browser guide path declared in <sf_engineering_constitution> for the full loop.",
     ],
-    renderCall: (args, theme) => renderBrowserToolCall(SF_BROWSER_EDITOR_TOOL_NAME, args, theme),
-    renderResult: (result, options, theme, context) =>
-      renderBrowserToolResult(SF_BROWSER_EDITOR_TOOL_NAME, result, options, theme, context),
+    ...browserToolRenderers(SF_BROWSER_EDITOR_TOOL_NAME),
     parameters: Type.Object({
       action: Type.Optional(EditorAction),
       editorIndex: Type.Optional(

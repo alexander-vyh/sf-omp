@@ -7,9 +7,9 @@ import {
   DEFAULT_MAX_LINES,
   formatSize,
   truncateHead,
-  withFileMutationQueue,
   type TruncationResult,
 } from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue } from "@oh-my-pi/pi-coding-agent/tools/file-mutation-queue";
 import type { SfPiToolResultEnvelope } from "../../../lib/common/display/types.ts";
 
 export type D360OutputMode = "inline" | "summary" | "file_only";

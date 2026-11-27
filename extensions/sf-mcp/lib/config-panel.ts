@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { type Focusable, matchesKey } from "@earendil-works/pi-tui";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import { inspectInstanceSummary } from "./connection-instances.ts";
 import type { ConflictPlan } from "./conflict-planner.ts";
 import { mcpConfigPath, type McpServerConfig } from "./mcp-config.ts";
@@ -157,7 +157,7 @@ type PanelView =
       needsReload: boolean;
     };
 
-class SfMcpConfigPanel implements Focusable {
+class SfMcpConfigPanel implements RowsPanel {
   focused = false;
   private cursor = 0;
   private states: PresetRuntimeState[] = [];
@@ -496,10 +496,8 @@ class SfMcpConfigPanel implements Focusable {
           return renderResultPage({ theme: this.theme, width, ...view });
       }
     })();
-    this.activeRow = Math.max(
-      0,
-      lines.findIndex((line) => line.includes("❯")),
-    );
+    const selectedRow = lines.findIndex((line) => line.includes("❯"));
+    this.activeRow = selectedRow < 0 ? 0 : selectedRow + Number(this.capturesNavigation());
     return lines.map((line) => padAnsi(line, width));
   }
 
@@ -511,19 +509,22 @@ class SfMcpConfigPanel implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {
-    if (this.view.kind === "setup") this.view.form.invalidate();
-    if (this.view.kind === "review") this.view.form?.invalidate();
+  capturesNavigation(): boolean {
+    return this.view.kind === "setup" && this.view.form.capturesNavigation();
+  }
+
+  dispose(): void {
+    if (this.view.kind === "setup" || this.view.kind === "review") this.view.form?.dispose();
   }
 
   private handleCatalogInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.done(undefined);
       return;
     }
     if (matchesKey(data, "up")) return this.move(-1);
     if (matchesKey(data, "down")) return this.move(1);
-    if (data === "d" || data === "D") {
+    if (matchesKey(data, "d") || matchesKey(data, "shift+d")) {
       this.openToggle(false);
       return;
     }
@@ -534,7 +535,7 @@ class SfMcpConfigPanel implements Focusable {
 
   private handleOverviewInput(data: string): void {
     const view = this.viewAs("overview");
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.view = { kind: "catalog" };
       return;
     }
@@ -588,7 +589,7 @@ class SfMcpConfigPanel implements Focusable {
       matchesKey(data, "escape") ||
       matchesKey(data, "enter") ||
       matchesKey(data, "return") ||
-      data === "q"
+      matchesKey(data, "q")
     ) {
       this.view = { kind: "overview", presetId: view.presetId, selected: 0 };
     }
@@ -598,7 +599,7 @@ class SfMcpConfigPanel implements Focusable {
     const view = this.viewAs("connection");
     const state = inspectPresetRuntime(this.cwd, this.scope, getPreset(view.presetId));
     const options = connectionOptions(state);
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.view = {
         kind: "overview",
         presetId: view.presetId,
@@ -639,7 +640,7 @@ class SfMcpConfigPanel implements Focusable {
       !matchesKey(data, "escape") &&
       !matchesKey(data, "enter") &&
       !matchesKey(data, "return") &&
-      data !== "q"
+      !matchesKey(data, "q")
     ) {
       return;
     }
@@ -653,7 +654,7 @@ class SfMcpConfigPanel implements Focusable {
 
   private handleToolsInput(data: string): void {
     const view = this.viewAs("tools");
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.view = { kind: "overview", presetId: view.presetId, selected: 0 };
       return;
     }
@@ -682,7 +683,7 @@ class SfMcpConfigPanel implements Focusable {
       !matchesKey(data, "escape") &&
       !matchesKey(data, "enter") &&
       !matchesKey(data, "return") &&
-      data !== "q"
+      !matchesKey(data, "q")
     ) {
       return;
     }
@@ -707,7 +708,7 @@ class SfMcpConfigPanel implements Focusable {
     const view = this.viewAs("tool-conflicts");
     const state = inspectPresetRuntime(this.cwd, this.scope, getPreset(view.presetId));
     const conflicts = inspectActiveToolConflicts(state.preset, state.plan);
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.view = {
         kind: "overview",
         presetId: view.presetId,
@@ -723,7 +724,7 @@ class SfMcpConfigPanel implements Focusable {
       view.cursor = cycle(view.cursor, conflicts.length, 1);
       return;
     }
-    if (data === "n" || data === "N") {
+    if (matchesKey(data, "n") || matchesKey(data, "shift+n")) {
       this.view = {
         kind: "tool-policy",
         presetId: view.presetId,
@@ -732,7 +733,7 @@ class SfMcpConfigPanel implements Focusable {
       };
       return;
     }
-    if (data === "b" || data === "B") {
+    if (matchesKey(data, "b") || matchesKey(data, "shift+b")) {
       this.view = {
         kind: "tool-policy",
         presetId: view.presetId,
@@ -760,7 +761,7 @@ class SfMcpConfigPanel implements Focusable {
       !matchesKey(data, "escape") &&
       !matchesKey(data, "enter") &&
       !matchesKey(data, "return") &&
-      data !== "q"
+      !matchesKey(data, "q")
     ) {
       return;
     }
@@ -776,7 +777,7 @@ class SfMcpConfigPanel implements Focusable {
   private handleToolDriftInput(data: string): void {
     const view = this.viewAs("tool-drift");
     const state = inspectPresetRuntime(this.cwd, this.scope, getPreset(view.presetId));
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.view = {
         kind: "overview",
         presetId: view.presetId,
@@ -784,12 +785,15 @@ class SfMcpConfigPanel implements Focusable {
       };
       return;
     }
-    if ((data === "u" || data === "U") && state.managed.status === "managed-outdated") {
+    if (
+      (matchesKey(data, "u") || matchesKey(data, "shift+u")) &&
+      state.managed.status === "managed-outdated"
+    ) {
       this.openReconcile(state);
       return;
     }
     if (
-      (data === "r" || data === "R") &&
+      (matchesKey(data, "r") || matchesKey(data, "shift+r")) &&
       state.drift.removed.length > 0 &&
       state.managed.config &&
       (state.managed.status === "managed-enabled" || state.managed.status === "managed-disabled")
@@ -801,7 +805,7 @@ class SfMcpConfigPanel implements Focusable {
 
   private handleToolProfilesInput(data: string): void {
     const view = this.viewAs("tool-profiles");
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       if (view.returnPolicy) {
         this.view = {
           kind: "tool-policy",
@@ -851,11 +855,11 @@ class SfMcpConfigPanel implements Focusable {
 
   private handleToolPolicyInput(data: string): void {
     const view = this.viewAs("tool-policy");
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.view = { kind: "overview", presetId: view.presetId, selected: 0 };
       return;
     }
-    if (data === "?" || data === "h" || data === "H") {
+    if (matchesKey(data, "?") || matchesKey(data, "h") || matchesKey(data, "shift+h")) {
       this.view = {
         kind: "tool-help",
         presetId: view.presetId,
@@ -864,7 +868,7 @@ class SfMcpConfigPanel implements Focusable {
       };
       return;
     }
-    if (data === "p" || data === "P") {
+    if (matchesKey(data, "p") || matchesKey(data, "shift+p")) {
       this.view = {
         kind: "tool-profiles",
         presetId: view.presetId,
@@ -908,7 +912,12 @@ class SfMcpConfigPanel implements Focusable {
       );
       return;
     }
-    if (data === "s" || data === "S" || data === "a" || data === "A") {
+    if (
+      matchesKey(data, "s") ||
+      matchesKey(data, "shift+s") ||
+      matchesKey(data, "a") ||
+      matchesKey(data, "shift+a")
+    ) {
       this.continueToolPolicy(view.presetId, view.policy);
     }
   }
@@ -919,7 +928,7 @@ class SfMcpConfigPanel implements Focusable {
       !matchesKey(data, "escape") &&
       !matchesKey(data, "enter") &&
       !matchesKey(data, "return") &&
-      data !== "q"
+      !matchesKey(data, "q")
     ) {
       return;
     }
@@ -933,7 +942,7 @@ class SfMcpConfigPanel implements Focusable {
 
   private handleToolPolicyReviewInput(data: string): void {
     const view = this.viewAs("tool-policy-review");
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.view = {
         kind: "tool-policy",
         presetId: view.presetId,
@@ -975,7 +984,7 @@ class SfMcpConfigPanel implements Focusable {
 
   private handleConflictInput(data: string): void {
     const view = this.viewAs("conflicts");
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.backFromConflict(view);
       return;
     }
@@ -1011,7 +1020,7 @@ class SfMcpConfigPanel implements Focusable {
 
   private handleReconcileInput(data: string): void {
     const view = this.viewAs("reconcile");
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.view = { kind: "overview", presetId: view.presetId, selected: 1 };
       return;
     }
@@ -1057,6 +1066,7 @@ class SfMcpConfigPanel implements Focusable {
     const event = view.form.handleInput(data);
     if (!event) return;
     if (event.kind === "back") {
+      view.form.dispose();
       this.backFromSetup(view.sourcePresetId, view.replaceExisting);
       return;
     }
@@ -1073,7 +1083,7 @@ class SfMcpConfigPanel implements Focusable {
 
   private handleReviewInput(data: string): void {
     const view = this.viewAs("review");
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.backFromReview();
       return;
     }
@@ -1102,12 +1112,13 @@ class SfMcpConfigPanel implements Focusable {
       replaceExisting: view.replaceExisting,
       ...(view.toolPolicy ? { toolPolicy: view.toolPolicy } : {}),
     });
+    view.form?.dispose();
     this.finishMutation(result);
   }
 
   private handleToggleInput(data: string): void {
     const view = this.viewAs("toggle");
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.view = { kind: "catalog" };
       return;
     }
@@ -1143,7 +1154,7 @@ class SfMcpConfigPanel implements Focusable {
       !matchesKey(data, "escape") &&
       !matchesKey(data, "enter") &&
       !matchesKey(data, "return") &&
-      data !== "q"
+      !matchesKey(data, "q")
     ) {
       return;
     }
@@ -1393,6 +1404,7 @@ class SfMcpConfigPanel implements Focusable {
         selected: 0,
       };
     } catch (error) {
+      input.form?.dispose();
       this.view = {
         kind: "result",
         title: "Preset validation failed",
@@ -1509,7 +1521,7 @@ function cycle(index: number, length: number, delta: -1 | 1): number {
   return (index + delta + length) % length;
 }
 
-export const createConfigPanel: ConfigPanelFactory = (theme, cwd, scope, done, _tui, ctx) =>
+export const createConfigPanel: ConfigPanelFactory = (theme, cwd, scope, done, _ui, ctx) =>
   new SfMcpConfigPanel(
     theme,
     cwd,

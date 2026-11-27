@@ -107,10 +107,11 @@ function buildManagerActions(pi: ExtensionAPI): ManagerDetailAction[] {
     run: (ctx) => handleCommand(pi, ctx, action.value, true),
     ...(action.value === "connect"
       ? {
-          createPanel: (theme, _cwd, _scope, done, ctx) =>
+          createPanel: (theme, _cwd, _scope, done, ctx, ui) =>
             createSfDocsConnectPanel({
               theme,
               done,
+              requestRender: ui.requestRender,
               prepareLogin: () =>
                 prepareDocsLogin(ctx)
                   ? `Prepared /login ${PROVIDER_NAME} in Pi's editor.`
@@ -120,11 +121,12 @@ function buildManagerActions(pi: ExtensionAPI): ManagerDetailAction[] {
       : {}),
     ...(action.value === "disconnect"
       ? {
-          createPanel: (theme, _cwd, _scope, done, ctx) =>
+          createPanel: (theme, _cwd, _scope, done, ctx, ui) =>
             createSfDocsDisconnectPanel({
               theme,
               endpointSourceLabel: `${detectTokenSource()} token · ${resolveEndpoint().source} endpoint`,
               done,
+              requestRender: ui.requestRender,
               disconnect: () => prepareDocsLogout(ctx),
             }),
         }

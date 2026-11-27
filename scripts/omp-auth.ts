@@ -4,7 +4,7 @@ import { rmSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { localOmpCommand, ROOT } from "./omp-runtime.ts";
+import { localBunExecutable, ROOT } from "./omp-runtime.ts";
 
 type BrokerEnvironment = {
   OMP_AUTH_BROKER_URL: string;
@@ -21,7 +21,7 @@ export interface GlobalAuthConnection {
 export async function connectGlobalAuth(
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<GlobalAuthConnection> {
-  const [bun] = localOmpCommand();
+  const bun = localBunExecutable();
   const runtime = path.join(ROOT, ".runtime");
   const cache = path.join(runtime, "cache");
   const helper = spawn(bun, [path.join(ROOT, "scripts", "omp-auth-broker.ts")], {

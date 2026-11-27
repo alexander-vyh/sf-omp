@@ -9,6 +9,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { emitHumanOnlyCommandOutput } from "../../../../lib/common/human-only-command-output.ts";
 import { resolveUiGlyphs } from "../../../../lib/common/ui-glyphs.ts";
+import { nativeUi } from "../../../../lib/common/ui-rows.ts";
 import { latestEvalSpec } from "../branch-state.ts";
 import { evalProjectRoot, resolveRunDir } from "../eval/persist.ts";
 import { readEvalRunArtifact } from "./artifact-reader.ts";
@@ -44,9 +45,10 @@ export async function openEvalStudio(
   for (;;) {
     let result: EvalStudioIntent | undefined;
     let refreshTimer: ReturnType<typeof setInterval> | undefined;
+    const signal = ctx.signal;
     try {
-      result = await ctx.ui.custom<EvalStudioIntent>(
-        (tui, theme, _keybindings, done) => {
+      result = await nativeUi(ctx.ui).custom<EvalStudioIntent>(
+        (ui, theme, _keybindings, done) => {
           const finish = (value: EvalStudioIntent): void => {
             if (refreshTimer) clearInterval(refreshTimer);
             done(value);
@@ -57,11 +59,9 @@ export async function openEvalStudio(
             inventory,
             resolveUiGlyphs(ctx.cwd),
             finish,
-            () => (tui as { terminal?: { rows?: number } }).terminal?.rows,
+            () => ui.size().rows,
             activeRunId,
           );
-          const rows = (tui as { terminal?: { rows?: number } }).terminal?.rows;
-          if (typeof rows === "number") component.setTerminalRows(rows);
           if (activeRunId) {
             refreshTimer = setInterval(() => {
               void readEvalRunArtifact(resolveRunDir(ctx.cwd, activeRunId), { details: true }).then(
@@ -105,7 +105,7 @@ export async function openEvalStudio(
                         : [summary, ...inventory.unassigned_runs],
                   };
                   component.replaceInventory(inventory);
-                  tui.requestRender();
+                  ui.requestRender();
                 },
               );
             }, 750);
@@ -113,16 +113,11 @@ export async function openEvalStudio(
           }
           return component;
         },
-        {
-          overlay: true,
-          overlayOptions: () => ({
-            anchor: "top-center" as const,
-            width: "96%" as const,
-            minWidth: 64,
-            maxHeight: "92%" as const,
-          }),
-        },
+        { overlay: true, fullscreen: true, signal },
       );
+    } catch (error) {
+      if (signal?.aborted && error === signal.reason) return undefined;
+      throw error;
     } finally {
       if (refreshTimer) clearInterval(refreshTimer);
     }

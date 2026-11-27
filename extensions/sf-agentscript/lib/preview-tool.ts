@@ -2,6 +2,7 @@
 /** Public agentscript_preview registration and dispatch. */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
 import { renderPreviewCall, renderPreviewSendResult } from "./render/timeline.ts";
 import { createTimingCollector, withTimings } from "./timings.ts";
 import { toolError } from "./tool-types.ts";
@@ -143,7 +144,7 @@ interface ParamsAny {
 }
 
 export function registerPreviewTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool<typeof Params, unknown>(pi, {
     name: PREVIEW_TOOL_NAME,
     label: "Agent Script preview",
     description:
@@ -151,7 +152,7 @@ export function registerPreviewTool(pi: ExtensionAPI): void {
     // Rich rendering for the human-watching surface. The LLM still receives
     // the compact summary in `content[0].text` (unchanged); these renderers
     // only paint the TUI tool row.
-    renderCall: renderPreviewCall,
+    renderCall: (args, _opts, theme) => renderPreviewCall(args, theme),
     renderResult: renderPreviewSendResult,
     promptSnippet:
       "Run a single .agent conversation against the live org with full trace capture per turn.",

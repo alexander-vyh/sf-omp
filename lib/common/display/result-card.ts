@@ -7,8 +7,14 @@
  * `details` into this human-facing card for compact, Apple-like progressive
  * disclosure in the terminal.
  */
-import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
-import { Box, Text, type Component } from "@earendil-works/pi-tui";
+import type { ThemeColor } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionRows,
+  ExtensionTheme,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { textRows } from "../ui-rows.ts";
+
+type Theme = Pick<ExtensionTheme, "fg" | "bg" | "bold">;
 
 export type SfPiCardStatus = "success" | "warning" | "error" | "info" | "running";
 export type SfPiTone = "success" | "warning" | "error" | "info" | "muted";
@@ -137,10 +143,8 @@ export function renderSfPiProgressText(progress: SfPiProgress, theme: Theme): st
   return `${theme.fg("accent", indicator)} ${theme.fg("muted", bits.join(" · "))}`;
 }
 
-export function renderSfPiNoticePanel(card: SfPiNoticeCard, theme: Theme): Component {
-  const box = new Box(1, 0, (text) => theme.bg("customMessageBg", text));
-  box.addChild(new Text(buildNoticePanelLines(card, theme).join("\n"), 0, 0));
-  return box;
+export function renderSfPiNoticePanel(card: SfPiNoticeCard, theme: Theme): ExtensionRows {
+  return resultPanel(buildNoticePanelLines(card, theme), theme, 1);
 }
 
 export function renderSfPiNoticeCardText(card: SfPiNoticeCard, theme: Theme): string {
@@ -166,12 +170,17 @@ export function renderSfPiResultCardPanel(
   opts: { expanded?: boolean } = {},
   theme: Theme,
   outputPad = 1,
-): Component {
-  const box = new Box(outputPad, 0, (text) => theme.bg("customMessageBg", text));
-  box.addChild(
-    new Text(buildResultPanelLines(card, opts.expanded === true, theme).join("\n"), 0, 0),
-  );
-  return box;
+): ExtensionRows {
+  return resultPanel(buildResultPanelLines(card, opts.expanded === true, theme), theme, outputPad);
+}
+
+function resultPanel(lines: string[], theme: Theme, padding: number): ExtensionRows {
+  const rows = textRows(lines.join("\n"), padding);
+  return {
+    render(width) {
+      return rows.render(width).map((row) => theme.bg("customMessageBg", row));
+    },
+  };
 }
 
 export function renderSfPiResultCardText(

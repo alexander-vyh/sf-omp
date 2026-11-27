@@ -5,7 +5,7 @@ import type {
   ExtensionContext,
   ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
-import { isEditToolResult, isWriteToolResult } from "@earendil-works/pi-coding-agent";
+import { nativeUi } from "../../../../lib/common/ui-rows.ts";
 import { getAgentScriptAnalysis } from "../analysis-snapshot.ts";
 import { isAgentScriptFile, resolveToolPath } from "../file-classify.ts";
 import { readEffectiveAgentScriptQualitySettings } from "./settings.ts";
@@ -131,7 +131,7 @@ export function registerDeferredAgentScriptQuality(
 }
 
 function collectFile(event: ToolResultEvent, ctx: ExtensionContext, pending: Set<string>): void {
-  if (event.isError || (!isEditToolResult(event) && !isWriteToolResult(event))) return;
+  if (event.isError || (event.toolName !== "edit" && event.toolName !== "write")) return;
   const rawPath = event.input?.path;
   if (typeof rawPath !== "string" || rawPath.trim() === "") return;
   const file = resolveToolPath(rawPath, ctx.cwd);
@@ -152,7 +152,7 @@ function emitQualityCard(
   const card = qualityCardData(file, quality, options);
   pi.appendEntry(AGENT_SCRIPT_QUALITY_ENTRY_TYPE, card);
   if (ctx.mode === "tui") {
-    ctx.ui.setWidget(AGENT_SCRIPT_QUALITY_ENTRY_TYPE, (_tui, theme) =>
+    nativeUi(ctx.ui).setWidget(AGENT_SCRIPT_QUALITY_ENTRY_TYPE, (_ui, theme) =>
       createQualityCardComponent(card, false, theme),
     );
   }

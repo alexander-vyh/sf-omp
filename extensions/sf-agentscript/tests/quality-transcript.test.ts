@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { describe, expect, it, vi } from "vitest";
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import { AGENT_SCRIPT_QUALITY_RULES } from "../lib/quality/catalog.ts";
 import { qualityCardData, type AgentScriptQualityCardState } from "../lib/quality/presentation.ts";
 import {

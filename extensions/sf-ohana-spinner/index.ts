@@ -2,9 +2,9 @@
 /**
  * sf-ohana-spinner behavior contract
  *
- * - Ohana mode supplies rotating Salesforce chrome via Pi's
- *   setWorkingMessage(); Calm mode restores Pi's default Working label
- * - Pi owns the spinner glyph, thinking-level color, and start/stop
+ * - Ohana mode supplies rotating Salesforce chrome via OMP's
+ *   setWorkingMessage(); Calm restores the default Working label.
+ * - OMP owns the spinner glyph, thinking-level color, and start/stop.
  * - Rotates messages every 5 seconds only in Ohana mode
  * - One persisted mode preference; no runtime state between sessions
  *
@@ -15,12 +15,10 @@
  *   session_start   | Install the selected working-indicator mode
  *   5s interval     | In Ohana mode, rotate to a new random message
  *   session_shutdown| Clear rotation timer, restore default indicator
- *   No LLM activity | Silent — Pi only shows the indicator while streaming
+ *   No LLM activity | Silent — OMP only shows the indicator while streaming
  *
- * Pi SDK features used:
- *   ctx.ui.setWorkingIndicator() — restore Pi's default spinner (absent on OMP,
- *     whose default spinner needs no restoring)
- *   ctx.ui.setWorkingMessage() — Ohana catalog text, or Pi's default label
+ * OMP SDK features used:
+ *   ctx.ui.setWorkingMessage() — Ohana catalog text, or the host's default label
  *   session_start, session_shutdown — lifecycle management
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -69,14 +67,8 @@ export default function (pi: ExtensionAPI) {
     rotationTimer = undefined;
   }
 
-  /** OMP exposes no working-indicator API; its spinner is always the host default. */
-  function restoreDefaultSpinner(ui: ExtensionContext["ui"]) {
-    if (typeof ui.setWorkingIndicator === "function") ui.setWorkingIndicator();
-  }
-
-  function restorePiWorkingIndicator(session: IndicatorSession) {
+  function restoreWorkingMessage(session: IndicatorSession) {
     if (!session.ui || !isCurrentSession(session)) return;
-    restoreDefaultSpinner(session.ui);
     session.ui.setWorkingMessage();
   }
 
@@ -103,12 +95,11 @@ export default function (pi: ExtensionAPI) {
 
     const settings = readEffectiveOhanaSpinnerSettings(ctx.cwd);
     if (settings.mode === "calm") {
-      restorePiWorkingIndicator(indicatorSession);
+      restoreWorkingMessage(indicatorSession);
       return;
     }
 
     if (!indicatorSession.ui || !isCurrentSession(indicatorSession)) return;
-    restoreDefaultSpinner(indicatorSession.ui);
     await applyOhanaMessage(indicatorSession);
     if (!indicatorSession.ui || !isCurrentSession(indicatorSession)) return;
 
@@ -131,9 +122,6 @@ export default function (pi: ExtensionAPI) {
     activeSessionKey = null;
     stopRotation();
     activeIndicatorSession = undefined;
-    if (indicatorSession.ui) {
-      restoreDefaultSpinner(indicatorSession.ui);
-      indicatorSession.ui.setWorkingMessage();
-    }
+    indicatorSession.ui?.setWorkingMessage();
   });
 }

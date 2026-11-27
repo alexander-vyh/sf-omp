@@ -56,7 +56,6 @@ function makeContext(mode: "tui" | "rpc") {
       custom: vi.fn(async () => undefined),
       notify: vi.fn(),
       setStatus: vi.fn(),
-      setWorkingVisible: vi.fn(),
     },
     reload: vi.fn(),
   };
@@ -89,7 +88,7 @@ describe("sf-pi manager on the OMP host", () => {
     const ctx = makeContext("tui");
     await loadCommand()("", ctx);
 
-    expect(ctx.ui.custom).toHaveBeenCalledTimes(1);
+    expect(ctx.ui.custom).toHaveBeenCalledExactlyOnceWith(expect.any(Function), { overlay: true });
     expect(ctx.ui.notify).not.toHaveBeenCalledWith(
       expect.stringContaining("package not found"),
       expect.anything(),

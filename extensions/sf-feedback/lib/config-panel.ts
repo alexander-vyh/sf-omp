@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager Settings panel for SF Feedback preferences. */
-import { type Focusable, matchesKey } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import {
   FEEDBACK_DEFAULT_KINDS,
   readEffectiveFeedbackSettings,
@@ -11,7 +11,7 @@ import {
 } from "./settings.ts";
 import type { IssueKind } from "./types.ts";
 
-class FeedbackConfigPanel implements Focusable {
+class FeedbackConfigPanel implements RowsPanel {
   focused = false;
   private kind: IssueKind;
   private savedKind: IssueKind;
@@ -32,7 +32,7 @@ class FeedbackConfigPanel implements Focusable {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.done(undefined);
       return;
     }
@@ -40,7 +40,7 @@ class FeedbackConfigPanel implements Focusable {
       this.cycle(matchesKey(data, "left") ? -1 : 1);
       return;
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "s") this.save();
+    if (matchesKey(data, "enter") || matchesKey(data, "s")) this.save();
   }
 
   renderContent(): string[] {
@@ -64,7 +64,6 @@ class FeedbackConfigPanel implements Focusable {
   render(): string[] {
     return this.renderContent();
   }
-  invalidate(): void {}
 
   private cycle(direction: -1 | 1): void {
     const index = Math.max(0, FEEDBACK_DEFAULT_KINDS.indexOf(this.kind));

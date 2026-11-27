@@ -1,7 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Human-polished and LLM-bounded formatting for SF Docs. */
-import { Text, visibleWidth } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionRows,
+  ExtensionTheme,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
+import { textRows } from "../../../lib/common/ui-rows.ts";
 import type {
   DocsCitation,
   DocsCollection,
@@ -10,19 +14,16 @@ import type {
   SfDocsDisplayDensity,
 } from "./types.ts";
 
-interface RenderOptions {
-  isPartial?: boolean;
-  expanded?: boolean;
-  isError?: boolean;
-  args?: {
-    action?: string;
-    query?: string;
-    collection?: string;
-    version?: string;
-    locale?: string;
-    ids?: string[];
-    urls?: string[];
-  };
+type Theme = Pick<ExtensionTheme, "fg" | "bold">;
+
+interface RenderArgs {
+  action?: string;
+  query?: string;
+  collection?: string;
+  version?: string;
+  locale?: string;
+  ids?: string[];
+  urls?: string[];
 }
 
 interface FetchRenderDocument extends DocsDocument {
@@ -87,50 +88,46 @@ export function renderToolCall(
     format?: string;
   },
   theme: Theme,
-): Text {
+): ExtensionRows {
   const bits = [args.action ?? "status"];
   if (args.collection) bits.push(args.collection);
   if (args.query) bits.push(`"${clipLine(args.query, 60)}"`);
   if (args.ids?.length) bits.push(`${args.ids.length} id${args.ids.length === 1 ? "" : "s"}`);
   if (args.urls?.length) bits.push(`${args.urls.length} url${args.urls.length === 1 ? "" : "s"}`);
   if (args.format) bits.push(args.format);
-  return new Text(
+  return textRows(
     theme.fg("toolTitle", theme.bold("📚 SF Docs ")) + theme.fg("muted", bits.join(" · ")),
-    0,
-    0,
   );
 }
 
 export function renderToolResult(
-  result: { details?: Record<string, unknown>; content?: unknown[] },
-  opts: RenderOptions,
+  result: {
+    details?: Record<string, unknown>;
+    content?: readonly unknown[];
+    isError?: boolean;
+  },
+  opts: { isPartial?: boolean; expanded?: boolean },
   theme: Theme,
-): Text {
-  if (opts.isPartial) return new Text(formatLoading(theme), 0, 0);
+  args?: RenderArgs,
+): ExtensionRows {
+  if (opts.isPartial) return textRows(formatLoading(theme));
   const details = result.details ?? {};
-  const action = String(details.action ?? opts.args?.action ?? "status");
-  if (opts.isError) {
-    return new Text(
-      formatExecutionFailure(
-        action,
-        { ...opts.args, ...details },
-        firstText(result.content),
-        theme,
-      ),
-      0,
-      0,
+  const action = String(details.action ?? args?.action ?? "status");
+  if (result.isError) {
+    return textRows(
+      formatExecutionFailure(action, { ...args, ...details }, firstText(result.content), theme),
     );
   }
   if (details.ok === false) {
-    return new Text(formatFailure(action, details, firstText(result.content), theme), 0, 0);
+    return textRows(formatFailure(action, details, firstText(result.content), theme));
   }
-  if (action === "search") return new Text(formatSearch(details, theme, opts), 0, 0);
+  if (action === "search") return textRows(formatSearch(details, theme, opts));
   if (action === "answer" || action === "explain")
-    return new Text(formatAnswer(details, theme, opts), 0, 0);
-  if (action === "fetch") return new Text(formatFetch(details, theme, opts), 0, 0);
-  if (action === "ground") return new Text(formatGround(details, theme, opts), 0, 0);
-  if (action === "collections") return new Text(formatCollections(details, theme), 0, 0);
-  return new Text(formatSimple(action, details, firstText(result.content), theme), 0, 0);
+    return textRows(formatAnswer(details, theme, opts));
+  if (action === "fetch") return textRows(formatFetch(details, theme, opts));
+  if (action === "ground") return textRows(formatGround(details, theme, opts));
+  if (action === "collections") return textRows(formatCollections(details, theme));
+  return textRows(formatSimple(action, details, firstText(result.content), theme));
 }
 
 export function formatSearch(
@@ -709,7 +706,7 @@ function indent(value: string, prefix: string): string {
     .join("\n");
 }
 
-function firstText(content: unknown[] | undefined): string {
+function firstText(content: readonly unknown[] | undefined): string {
   const first = content?.[0];
   if (!first || typeof first !== "object" || !("text" in first)) return "";
   const text = (first as { text?: unknown }).text;

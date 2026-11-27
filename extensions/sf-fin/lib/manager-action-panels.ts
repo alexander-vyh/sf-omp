@@ -5,9 +5,10 @@
  * Follows SF Code Analyzer's confirm panel, with one addition: the detail is
  * loaded asynchronously (install plan) before the user can confirm.
  */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { type Component, type Focusable, matchesKey } from "@earendil-works/pi-tui";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { wrap } from "@oh-my-pi/pi-tui/text/width";
 import type { ConfigPanelResult } from "../../../catalog/registry.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 
 type Done = (result: ConfigPanelResult | undefined) => void;
 
@@ -18,20 +19,21 @@ export interface ConfirmPanelDetail {
 }
 
 export interface FinConfirmPanelArgs {
-  theme: Theme;
+  theme: Pick<ExtensionTheme, "fg" | "bold">;
   title: string;
   confirmLabel: string;
   loadDetail: () => Promise<ConfirmPanelDetail>;
   done: Done;
+  requestRender?: () => void;
 }
 
 export function createFinConfirmPanel(
   args: FinConfirmPanelArgs,
-): Component & Focusable & { renderContent(width: number): string[] } {
+): RowsPanel & { renderContent(width: number): string[] } {
   return new FinConfirmPanel(args);
 }
 
-class FinConfirmPanel implements Focusable {
+class FinConfirmPanel implements RowsPanel {
   focused = false;
   private selected = 0;
   private busy = true;
@@ -44,7 +46,7 @@ class FinConfirmPanel implements Focusable {
 
   handleInput(data: string): void {
     if (this.busy) return;
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.args.done(undefined);
       return;
     }
@@ -54,7 +56,7 @@ class FinConfirmPanel implements Focusable {
         return;
       }
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+    if (matchesKey(data, "enter")) {
       if (this.result || !this.loaded?.canConfirm || this.selected === 1) {
         this.args.done(undefined);
         return;
@@ -71,12 +73,14 @@ class FinConfirmPanel implements Focusable {
       return [
         title,
         "",
-        ...wrap(this.result, width - 3).map((line) => ` ${t.fg("text", line)}`),
+        ...wrap(this.result, Math.max(1, width - 3)).map((line) => ` ${t.fg("text", line)}`),
         "",
         ` ${t.fg("dim", "Enter/Esc back")}`,
       ];
     }
-    const body = wrap(this.loaded?.detail ?? "", width - 3).map((line) => ` ${t.fg("dim", line)}`);
+    const body = wrap(this.loaded?.detail ?? "", Math.max(1, width - 3)).map(
+      (line) => ` ${t.fg("dim", line)}`,
+    );
     if (!this.loaded?.canConfirm)
       return [title, "", ...body, "", ` ${t.fg("dim", "Enter/Esc back")}`];
     const confirm = this.selected === 0;
@@ -96,8 +100,6 @@ class FinConfirmPanel implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {}
-
   private async load(): Promise<void> {
     try {
       this.loaded = await this.args.loadDetail();
@@ -108,6 +110,7 @@ class FinConfirmPanel implements Focusable {
       };
     } finally {
       this.busy = false;
+      this.args.requestRender?.();
     }
   }
 
@@ -120,30 +123,7 @@ class FinConfirmPanel implements Focusable {
       this.result = error instanceof Error ? error.message : String(error);
     } finally {
       this.busy = false;
+      this.args.requestRender?.();
     }
   }
-}
-
-/** Preserve explicit line breaks (commands, steps) while wrapping long lines. */
-function wrap(text: string, width: number): string[] {
-  const out: string[] = [];
-  for (const paragraph of text.split("\n")) {
-    const words = paragraph.trim().split(/\s+/).filter(Boolean);
-    if (words.length === 0) {
-      out.push("");
-      continue;
-    }
-    let current = "";
-    for (const word of words) {
-      const next = current ? `${current} ${word}` : word;
-      if (next.length <= width) {
-        current = next;
-        continue;
-      }
-      if (current) out.push(current);
-      current = word;
-    }
-    if (current) out.push(current);
-  }
-  return out.length ? out : [""];
 }

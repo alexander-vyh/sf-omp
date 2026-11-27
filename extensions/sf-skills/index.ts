@@ -2,16 +2,15 @@
 /**
  * sf-skills behavior contract (HUD slice)
  *
- * Shows a pinned HUD in the top-right corner while at least one skill is still
- * present in the active LLM context. The HUD stays out of the way by using a
- * non-capturing overlay, so scrolling chat content and tool output do not move it.
+ * Shows a passive HUD above the composer while at least one skill is still
+ * present in the active LLM context. It never takes keyboard focus.
  *
  * Skill state model:
  * - In context: skill usage still present in the current LLM context and shown
- *   in the floating HUD
+ *   in the HUD
  * - Earlier in session: skill usage seen on the current branch, but no longer
  *   present in the active context after compaction or later conversation growth;
- *   available in `/sf-skills summary`, not in the floating HUD
+ *   available in `/sf-skills summary`, not in the HUD
  *
  * Detection signals:
  * - explicit `/skill:name` invocations (parsed from skill blocks in user messages)
@@ -21,11 +20,11 @@
  *
  *   Event             | Result
  *   ------------------|-------------------------------------------------------------
- *   session_start     | Mount hidden passive overlay and reconstruct current state
+ *   session_start     | Mount the passive widget and reconstruct current state
  *   message_end       | Re-scan branch/context and refresh the HUD
  *   session_tree      | Re-scan after branch navigation
  *   session_compact   | Re-scan after compaction changes the active context
- *   session_shutdown  | Dismiss overlay and clear in-memory references
+ *   session_shutdown  | Clear the widget and in-memory references
  *   /sf-skills        | Show a textual summary of in-context and earlier skills
  */
 import {
@@ -37,7 +36,10 @@ import {
   type ExtensionCommandContext,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { SkillsHudComponent } from "./lib/hud-component.ts";
+import type { ExtensionUIContext } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { signal } from "@oh-my-pi/pi-tui";
+import { nativeUi } from "../../lib/common/ui-rows.ts";
+import { renderSkillsHud } from "./lib/hud-component.ts";
 import {
   buildSkillsHudState,
   formatSkillsHudSummary,
@@ -114,6 +116,7 @@ const catalogLoaders: Pick<GatherDeps, "loadSkills" | "loadSkillsFromDir"> = {
 };
 
 const COMMAND_NAME = "sf-skills";
+const HUD_WIDGET_KEY = "sf-skills-hud";
 const PROJECT_SCOPE_UNTRUSTED_MESSAGE =
   "Project-scope skill management is unavailable until Pi trusts this project. Use /trust for future sessions, or restart with --approve if you want SF Pi to read or write project-local skill settings.";
 
@@ -253,10 +256,10 @@ function renderSkillsHelp(): string {
   return [
     "sf-skills — skills manager + HUD",
     "",
-    "HUD (passive top-right overlay):",
+    "HUD (passive widget above the composer):",
     "  • In context — skills still present in active context",
     "  • Earlier in session — skills used on this branch but no longer in context after compaction/growth",
-    "  • Floating HUD hides when no skills remain in active context",
+    "  • The HUD hides when no skills remain in active context",
     "",
     "Funnel (/sf-skills funnel):",
     "  • Tabs: Catalog / Sources / Global / Project / Conflicts",
@@ -290,7 +293,7 @@ function renderSkillsHelp(): string {
 // Extension entry point
 // -------------------------------------------------------------------------------------------------
 
-export function shouldShowFloatingHud(
+export function shouldShowSkillsHud(
   state: SkillsHudState,
   terminalWidth: number,
   terminalHeight: number,
@@ -301,78 +304,54 @@ export function shouldShowFloatingHud(
 export default function sfSkills(pi: ExtensionAPI) {
   if (!requirePiVersion(pi, "sf-skills")) return;
 
-  let hudState: SkillsHudState = EMPTY_STATE;
-  let hudComponent: SkillsHudComponent | null = null;
-  let dismissHud: (() => void) | null = null;
+  const hudState = signal(EMPTY_STATE);
+  let hudUi: ExtensionUIContext | undefined;
 
   function refreshHud(ctx: ExtensionContext): void {
     const branchEntries = ctx.sessionManager.getBranch();
 
-    hudState = buildSkillsHudState({
-      branchEntries,
-      sessionContext: buildSessionContext(branchEntries, ctx.sessionManager.getLeafId()),
-      commands: pi.getCommands(),
-      cwd: ctx.cwd,
-    });
-
-    hudComponent?.setState(hudState);
+    hudState.set(
+      buildSkillsHudState({
+        branchEntries,
+        sessionContext: buildSessionContext(branchEntries, ctx.sessionManager.getLeafId()),
+        commands: pi.getCommands(),
+        cwd: ctx.cwd,
+      }),
+    );
   }
 
-  function ensureHudMounted(ctx: ExtensionContext): void {
-    if (readEffectiveSfSkillsSettings(ctx.cwd).hudVisibility === "hidden") {
-      dismissOverlay();
-      return;
-    }
-    if (ctx.mode !== "tui" || hudComponent || dismissHud) {
-      return;
-    }
-
-    void ctx.ui
-      .custom<void>(
-        (tui, theme, _keybindings, done) => {
-          const component = new SkillsHudComponent(tui, theme, hudState);
-          hudComponent = component;
-          dismissHud = () => {
-            dismissHud = null;
-            hudComponent = null;
-            done(undefined);
-          };
-          return component;
-        },
-        {
-          overlay: true,
-          overlayOptions: () => ({
-            anchor: "top-right",
-            width: "30%",
-            minWidth: 36,
-            margin: { top: 1, right: 2 },
-            nonCapturing: true,
-            visible: (terminalWidth, terminalHeight) => {
-              return shouldShowFloatingHud(hudState, terminalWidth, terminalHeight);
-            },
-          }),
-        },
-      )
-      .catch(() => {
-        hudComponent = null;
-        dismissHud = null;
-      });
-  }
-
-  function dismissOverlay(): void {
-    dismissHud?.();
-    dismissHud = null;
-    hudComponent = null;
+  function clearHudWidget(): void {
+    hudUi?.setWidget(HUD_WIDGET_KEY, undefined);
+    hudUi = undefined;
   }
 
   function rebuildAndRender(ctx: ExtensionContext): void {
-    ensureHudMounted(ctx);
     refreshHud(ctx);
+    if (ctx.mode !== "tui" || !ctx.hasUI) return;
+    if (readEffectiveSfSkillsSettings(ctx.cwd).hudVisibility === "hidden") {
+      clearHudWidget();
+      return;
+    }
+    if (hudUi) return;
+    hudUi = nativeUi(ctx.ui);
+    hudUi.setWidget(
+      HUD_WIDGET_KEY,
+      (ui, theme) => ({
+        render(width) {
+          const state = hudState();
+          const size = ui.size();
+          return shouldShowSkillsHud(state, size.columns, size.rows)
+            ? renderSkillsHud(width, theme, state)
+            : [];
+        },
+      }),
+      { placement: "aboveEditor" },
+    );
   }
 
   pi.on("session_start", async (_event, ctx) => {
-    dismissOverlay();
-    hudState = EMPTY_STATE;
+    clearHudWidget();
+    hudState.set(EMPTY_STATE);
     if (ctx.mode === "tui") {
       const warning = formatLegacyDefaultLibraryWarning(detectLegacyDefaultLibrary(ctx.cwd), {
         sessionStart: true,
@@ -438,11 +417,11 @@ export default function sfSkills(pi: ExtensionAPI) {
   if (pi.events?.on) registerManagerDetailActions(pi, COMMAND_NAME, buildSkillsManagerActions());
 
   pi.on("session_shutdown", async (event) => {
-    dismissOverlay();
+    clearHudWidget();
     // Preserve in-memory state on reload — session_start will rebuild it anyway.
     // On other shutdown paths, clear state to avoid stale references.
     if (event.reason !== "reload") {
-      hudState = EMPTY_STATE;
+      hudState.set(EMPTY_STATE);
     }
   });
 
@@ -527,7 +506,7 @@ export default function sfSkills(pi: ExtensionAPI) {
       await emitSkillsOutput(
         ctx,
         "SF Skills HUD summary",
-        formatSkillsHudSummary(hudState).join("\n"),
+        formatSkillsHudSummary(hudState.peek()).join("\n"),
         "info",
         fromPanel,
       );
@@ -613,18 +592,10 @@ export default function sfSkills(pi: ExtensionAPI) {
       return;
     }
     // OMP owns overlay focus and the working indicator for this UI lifecycle.
-    const result = await ctx.ui.custom<ToggleViewResult>(
-      (_tui, theme, _keybindings, done) =>
-        new SkillToggleViewComponent(theme, skills, policy, done),
-      {
-        overlay: true,
-        overlayOptions: () => ({
-          anchor: "center" as const,
-          width: "92%",
-          minWidth: 100,
-          maxHeight: "88%",
-        }),
-      },
+    const result = await nativeUi(ctx.ui).custom<ToggleViewResult>(
+      (ui, theme, _keybindings, done) =>
+        new SkillToggleViewComponent(ui, theme, skills, policy, done),
+      { overlay: true, fullscreen: true },
     );
     if (!result || result.action !== "apply") return;
     writeGlobalInvocationPolicy(result.policy);
@@ -656,19 +627,10 @@ export default function sfSkills(pi: ExtensionAPI) {
     const catalog = buildSkillCatalog(input);
 
     // OMP owns overlay focus and the working indicator for this UI lifecycle.
-    const result = await ctx.ui.custom<FunnelResult>(
-      (_tui, theme, _keybindings, done) =>
-        new SkillFunnelViewComponent(theme, { catalog, cwd: ctx.cwd }, done),
-      {
-        overlay: true,
-        // Fixed max column width (OMP clamps to narrow terminals).
-        overlayOptions: () => ({
-          anchor: "center" as const,
-          width: 152,
-          minWidth: 84,
-          maxHeight: "90%",
-        }),
-      },
+    const result = await nativeUi(ctx.ui).custom<FunnelResult>(
+      (ui, theme, _keybindings, done) =>
+        new SkillFunnelViewComponent(ui, theme, { catalog, cwd: ctx.cwd }, done),
+      { overlay: true, fullscreen: true },
     );
 
     if (!result || result.kind === "cancel") return;

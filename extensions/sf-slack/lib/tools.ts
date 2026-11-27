@@ -39,7 +39,7 @@ import {
   extractStructuredMessages,
   buildAuthStatus,
 } from "./format.ts";
-import { renderCall, renderResult } from "./render.ts";
+import { registerSlackUiTool, renderCall, renderResult } from "./render.ts";
 import { buildSlackTextResult, SLACK_OUTPUT_DESCRIPTION_SUFFIX } from "./truncation.ts";
 import { requireConfirmedChannel } from "./recipient-confirm.ts";
 import { parseSlackMessageUrl } from "./message-url.ts";
@@ -83,7 +83,7 @@ function textBytes(text: string): number {
 }
 
 export function registerSlackTool(pi: ExtensionAPI): void {
-  pi.registerTool<typeof SlackParams>({
+  registerSlackUiTool<typeof SlackParams>(pi, {
     name: "slack",
     label: "Slack",
     description:
@@ -104,7 +104,7 @@ export function registerSlackTool(pi: ExtensionAPI): void {
       "Use the installed Slack guide path declared in <sf_engineering_constitution> for auth recovery, research ordering, durable-write confirmation, and public-artifact safety.",
     ],
     parameters: SlackParams,
-    renderCall,
+    renderCall: (args, _options, theme) => renderCall(args, theme),
     renderResult,
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {

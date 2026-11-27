@@ -1,10 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Registered Slack tool through Pi's real dialog stack and input components. */
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { InteractiveMode, initTheme } from "@earendil-works/pi-coding-agent";
-import { Container, type Component } from "@earendil-works/pi-tui";
+/** Registered Slack tool through OMP's native dialog controller and terminal widgets. */
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerResolveTool } from "../lib/resolve-tool.ts";
 import type { ResolveResult, ResolvedChannel } from "../lib/types.ts";
+import { createNativeTestUi, type NativeTestUi } from "./native-ui-fixture.ts";
 
 vi.mock("../lib/auth.ts", () => ({ requireAuth: vi.fn(async () => ({ token: "test-token" })) }));
 vi.mock("../lib/resolve.ts", () => ({
@@ -47,111 +46,116 @@ function captureTool() {
     );
 }
 
-function nativeDialogs() {
-  // Only terminal plumbing is fake. Stack ownership, completion, selection, and input
-  // run on the installed Pi implementation via its extension UI context.
-  const mode = Object.create(InteractiveMode.prototype);
-  mode.extensionDialogs = [];
-  mode.editor = new Container();
-  mode.editorContainer = new Container();
-  mode.programStatus = { setBlocked: vi.fn() };
-  mode.ui = { setFocus: vi.fn(), requestRender: vi.fn() };
-  const ui = mode.createExtensionUIContext();
-  const visible = (): Component => mode.editorContainer.children[0];
-  return { mode, ui, visible };
-}
+let harness: NativeTestUi;
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
-  initTheme("dark", false);
   vi.mocked(resolveChannel).mockImplementation(async (_token, text) => candidates(text));
+  harness = await createNativeTestUi();
+});
+
+afterEach(() => {
+  harness.dispose();
+  vi.restoreAllMocks();
 });
 
 describe("slack_resolve native dialogs", () => {
-  it("answers concurrent calls in stack order without mixing their results", async () => {
-    const { mode, ui, visible } = nativeDialogs();
+  it("answers concurrent calls in native FIFO order without mixing their results", async () => {
+    const { controller, ui, terminal, overlays, composer } = harness;
+    const requested = vi.spyOn(controller, "showHookSelector");
     const run = captureTool();
     const first = run("first", ui);
-    await vi.waitFor(() => expect(mode.extensionDialogs).toHaveLength(1));
+    await vi.waitFor(() => expect(requested).toHaveBeenCalledTimes(1));
+    const firstDialog = overlays.top();
+    expect(firstDialog).toBeDefined();
     const second = run("second", ui);
-    await vi.waitFor(() => expect(mode.extensionDialogs).toHaveLength(2));
-    visible().handleInput?.("\r");
-    expect((await second).details).toMatchObject({ best: { name: "second" }, confidence: 1 });
-    expect(mode.extensionDialogs).toHaveLength(1);
-    visible().handleInput?.("\r");
+    await vi.waitFor(() => expect(requested).toHaveBeenCalledTimes(2));
+    expect(overlays.top()).toBe(firstDialog);
+    terminal.press("enter");
     const result = (await first).details;
     expect(result).toMatchObject({ best: { name: "first" }, confidence: 1 });
     expect(result.warnings.join(" ")).not.toContain("Re-invoke serially");
-    expect(mode.extensionDialogs).toHaveLength(0);
-    expect(visible()).toBe(mode.editor);
+    expect(overlays.top()).toBeDefined();
+    expect(overlays.top()).not.toBe(firstDialog);
+    terminal.press("enter");
+    expect((await second).details).toMatchObject({ best: { name: "second" }, confidence: 1 });
+    expect(overlays.open()).toBe(false);
+    expect(terminal.surface.focused()).toBe(composer);
   });
 
   it("cancels one selector without stranding another", async () => {
-    const { mode, ui, visible } = nativeDialogs();
+    const { controller, ui, terminal, overlays } = harness;
+    const requested = vi.spyOn(controller, "showHookSelector");
     const run = captureTool();
     const first = run("first", ui);
-    await vi.waitFor(() => expect(mode.extensionDialogs).toHaveLength(1));
+    await vi.waitFor(() => expect(requested).toHaveBeenCalledTimes(1));
     const second = run("second", ui);
-    await vi.waitFor(() => expect(mode.extensionDialogs).toHaveLength(2));
-    visible().handleInput?.("\x1b");
-    expect((await second).details.confidence).toBe(0.7);
-    visible().handleInput?.("\r");
-    expect((await first).details.confidence).toBe(1);
-    expect(mode.extensionDialogs).toHaveLength(0);
+    await vi.waitFor(() => expect(requested).toHaveBeenCalledTimes(2));
+    terminal.press("escape");
+    expect((await first).details.confidence).toBe(0.7);
+    terminal.press("enter");
+    expect((await second).details.confidence).toBe(1);
+    expect(overlays.open()).toBe(false);
   });
 
-  it("restores a selector after an overlapping exact-name input completes", async () => {
+  it("opens a queued selector after the exact-name input completes", async () => {
     vi.mocked(resolveChannel).mockImplementation(async (_token, text) =>
       text === "missing"
         ? { ...candidates(text), ok: false, best: undefined, candidates: [] }
         : { ...candidates(text), confidence: text === "exact" ? 1 : 0.7 },
     );
-    const { mode, ui, visible } = nativeDialogs();
+    const { controller, ui, terminal, overlays } = harness;
+    const inputRequested = vi.spyOn(controller, "showHookInput");
+    const selectorRequested = vi.spyOn(controller, "showHookSelector");
     const run = captureTool();
-    const first = run("first", ui);
-    await vi.waitFor(() => expect(mode.extensionDialogs).toHaveLength(1));
     const missing = run("missing", ui);
-    await vi.waitFor(() => expect(mode.extensionDialogs).toHaveLength(2));
-    visible().handleInput?.("exact");
-    visible().handleInput?.("\r");
+    await vi.waitFor(() => expect(inputRequested).toHaveBeenCalledTimes(1));
+    const input = overlays.top();
+    const first = run("first", ui);
+    await vi.waitFor(() => expect(selectorRequested).toHaveBeenCalledTimes(1));
+    expect(overlays.top()).toBe(input);
+    terminal.type("exact");
+    terminal.press("enter");
     expect((await missing).details).toMatchObject({ best: { name: "exact" }, confidence: 1 });
-    visible().handleInput?.("\r");
-    expect((await first).details.best?.name).toBe("first");
-    expect(mode.extensionDialogs).toHaveLength(0);
+    terminal.press("enter");
+    expect((await first).details).toMatchObject({ best: { name: "first" }, confidence: 1 });
+    expect(overlays.open()).toBe(false);
   });
 
-  it("cancels an exact-name input and restores the pending selector", async () => {
+  it("opens the pending selector when an exact-name input is cancelled", async () => {
     vi.mocked(resolveChannel).mockImplementation(async (_token, text) =>
       text === "missing"
         ? { ...candidates(text), ok: false, best: undefined, candidates: [] }
         : candidates(text),
     );
-    const { mode, ui, visible } = nativeDialogs();
+    const { controller, ui, terminal, overlays } = harness;
+    const inputRequested = vi.spyOn(controller, "showHookInput");
+    const selectorRequested = vi.spyOn(controller, "showHookSelector");
     const run = captureTool();
-    const first = run("first", ui);
-    await vi.waitFor(() => expect(mode.extensionDialogs).toHaveLength(1));
     const missing = run("missing", ui);
-    await vi.waitFor(() => expect(mode.extensionDialogs).toHaveLength(2));
-    visible().handleInput?.("\x1b");
+    await vi.waitFor(() => expect(inputRequested).toHaveBeenCalledTimes(1));
+    const first = run("first", ui);
+    await vi.waitFor(() => expect(selectorRequested).toHaveBeenCalledTimes(1));
+    terminal.press("escape");
     expect((await missing).details.ok).toBe(false);
-    visible().handleInput?.("\r");
+    terminal.press("enter");
     expect((await first).details.confidence).toBe(1);
-    expect(mode.extensionDialogs).toHaveLength(0);
+    expect(overlays.open()).toBe(false);
   });
 
   it("keeps high-confidence results non-interactive", async () => {
     vi.mocked(resolveChannel).mockResolvedValue({ ...candidates("exact"), confidence: 1 });
-    const { mode, ui } = nativeDialogs();
+    const { ui, overlays } = harness;
     expect((await captureTool()("exact", ui)).details.confidence).toBe(1);
-    expect(mode.extensionDialogs).toHaveLength(0);
+    expect(overlays.open()).toBe(false);
   });
 
   it.each([{ hasUI: false }, { clarify: false }])(
     "does not open dialogs for %j",
     async (options) => {
-      const { mode, ui } = nativeDialogs();
+      const { ui, overlays } = harness;
       expect((await captureTool()("first", ui, options)).details.confidence).toBe(0.7);
-      expect(mode.extensionDialogs).toHaveLength(0);
+      expect(overlays.open()).toBe(false);
     },
   );
 });

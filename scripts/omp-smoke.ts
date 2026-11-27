@@ -6,7 +6,7 @@ import { createReadStream, type Dirent } from "node:fs";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import path from "node:path";
-import { ROOT, localOmpCommand, runtimeEnvironment } from "./omp-runtime.ts";
+import { ROOT, proofOmpCommand, runtimeEnvironment } from "./omp-runtime.ts";
 
 const runtimeRoot = path.join(ROOT, ".runtime");
 const runRoot = path.join(
@@ -52,6 +52,7 @@ async function globalSnapshot(): Promise<Record<string, string>> {
     for (const entry of entries) {
       const name = relative ? `${relative}/${entry.name}` : entry.name;
       const absolute = path.join(directory, entry.name);
+      if (name === "agent/memories/sharpshooter") continue; // Parallel OMP sessions update this runtime state.
       if (entry.isDirectory()) {
         if (!excludedDirectories.has(entry.name)) await visit(absolute, name);
       } else if (entry.isSymbolicLink()) {
@@ -102,8 +103,9 @@ try {
   env.SFDX_DISABLE_TELEMETRY = "true";
   env.CI = "true";
   // RPC receives only get_state, never prompt/steer; EOF also guarantees teardown.
+  const hostCommand = proofOmpCommand(env);
   const command = [
-    ...localOmpCommand(),
+    ...hostCommand,
     "--mode",
     "rpc",
     "--no-ui",
@@ -121,7 +123,9 @@ try {
     "--model",
     "gpt-4o-mini",
   ];
-  env.SF_OMP_SMOKE_CLI = command[1];
+  env.SF_OMP_SMOKE_EXECUTABLE = hostCommand[0];
+  if (hostCommand[1]) env.SF_OMP_SMOKE_CLI = hostCommand[1];
+  else delete env.SF_OMP_SMOKE_CLI;
   env.SF_OMP_SMOKE_STATE_ROOT = stateRoot;
   env.SF_OMP_SMOKE_CONFIG_ROOT = path.resolve(env.HOME ?? "", env.PI_CONFIG_DIR ?? ".omp");
   const before = await globalSnapshot();

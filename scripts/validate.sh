@@ -57,7 +57,7 @@ banner "Command source contracts"
 node scripts/check-command-contracts.mjs
 
 banner "Manager-first navigation"
-npx vitest run scripts/tests/manager-first-commands.test.ts --reporter=dot
+npm run check:manager-first -- --reporter=dot
 
 banner "Boot-path import check"
 node scripts/check-boot-path.mjs
@@ -72,6 +72,6 @@ banner "Lifecycle-script allowlist check"
 node scripts/check-lifecycle-scripts.mjs
 
 banner "Tests"
-npx vitest run --reporter=dot
+npm test -- --reporter=dot
 
 banner "All checks passed"

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Behavior proof for secure Pi-owned SF Slack credentials. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -10,10 +10,10 @@ import { createSfSlackAuthController } from "../lib/auth.ts";
 import type { SecureCredentialPromptBridge } from "../../../lib/common/secure-credential-prompt.ts";
 import { createSlackConnectPanel } from "../lib/manager-action-panels.ts";
 
-const theme: Theme = {
+const theme = {
   fg: (_color: string, text: string) => text,
   bold: (text: string) => text,
-} as Theme;
+} as ExtensionTheme;
 
 function eventBus() {
   const listeners = new Map<string, Array<(payload: unknown) => void>>();
@@ -42,7 +42,7 @@ describe("SF Slack credential security", () => {
     for (const width of [44, 100]) {
       const rendered = panel.renderContent(width).join("\n");
       const normalized = rendered.replace(/\s+/g, " ");
-      expect(normalized).toContain("fixed-mask SF Pi component");
+      expect(normalized).toContain("OMP masks credential entry");
       expect(normalized).toContain("SLACK_USER_TOKEN");
       expect(normalized).toContain("Prepare native login");
       expect(normalized).not.toContain(secret);
@@ -194,7 +194,7 @@ describe("SF Slack credential security", () => {
     expect(authStorage.login).not.toHaveBeenCalled();
     expect(authStorage.set).not.toHaveBeenCalled();
     expect(setEditorText).toHaveBeenCalledWith("/login sf-slack");
-    expect(notify.mock.calls.flat().join("\n")).toContain("fixed-mask SF Pi component");
+    expect(notify.mock.calls.flat().join("\n")).toContain("OMP masks credential entry");
     expect(notify.mock.calls.flat().join("\n")).toContain("/sf-slack refresh");
     expect(notify.mock.calls.flat().join("\n")).toContain("SLACK_USER_TOKEN");
   });

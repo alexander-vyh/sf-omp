@@ -6,11 +6,14 @@ import {
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionRows,
+  ExtensionUiHost,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { SfEnvironment } from "../../../lib/common/sf-environment/types.ts";
 
-// OMP ignores setFooter, so the DevBar must mount its bottom bar as a widget there.
+// OMP mounts both DevBar surfaces as widgets.
 vi.mock("../../../lib/common/pi-compat.ts", () => ({
-  isOmpHost: () => true,
   requirePiVersion: () => true,
 }));
 vi.mock("../../../lib/common/sf-environment/shared-runtime.ts", () => ({
@@ -32,8 +35,6 @@ vi.mock("../../../lib/common/sf-environment/persisted-cache.ts", () => ({
 
 import sfDevBar from "../index.ts";
 
-type Component = { render(width: number): string[]; dispose?: () => void };
-
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -42,21 +43,24 @@ describe("sf-devbar on the OMP host", () => {
   it("renders the bottom bar below the editor and reads the git branch itself", async () => {
     vi.useFakeTimers();
     const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => unknown>>();
-    const tui = { requestRender: vi.fn() };
+    const host = {
+      requestRender: vi.fn(),
+      size: () => ({ rows: 40, columns: 160 }),
+      suspend: (run) => run(),
+    } satisfies ExtensionUiHost;
     const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
-    const widgets = new Map<string, { component: Component; placement?: string }>();
+    const widgets = new Map<string, { component: ExtensionRows; placement?: string }>();
     const ui = {
       setWidget: vi.fn((key: string, value: unknown, options?: { placement?: string }) => {
         widgets.get(key)?.component.dispose?.();
         widgets.delete(key);
         if (typeof value === "function") {
           widgets.set(key, {
-            component: value(tui, theme) as Component,
+            component: value(host, theme) as ExtensionRows,
             placement: options?.placement,
           });
         }
       }),
-      setFooter: vi.fn(),
       setTitle: vi.fn(),
       notify: vi.fn(),
       setStatus: vi.fn(),
@@ -102,7 +106,7 @@ describe("sf-devbar on the OMP host", () => {
     }
     await emit("session_start");
 
-    expect(ui.setFooter).not.toHaveBeenCalled();
+    expect(widgets.get("sf-devbar")?.placement).toBe("aboveEditor");
     const footer = widgets.get("sf-devbar-footer");
     expect(footer?.placement).toBe("belowEditor");
     const bottom = footer?.component.render(160).join("\n") ?? "";

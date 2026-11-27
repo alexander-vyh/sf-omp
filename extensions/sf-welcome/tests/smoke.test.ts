@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 
 // Render assertions must not depend on the launching terminal (NO_COLOR, Terminal.app).
 beforeEach(() => {

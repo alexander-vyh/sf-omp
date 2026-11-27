@@ -2,7 +2,7 @@
 /**
  * sf-welcome — Salesforce-branded splash screen for sf-pi.
  *
- * Displays a two-column overlay on startup with:
+ * Displays a two-column widget on startup with:
  *   Left column:  Gradient Pi logo, model info, optional gateway usage,
  *                 environment checks, and release freshness rows
  *   Right column: Announcements, loaded counts, recent sessions,
@@ -12,14 +12,13 @@
  *   - sfPi.welcome.mode="header" (default) → Non-blocking header above input
  *   - sfPi.welcome.mode="off"              → No automatic SF Welcome surface
  *
- * On OMP, whose setHeader is a no-op, the same component mounts as a widget
- * above the editor; OMP's session_start carries no reason, so a session that
- * already holds messages counts as a resume.
+ * The splash mounts as an OMP widget above the editor. A session that
+ * already holds messages counts as a resume when no start reason is given.
  *
  * Pi's quietStartup setting independently controls Pi's native startup output.
  *
  * Dismissal triggers:
- *   - Any keypress
+ *   - Esc
  *   - Agent starts responding (agent_start event)
  *   - Tool call execution
  *
@@ -27,12 +26,11 @@
  *
  *   Event/Trigger         | Condition                    | Result
  *   ----------------------|------------------------------|-------------------------------------------
- *   session_start         | reason="startup", no quiet   | Show overlay splash
- *   session_start         | reason="startup", quiet=true | Show persistent header
- *   session_start         | reason!="startup"            | Skip (resume, reload, fork, etc.)
- *   agent_start           | overlay visible              | Dismiss overlay
- *   tool_call             | overlay visible              | Dismiss overlay
- *   any keypress          | overlay visible              | Dismiss overlay
+ *   session_start         | startup, mode="header"       | Mount splash above input
+ *   session_start         | resume, reload, fork, or off | Skip
+ *   agent_start           | splash visible               | Dismiss splash
+ *   tool_call             | splash visible               | Dismiss splash
+ *   Esc                   | splash visible               | Dismiss splash
  *   /sf-welcome           | always                       | Show splash info summary
  */
 import type {
@@ -40,6 +38,7 @@ import type {
   ExtensionCommandContext,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import type { ExtensionUiFactory } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 
 import { getFirstTokenCompletionsFromActions } from "../../lib/common/command-actions.ts";
 import { openInfoPanel, type InfoPanelSeverity } from "../../lib/common/info-panel.ts";
@@ -54,7 +53,7 @@ import {
 } from "../../lib/common/manager-actions.ts";
 
 import type { SplashData } from "./lib/types.ts";
-import { matchesKey } from "@earendil-works/pi-tui";
+import { matchesKey, nativeUi } from "../../lib/common/ui-rows.ts";
 import {
   collectInitialSplashData,
   collectSplashData,
@@ -93,7 +92,7 @@ import {
 } from "../../lib/common/doctor/diagnostics.ts";
 
 import { buildExecFn } from "../../lib/common/exec-adapter.ts";
-import { isOmpHost, requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { requirePiVersion } from "../../lib/common/pi-compat.ts";
 import {
   getMonthlyUsageState,
   refreshMonthlyUsage,
@@ -152,17 +151,14 @@ function isReducedMotionRequested(): boolean {
 
 export default function sfWelcome(pi: ExtensionAPI) {
   if (!requirePiVersion(pi, "sf-welcome")) return;
-  // OMP ignores setHeader; the splash mounts as an above-editor widget there.
-  const ompHost = isOmpHost(pi);
 
   function clearSplash(ctx: ExtensionContext): void {
-    if (ompHost) ctx.ui.setWidget(SPLASH_WIDGET_KEY, undefined);
-    else ctx.ui.setHeader(undefined);
+    nativeUi(ctx.ui).setWidget(SPLASH_WIDGET_KEY, undefined);
   }
 
   let headerActive = false;
   let activeHeader: SfWelcomeHeader | null = null;
-  let headerRequestRender: ((force?: boolean) => void) | null = null;
+  let headerRequestRender: (() => void) | null = null;
   let headerAnimationTimer: ReturnType<typeof setInterval> | null = null;
   let headerInputUnsubscribe: (() => void) | null = null;
   let headerOffset = 0;
@@ -269,8 +265,7 @@ export default function sfWelcome(pi: ExtensionAPI) {
 
       headerOffset += 1;
       activeHeader?.setHeaderOffset(headerOffset);
-      activeHeader?.invalidate();
-      headerRequestRender?.(true);
+      headerRequestRender?.();
 
       if (headerOffset >= HEADER_ANIMATION_FRAMES) {
         stopHeaderAnimation();
@@ -279,54 +274,21 @@ export default function sfWelcome(pi: ExtensionAPI) {
   }
 
   function startHeaderDismissListener(ctx: ExtensionContext, generation: number): void {
-    headerInputUnsubscribe ??= ctx.ui.onTerminalInput((data) => {
+    headerInputUnsubscribe ??= nativeUi(ctx.ui).onTerminalInput((data) => {
       if (!headerActive || !isActiveSession(ctx, generation)) return;
-      if (matchesKey(data, "escape") || matchesKey(data, "esc")) {
-        dismiss(ctx);
-        return { consume: true };
-      }
-      return;
+      // The splash is passive; Escape still belongs to the focused native view.
+      if (matchesKey(data, "escape")) dismiss(ctx);
+      return undefined;
     });
   }
 
-  function refreshMountedSplash(
-    ctx: ExtensionContext,
-    generation: number,
-    force: boolean = false,
-  ): void {
-    if (!isActiveSession(ctx, generation)) return;
-    if (headerActive) {
-      activeHeader?.invalidate();
-      headerRequestRender?.(force);
-    }
-  }
-
-  /**
-   * Phase 2.2: debounced repaint coalescer.
-   *
-   * Multiple async data sources (gateway usage probe, slack scope check,
-   * sf-cli detection, announcements feed) each finish on their own and
-   * trigger a forced repaint. Without coalescing the splash forces 5–7
-   * full overlay redraws during hydration, which reads as visual jitter
-   * on slower terminals. A 60ms trailing debounce drops that to 2–3
-   * paints without any user-visible delay (well below the 100ms
-   * perceptual threshold). Force is OR'ed across coalesced calls so a
-   * single force=true callsite is preserved through the merge.
-   */
-  let coalesceForce = false;
+  // Coalesce updates from independently hydrated splash data into one repaint.
   let coalesceTimer: ReturnType<typeof setTimeout> | null = null;
-  function scheduleSplashRepaint(
-    ctx: ExtensionContext,
-    generation: number,
-    force: boolean = false,
-  ): void {
-    coalesceForce = coalesceForce || force;
+  function scheduleSplashRepaint(ctx: ExtensionContext, generation: number): void {
     if (coalesceTimer) return;
     coalesceTimer = setTimeout(() => {
-      const f = coalesceForce;
-      coalesceForce = false;
       coalesceTimer = null;
-      refreshMountedSplash(ctx, generation, f);
+      if (headerActive && isActiveSession(ctx, generation)) headerRequestRender?.();
     }, 60);
     coalesceTimer.unref?.();
   }
@@ -1489,9 +1451,9 @@ export default function sfWelcome(pi: ExtensionAPI) {
     header.setHeaderOffset(headerOffset);
     headerActive = true;
 
-    const factory: NonNullable<Parameters<ExtensionContext["ui"]["setHeader"]>[0]> = (tui) => {
+    const factory: ExtensionUiFactory = (ui) => {
       activeHeader = header;
-      headerRequestRender = (force = false) => tui.requestRender(force);
+      headerRequestRender = () => ui.requestRender();
       startHeaderAnimation(ctx, generation);
       startHeaderDismissListener(ctx, generation);
 
@@ -1499,9 +1461,6 @@ export default function sfWelcome(pi: ExtensionAPI) {
         render(width: number): string[] {
           if (!isActiveSession(ctx, generation)) return [];
           return header.render(width);
-        },
-        invalidate() {
-          if (isActiveSession(ctx, generation)) header.invalidate();
         },
         dispose() {
           if (activeHeader === header) {
@@ -1511,12 +1470,6 @@ export default function sfWelcome(pi: ExtensionAPI) {
         },
       };
     };
-    if (ompHost) ctx.ui.setWidget(SPLASH_WIDGET_KEY, factory, { placement: "aboveEditor" });
-    else ctx.ui.setHeader(factory);
-
-    // Pi paints one default frame before extensions bind. Force a full repaint
-    // immediately after installing the header so the default editor frame is
-    // replaced as quickly as sf-pi can manage without Pi core changes.
-    headerRequestRender?.(true);
+    nativeUi(ctx.ui).setWidget(SPLASH_WIDGET_KEY, factory, { placement: "aboveEditor" });
   }
 }

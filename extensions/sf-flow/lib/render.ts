@@ -1,23 +1,23 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Compact human-facing Flow Result Card; topology renders outside the tool tile. */
 
-import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionRows, ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
+import { truncate, visibleWidth, wrap } from "@oh-my-pi/pi-tui/text/width";
+import { textRows } from "../../../lib/common/ui-rows.ts";
 import type { DigestRow, FlowRunDigest, ToolResult } from "./types.ts";
 
 export function renderFlowResult(
   result: ToolResult,
   options: { isPartial?: boolean; expanded?: boolean },
   theme: Theme,
-): Component {
-  if (options.isPartial) return lineComponent(() => theme.fg("warning", "🌊 SF Flow running…"));
+): ExtensionRows {
+  if (options.isPartial) return textRows(theme.fg("warning", "🌊 SF Flow running…"));
   const digest = asDigest(result.details?.digest);
-  if (!digest) return lineComponent(() => result.content?.[0]?.text ?? "");
+  if (!digest) return textRows(result.content?.[0]?.text ?? "");
   return new FlowResultCard(digest, theme, options.expanded === true);
 }
 
-class FlowResultCard implements Component {
+class FlowResultCard implements ExtensionRows {
   constructor(
     private readonly digest: FlowRunDigest,
     private readonly theme: Theme,
@@ -90,11 +90,7 @@ class FlowResultCard implements Component {
       lines.push(this.theme.fg("accent", this.theme.bold("—— ➡️ Next Step ——")));
       lines.push(...wrapHanging("  ", this.digest.next_step, available));
     }
-    return lines.map((line) => truncateToWidth(line, available, ""));
-  }
-
-  invalidate(): void {
-    // Stateless render; current width and theme are applied on every call.
+    return lines.map((line) => truncate(line, width, ""));
   }
 }
 
@@ -106,7 +102,7 @@ function formatRow(item: DigestRow, width: number, theme: Theme): string[] {
 function wrapHanging(prefix: string, value: string, width: number): string[] {
   const prefixWidth = visibleWidth(prefix);
   const valueWidth = Math.max(8, width - prefixWidth);
-  const wrapped = wrapTextWithAnsi(value, valueWidth);
+  const wrapped = wrap(value, valueWidth);
   const indent = " ".repeat(Math.min(prefixWidth, Math.max(0, width - 8)));
   return wrapped.map((line, index) => (index === 0 ? `${prefix}${line}` : `${indent}${line}`));
 }
@@ -115,13 +111,6 @@ function compactMeta(value: string): string {
   if (value.length <= 56 || !value.includes("/")) return value;
   const parts = value.split("/").filter(Boolean);
   return parts.length >= 2 ? `…/${parts.slice(-2).join("/")}` : value;
-}
-
-function lineComponent(renderLine: () => string): Component {
-  return {
-    render: (width) => wrapTextWithAnsi(renderLine(), Math.max(1, width)),
-    invalidate: () => {},
-  };
 }
 
 function statusIcon(status: FlowRunDigest["status"]): string {

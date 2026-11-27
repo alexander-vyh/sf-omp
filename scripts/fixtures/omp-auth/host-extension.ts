@@ -69,8 +69,13 @@ export default function authHostObserver(pi: ExtensionAPI): void {
     unrelatedGlobalSettingsExcluded: false,
     noExternalRequests: true,
   };
+  const blockedHosts = new Set<string>();
   const persist = () =>
-    writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+    writeFile(
+      reportPath,
+      `${JSON.stringify({ ...report, blockedHosts: [...blockedHosts] }, null, 2)}\n`,
+      { mode: 0o600 },
+    );
   const originalFetch = globalThis.fetch;
   globalThis.fetch = Object.assign(async (...args: Parameters<typeof fetch>): Promise<Response> => {
     const input = args[0];
@@ -79,7 +84,24 @@ export default function authHostObserver(pi: ExtensionAPI): void {
     );
     if (url.protocol === "http:" || url.protocol === "https:") {
       if (url.origin !== brokerOrigin) {
+        // Native startup can request public npm metadata. Keep that probe
+        // offline without hiding any attempt to send provider credentials.
+        const init = args[1];
+        const request = input instanceof Request ? input : undefined;
+        const method = init?.method ?? request?.method ?? "GET";
+        const headers = new Headers(init?.headers ?? request?.headers);
+        if (
+          url.origin === "https://registry.npmjs.org" &&
+          method === "GET" &&
+          !url.username &&
+          !url.password &&
+          !url.search &&
+          !headers.has("authorization") &&
+          !headers.has("cookie")
+        )
+          return new Response(null, { status: 503 });
         report.noExternalRequests = false;
+        blockedHosts.add(url.hostname);
         throw new Error("External network disabled by auth smoke.");
       }
     }

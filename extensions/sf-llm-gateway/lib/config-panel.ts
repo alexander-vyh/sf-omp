@@ -11,9 +11,10 @@
  * framing. It renders content rows and handles keyboard input when focused.
  */
 
-import { CURSOR_MARKER, type Focusable, matchesKey, visibleWidth } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
+import { decodeRowKey, matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import {
   type ConfigSource,
   PROVIDER_NAME,
@@ -84,6 +85,10 @@ const CSI = `${ESC}[`;
 const SS3 = `${ESC}O`;
 
 export function normalizePastedTextFieldInput(data: string): string {
+  if (data.startsWith(ESC)) {
+    const key = decodeRowKey(data);
+    if (key) data = key.kind === "release" ? "" : (key.text ?? "");
+  }
   if (isBareCsiSequence(data)) return "";
 
   let output = "";
@@ -154,11 +159,12 @@ function isArrowFinal(value: string | undefined): boolean {
 // Config panel component
 // -------------------------------------------------------------------------------------------------
 
-export class GatewayConfigPanelComponent implements Focusable {
+export class GatewayConfigPanelComponent implements RowsPanel {
   focused = false;
 
   private readonly focusOrder: readonly PanelField[];
   private focusIndex = 0;
+  private activeRow = 0;
   private savedPriority: boolean | undefined;
   private persistedPriority: boolean | undefined;
   private savedBaseUrl: string;
@@ -232,8 +238,7 @@ export class GatewayConfigPanelComponent implements Focusable {
         isLeftKey(data) ||
         isRightKey(data) ||
         matchesKey(data, "space") ||
-        matchesKey(data, "enter") ||
-        matchesKey(data, "return")
+        matchesKey(data, "enter")
       ) {
         this.cyclePriority(isLeftKey(data) ? -1 : 1);
         return;
@@ -274,7 +279,7 @@ export class GatewayConfigPanelComponent implements Focusable {
       return;
     }
 
-    if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+    if (matchesKey(data, "enter")) {
       this.submitCurrentFocus();
     }
   }
@@ -287,13 +292,14 @@ export class GatewayConfigPanelComponent implements Focusable {
     const lines: string[] = [];
     const theme = this.theme;
     const effective = this.resolveEffectivePreview();
+    const focus = this.currentFocus();
     const helpText = this.options.closeOnSave
       ? "Tab/↑↓ move · type/paste to edit · Enter action · token/import buttons return here"
       : "Tab/↑↓ move · type/paste to edit · Enter save · Esc back/discard";
     const saveTarget =
       this.scope === "project" ? projectGatewayConfigPath(this.cwd) : globalGatewayConfigPath();
 
-    const pad = (content: string) => padAnsi(content, width);
+    const pad = (content: string) => padAnsi(truncate(content, width, ""), width);
 
     // Header info
     lines.push(
@@ -318,7 +324,11 @@ export class GatewayConfigPanelComponent implements Focusable {
 
     // Base URL field
     lines.push(pad(` ${this.renderFieldLabel("baseUrl", "Saved base URL")}`));
+    if (focus === "baseUrl") this.activeRow = lines.length;
     lines.push(pad(`   ${this.renderTextField("baseUrl", width - 4)}`));
+    if (focus === "baseUrl" && this.errorMessage) {
+      lines.push(pad(`   ${theme.fg("error", `⚠ ${this.errorMessage}`)}`));
+    }
     lines.push(
       pad(
         `   ${theme.fg("muted", `Saved/env preview: ${describeConfigValue(effective.baseUrl, effective.baseUrlSource)}`)}`,
@@ -355,6 +365,7 @@ export class GatewayConfigPanelComponent implements Focusable {
     lines.push(pad(""));
 
     lines.push(pad(` ${this.renderFieldLabel("exclusiveScope", "Scoped model scope fallback")}`));
+    if (focus === "exclusiveScope") this.activeRow = lines.length;
     lines.push(pad(`   ${this.renderExclusiveScopeField()}`));
     lines.push(
       pad(
@@ -398,9 +409,10 @@ export class GatewayConfigPanelComponent implements Focusable {
     }
     lines.push(pad(""));
 
+    if (focus === "compactionModel") this.activeRow = lines.length + 1;
     const compactionRows = this.compactionModelPicker.renderRows(
       theme,
-      this.currentFocus() === "compactionModel",
+      focus === "compactionModel",
     );
     for (const row of compactionRows) lines.push(pad(` ${row}`));
     lines.push(pad(""));
@@ -413,29 +425,28 @@ export class GatewayConfigPanelComponent implements Focusable {
     const priorityValue =
       this.savedPriority === undefined ? "Inherit" : this.savedPriority ? "On" : "Off";
     const priorityLabel = `Priority requests: [ ${priorityValue} ]`;
-    lines.push(
-      pad(
-        ` ${this.currentFocus() === "priority" ? theme.fg("accent", priorityLabel) : priorityLabel}`,
-      ),
-    );
+    if (focus === "priority") this.activeRow = lines.length;
+    lines.push(pad(` ${focus === "priority" ? theme.fg("accent", priorityLabel) : priorityLabel}`));
     lines.push(pad(`   Effective now: ${priority.enabled ? "On" : "Off"} (${priority.source})`));
     lines.push(pad("   Priority may carry higher charges. Off requests the default tier."));
     lines.push("");
 
     lines.push(pad(` ${theme.fg("muted", "Actions")}`));
     if (this.options.externalActions) {
+      if (focus === "open-token" || focus === "import-claude") this.activeRow = lines.length;
       lines.push(
         pad(
           `   ${this.renderButton("open-token", "Open token page")}  ${this.renderButton("import-claude", "Import from Claude Code")}`,
         ),
       );
     }
+    if (focus === "save" || focus === "cancel") this.activeRow = lines.length;
     lines.push(
       pad(`   ${this.renderButton("save", "Save")}  ${this.renderButton("cancel", "Cancel")}`),
     );
     lines.push(pad(""));
 
-    if (this.errorMessage) {
+    if (focus !== "baseUrl" && this.errorMessage) {
       lines.push(pad(` ${theme.fg("error", `⚠ ${this.errorMessage}`)}`));
     } else if (this.savedMessage) {
       lines.push(pad(` ${theme.fg("success", this.savedMessage)}`));
@@ -464,7 +475,13 @@ export class GatewayConfigPanelComponent implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {}
+  capturesNavigation(): boolean {
+    return this.currentFocus() === "baseUrl";
+  }
+
+  getActiveRow(): number {
+    return this.activeRow;
+  }
 
   private currentFocus(): PanelField {
     // focusIndex is kept in range by the moveFocus helpers, so focusOrder
@@ -511,19 +528,22 @@ export class GatewayConfigPanelComponent implements Focusable {
     const rawValue = this.savedBaseUrl;
     const cursor = this.baseUrlCursor;
     const placeholder = DEFAULT_BASE_URL;
-    const innerWidth = Math.max(12, width - 2);
+    const innerWidth = Math.max(1, width - 2);
     const open = this.theme.fg(focused ? "accent" : "border", "[");
     const close = this.theme.fg(focused ? "accent" : "border", "]");
 
     if (!rawValue && !focused) {
-      const content = padAnsi(this.theme.fg("dim", placeholder), innerWidth);
+      const content = padAnsi(
+        this.theme.fg("dim", truncate(placeholder, innerWidth, "")),
+        innerWidth,
+      );
       return `${open}${content}${close}`;
     }
 
     const viewport = getTextViewport(rawValue, cursor, innerWidth);
     let body = viewport.text;
 
-    if (focused) {
+    if (focused && this.focused) {
       const before = body.slice(0, viewport.cursorIndex);
       // body[i] is only read when the guard above proves i < body.length,
       // but TS's noUncheckedIndexedAccess still reports the access as
@@ -531,8 +551,7 @@ export class GatewayConfigPanelComponent implements Focusable {
       const atCursor =
         viewport.cursorIndex < body.length ? (body[viewport.cursorIndex] ?? " ") : " ";
       const after = viewport.cursorIndex < body.length ? body.slice(viewport.cursorIndex + 1) : "";
-      const marker = this.focused ? CURSOR_MARKER : "";
-      body = `${before}${marker}\x1b[7m${atCursor}\x1b[27m${after}`;
+      body = `${before}\x1b[7m${atCursor}\x1b[27m${after}`;
     }
 
     const padded = padAnsi(body, innerWidth);
@@ -564,7 +583,7 @@ export class GatewayConfigPanelComponent implements Focusable {
       this.errorMessage = null;
       return true;
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+    if (matchesKey(data, "enter")) {
       this.cycleExclusiveScopeMode(1);
       this.errorMessage = null;
       return true;
@@ -575,10 +594,7 @@ export class GatewayConfigPanelComponent implements Focusable {
   private handleCompactionModelInput(data: string): boolean {
     const direction = isLeftKey(data)
       ? -1
-      : isRightKey(data) ||
-          matchesKey(data, "space") ||
-          matchesKey(data, "enter") ||
-          matchesKey(data, "return")
+      : isRightKey(data) || matchesKey(data, "space") || matchesKey(data, "enter")
         ? 1
         : 0;
     if (direction === 0) return false;
@@ -641,7 +657,7 @@ export class GatewayConfigPanelComponent implements Focusable {
       this.errorMessage = null;
       return true;
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+    if (matchesKey(data, "enter")) {
       this.errorMessage = null;
       this.focusIndex = (this.focusIndex + 1) % this.focusOrder.length;
       return true;

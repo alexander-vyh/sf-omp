@@ -21,8 +21,8 @@
  *   - Dry-run via SLACK_SEND_DRY_RUN=1 — confirm UX runs but no API call
  *   - Audit trail via pi.appendEntry(SEND_ENTRY_TYPE, ...)
  */
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { callLabel, registerSlackUiTool, slackText } from "./render.ts";
 import {
   SlackSendParams,
   SEND_ENTRY_TYPE,
@@ -58,14 +58,6 @@ const MENTION_PATTERN =
 const MAX_MESSAGE_LENGTH = 40_000;
 
 // ─── Render helpers ────────────────────────────────────────────────────────────
-
-function callLabel(label: string, summary: string, theme: Theme): Text {
-  return new Text(
-    theme.fg("toolTitle", theme.bold(label + " ")) + theme.fg("muted", summary),
-    0,
-    0,
-  );
-}
 
 interface SendToolCallArgs {
   action?: string;
@@ -105,7 +97,7 @@ function previewBody(text: string, limit = 80): string {
 // ─── Registration ──────────────────────────────────────────────────────────────
 
 export function registerSendTool(pi: ExtensionAPI): void {
-  pi.registerTool<typeof SlackSendParams>({
+  registerSlackUiTool<typeof SlackSendParams>(pi, {
     name: "slack_send",
     label: "Slack Send",
     description:
@@ -147,7 +139,7 @@ export function registerSendTool(pi: ExtensionAPI): void {
       } as never;
     },
 
-    renderCall(args: SendToolCallArgs, theme: Theme) {
+    renderCall(args: SendToolCallArgs, _options, theme) {
       const action = args.action || "send";
       const to = args.to || "?";
       const preview = previewBody(args.text || "", 60);
@@ -172,32 +164,26 @@ export function registerSendTool(pi: ExtensionAPI): void {
       }
     },
 
-    renderResult(
-      result: SendToolRenderResult,
-      opts: { expanded: boolean; isPartial: boolean },
-      theme: Theme,
-    ) {
+    renderResult(result: SendToolRenderResult, opts, theme) {
       if (opts.isPartial) {
-        return new Text(theme.fg("warning", "Slack send awaiting confirmation…"), 0, 0);
+        return slackText(theme.fg("warning", "Slack send awaiting confirmation…"));
       }
       const details = result.details || {};
       if (!details.ok) {
         const reason = details.reason || "";
         const line = getFirstText(result.content) || "Send failed";
         if (reason === "user_cancelled") {
-          return new Text(theme.fg("muted", "✗ Send cancelled by user"), 0, 0);
+          return slackText(theme.fg("muted", "✗ Send cancelled by user"));
         }
-        return new Text(theme.fg("error", `✗ ${line}`), 0, 0);
+        return slackText(theme.fg("error", `✗ ${line}`));
       }
       const dest = details.channel_name ? `#${details.channel_name}` : details.channel || "?";
       const prefix = details.dry_run ? "✓ [dry-run] " : "✓ ";
-      return new Text(
+      return slackText(
         theme.fg("success", prefix) +
           theme.fg("text", `Sent to `) +
           theme.fg("accent", dest) +
           (details.permalink ? theme.fg("dim", `\n  ${details.permalink}`) : ""),
-        0,
-        0,
       );
     },
 

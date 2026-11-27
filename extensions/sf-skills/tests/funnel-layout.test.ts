@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { fitCell, fitColumns, renderColumns, type ColumnSpec } from "../lib/funnel-view/layout.ts";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 
 const specs: ColumnSpec[] = [
   { key: "cur", header: "", min: 2 },

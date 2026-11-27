@@ -10,24 +10,13 @@ use the generated index on this page.
 
 ## SF Pi does not load
 
-1. Restart pi or run `/reload`.
-2. Confirm the package is installed in the expected scope:
-
-   ```text
-   /sf-pi status
-   ```
-
-3. Verify Node.js is at least `22.19`:
-
-   ```bash
-   node --version
-   ```
-
-4. Reinstall the package if pi cannot find it:
-
-   ```bash
-   pi install git:github.com/salesforce/sf-pi
-   ```
+1. From the sf-omp checkout, check `tools/bin/omp --version` (19.2.1 or newer)
+   and `node --version` (22.19 or newer). If OMP is not on PATH, install it
+   from [omp.sh](https://omp.sh/). Upgrade an older native binary with `omp update`.
+2. Run `npm ci` to restore the checkout's dependencies, then start a new
+   session with `tools/bin/omp`. The plain native binary does not load these
+   extensions unless the Salesforce launcher is first on PATH.
+3. Run `/sf-pi doctor` to check the loaded runtime and extensions.
 
 ## Salesforce commands cannot find an org
 

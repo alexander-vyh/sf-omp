@@ -20,8 +20,8 @@ remains explicit-command-only. Managed-library _invocation_ is separate:
 `disable-model-invocation` on a global `effective/` copy so unused skills stay
 out of the system prompt while `/skill:name` keeps working.
 
-It also provides an optional active-context HUD, the managed public Salesforce
-skill-library installer (`forcedotcom/sf-skills`), explicit invocation counters,
+It also provides an optional active-context HUD above the composer, the managed
+public Salesforce skill-library installer (`forcedotcom/sf-skills`), explicit invocation counters,
 and stale-entry/orphan cleanup. Pi's built-in MCP extension owns MCP server
 configuration, connections, authentication, exposure, and readiness; use `/mcp`
 or `pi mcp` for those workflows. SF Skills does not install, recommend, or inspect
@@ -29,8 +29,8 @@ third-party MCP adapters. A retired `forcedotcom/afv-library` checkout is detect
 and warned; `/sf-skills defaults install` switches wiring to the new library
 without deleting the old clone.
 
-Funnel and toggle overlays use OMP's `ui.custom` lifecycle; they do not override
-the working indicator with unsupported visibility calls.
+Funnel and toggle views use OMP's fullscreen `ui.custom` lifecycle. The HUD is a
+passive widget: it does not capture input or appear when no skills are in context.
 
 ## Commands
 

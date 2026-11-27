@@ -1,17 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { Key, matchesKey, visibleWidth, type Component } from "@earendil-works/pi-tui";
+import type { ExtensionRows } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
+import { decodeRowKey } from "../../../../lib/common/ui-rows.ts";
 import type { ExplorerMode, ExplorerStrategy, QueryBuildState, RunResult } from "../types.ts";
 import { cacheStatus } from "../cache.ts";
 import { saveResult, type ExportFormat } from "../export.ts";
-import {
-  formatValue,
-  fit,
-  isBackspaceKey,
-  pad,
-  stripAnsi,
-  type ThemeLike,
-  wrapPlain,
-} from "../text.ts";
+import { formatValue, fit, pad, stripAnsi, type ThemeLike, wrapPlain } from "../text.ts";
 import { transportLabel, type SfDataExplorerTransportInfo } from "../transport.ts";
 
 type FocusPane = "objects" | "fields" | "query";
@@ -27,15 +21,12 @@ export interface ExplorerSpaArgs<TObject, TField> {
   theme: ThemeLike;
   strategy: ExplorerStrategy<TObject, TField>;
   transportInfo?: SfDataExplorerTransportInfo;
-  setEditorText: (text: string) => void;
-  editText?: (title: string, text: string) => Promise<string | undefined>;
-  select?: (title: string, items: string[]) => Promise<string | undefined>;
   notify: (message: string, level?: "info" | "warning" | "error") => void;
   done: (result?: ExplorerSpaResult) => void;
   requestRender: () => void;
 }
 
-export class ExplorerSpa<TObject, TField> implements Component {
+export class ExplorerSpa<TObject, TField> implements ExtensionRows {
   private objects: TObject[];
   private objectCacheLine: string;
   private objectCursor = 0;
@@ -91,21 +82,26 @@ export class ExplorerSpa<TObject, TField> implements Component {
     this.queryText = args.strategy.buildQuery(this.previewState());
   }
 
-  handleInput(data: string): void {
+  handleInput(raw: string): void {
+    if (raw.startsWith("\x1b[200~") && raw.endsWith("\x1b[201~")) {
+      if (this.queryEditing) {
+        this.insertQueryEditText(raw.slice(6, -6));
+        this.args.requestRender();
+      }
+      return;
+    }
+    const key = decodeRowKey(raw);
+    if (!key || key.kind === "release") return;
+    const data = key.text && !/[\x00-\x1f\x7f-\x9f]/.test(key.text) ? key.text : key.id;
     if (this.helpOpen) return this.handleHelpInput(data);
     if (this.saveMenuOpen) return void this.handleSaveMenuInput(data);
     if (this.switchMenuOpen) return this.handleSwitchMenuInput(data);
-    if (this.queryEditing) return this.handleQueryEditInput(data);
+    if (this.queryEditing) return this.handleQueryEditInput(key.id, key.text);
     if (this.editing) return this.handleEditInput(data);
     if (this.detailMode) return this.handleDetailInput(data);
     if (this.searchMode) return this.handleSearchInput(data);
     if (this.confirmQuit) {
-      if (
-        matchesKey(data, Key.enter) ||
-        matchesKey(data, Key.escape) ||
-        data === "q" ||
-        data.toLowerCase() === "y"
-      )
+      if (data === "enter" || data === "escape" || data === "q" || data.toLowerCase() === "y")
         return this.args.done();
       this.confirmQuit = false;
       this.status = "Quit cancelled.";
@@ -113,9 +109,9 @@ export class ExplorerSpa<TObject, TField> implements Component {
       return;
     }
 
-    if (matchesKey(data, Key.ctrl("c"))) return this.args.done();
+    if (data === "ctrl+c") return this.args.done();
     if (data === "q") return this.askQuit();
-    if (matchesKey(data, Key.escape)) {
+    if (data === "escape") {
       if (this.error || this.result) {
         this.error = undefined;
         this.result = undefined;
@@ -124,12 +120,12 @@ export class ExplorerSpa<TObject, TField> implements Component {
       }
       return this.askQuit();
     }
-    if (matchesKey(data, Key.left)) return this.moveFocus(-1);
-    if (matchesKey(data, Key.right) || matchesKey(data, Key.tab)) return this.moveFocus(1);
-    if (matchesKey(data, Key.up)) return this.move(-1);
-    if (matchesKey(data, Key.down)) return this.move(1);
-    if (matchesKey(data, Key.home)) return this.jump(false);
-    if (matchesKey(data, Key.end)) return this.jump(true);
+    if (data === "left") return this.moveFocus(-1);
+    if (data === "right" || data === "tab") return this.moveFocus(1);
+    if (data === "up") return this.move(-1);
+    if (data === "down") return this.move(1);
+    if (data === "home") return this.jump(false);
+    if (data === "end") return this.jump(true);
     if (data === "?") return this.openHelp();
     if (data === "t") return this.openSwitchMenu();
     if (data === "/") {
@@ -151,20 +147,19 @@ export class ExplorerSpa<TObject, TField> implements Component {
     if (data === "v") return this.toggleLayout();
     if (data === "[" || data === "<") return this.resizePane(-0.05);
     if (data === "]" || data === ">") return this.resizePane(0.05);
-    if (this.focus === "objects" && (matchesKey(data, Key.enter) || data === " "))
+    if (this.focus === "objects" && (data === "enter" || data === " "))
       return void this.selectObject(false);
     if (this.focus === "fields") {
-      if (matchesKey(data, Key.enter) || data === " ") return this.toggleField();
+      if (data === "enter" || data === " ") return this.toggleField();
       if (data === "a") return this.selectVisibleFields(true);
       if (data === "n") return this.selectVisibleFields(false);
       if (data === "i") return this.invertVisibleFields();
     }
-    if (this.focus === "query" && (matchesKey(data, Key.enter) || data === " "))
-      return this.openDetail();
+    if (this.focus === "query" && (data === "enter" || data === " ")) return this.openDetail();
   }
 
   render(width: number): string[] {
-    const w = Math.max(90, width);
+    const w = Math.max(1, width);
     const t = this.args.theme;
     const title = this.args.strategy.title(this.args.org);
     const pill = this.args.transportInfo
@@ -234,8 +229,6 @@ export class ExplorerSpa<TObject, TField> implements Component {
     return lines.map((line) => fit(line, w));
   }
 
-  invalidate(): void {}
-
   private renderColumns(w: number): string[] {
     const t = this.args.theme;
     const sepW = 3;
@@ -273,13 +266,14 @@ export class ExplorerSpa<TObject, TField> implements Component {
   private renderAccordion(width: number): string[] {
     const t = this.args.theme;
     const lines: string[] = [];
+    const openPane = this.queryEditing ? "query" : this.focus;
     const panes: Array<{ id: FocusPane; label: string; renderer: (w: number) => string[] }> = [
       { id: "objects", label: "Objects", renderer: (w) => this.renderObjects(w) },
       { id: "fields", label: "Fields", renderer: (w) => this.renderFields(w) },
       { id: "query", label: "Query / Result", renderer: (w) => this.renderQueryPane(w) },
     ];
     for (const pane of panes) {
-      if (this.focus === pane.id) lines.push(...pane.renderer(width));
+      if (openPane === pane.id) lines.push(...pane.renderer(width));
       else lines.push(t.fg("muted", `[ ${pane.label} ]`));
     }
     return lines;
@@ -381,7 +375,11 @@ export class ExplorerSpa<TObject, TField> implements Component {
 
   private renderQueryPane(width: number): string[] {
     const t = this.args.theme;
-    const lines = this.paneHeader("Query / Result", this.focus === "query", width);
+    const lines = this.paneHeader(
+      "Query / Result",
+      this.focus === "query" || this.queryEditing,
+      width,
+    );
     if (this.detailMode && this.result) {
       lines.push(...this.renderRecordDetail(width));
       return lines.map((line) => fit(line, width));
@@ -506,7 +504,7 @@ export class ExplorerSpa<TObject, TField> implements Component {
   }
 
   private handleHelpInput(data: string): void {
-    if (matchesKey(data, Key.escape) || data === "q" || data === "?") {
+    if (data === "escape" || data === "q" || data === "?") {
       this.helpOpen = false;
       this.args.requestRender();
     }
@@ -543,16 +541,16 @@ export class ExplorerSpa<TObject, TField> implements Component {
   }
 
   private handleSwitchMenuInput(data: string): void {
-    if (matchesKey(data, Key.escape) || data === "q") {
+    if (data === "escape" || data === "q") {
       this.switchMenuOpen = false;
       this.args.requestRender();
       return;
     }
     const opts = this.switchOptions();
-    if (matchesKey(data, Key.up)) this.switchMenuCursor = Math.max(0, this.switchMenuCursor - 1);
-    else if (matchesKey(data, Key.down))
+    if (data === "up") this.switchMenuCursor = Math.max(0, this.switchMenuCursor - 1);
+    else if (data === "down")
       this.switchMenuCursor = Math.min(opts.length - 1, this.switchMenuCursor + 1);
-    else if (matchesKey(data, Key.enter)) {
+    else if (data === "enter") {
       const picked = opts[this.switchMenuCursor];
       if (!picked) return;
       if (picked.mode === this.args.strategy.mode) {
@@ -623,9 +621,7 @@ export class ExplorerSpa<TObject, TField> implements Component {
   }
 
   private editFullQuery(): void {
-    // Do not call ctx.ui.editor while a custom TUI is mounted: Pi swaps focus
-    // back to the chat editor and some clients do not restore the custom UI.
-    // Keep query editing inside this component instead.
+    // Keep the saved query and its draft inside the explorer until the user submits or cancels.
     this.queryEditing = true;
     this.queryEditBuffer = this.queryText;
     this.queryEditCursor = this.queryEditBuffer.length;
@@ -635,8 +631,8 @@ export class ExplorerSpa<TObject, TField> implements Component {
     this.args.requestRender();
   }
 
-  private handleQueryEditInput(data: string): void {
-    if (matchesKey(data, Key.escape)) {
+  private handleQueryEditInput(key: string, text?: string): void {
+    if (key === "escape") {
       this.queryEditing = false;
       this.queryEditBuffer = "";
       this.queryEditCursor = 0;
@@ -644,7 +640,7 @@ export class ExplorerSpa<TObject, TField> implements Component {
       this.args.requestRender();
       return;
     }
-    if (matchesKey(data, Key.enter)) {
+    if (key === "enter") {
       this.queryText = this.queryEditBuffer.trim();
       this.queryDirty = true;
       this.queryEditing = false;
@@ -656,37 +652,41 @@ export class ExplorerSpa<TObject, TField> implements Component {
       this.args.requestRender();
       return;
     }
-    if (matchesKey(data, Key.left)) this.queryEditCursor = Math.max(0, this.queryEditCursor - 1);
-    else if (matchesKey(data, Key.right))
+    if (key === "left") this.queryEditCursor = Math.max(0, this.queryEditCursor - 1);
+    else if (key === "right")
       this.queryEditCursor = Math.min(this.queryEditBuffer.length, this.queryEditCursor + 1);
-    else if (matchesKey(data, Key.up)) this.moveQueryEditCursorVertical(-1);
-    else if (matchesKey(data, Key.down)) this.moveQueryEditCursorVertical(1);
-    else if (matchesKey(data, Key.home)) this.queryEditCursor = this.queryLineBounds().start;
-    else if (matchesKey(data, Key.end)) this.queryEditCursor = this.queryLineBounds().end;
-    else if (matchesKey(data, Key.delete)) {
+    else if (key === "up") this.moveQueryEditCursorVertical(-1);
+    else if (key === "down") this.moveQueryEditCursorVertical(1);
+    else if (key === "home") this.queryEditCursor = this.queryLineBounds().start;
+    else if (key === "end") this.queryEditCursor = this.queryLineBounds().end;
+    else if (key === "delete") {
       if (this.queryEditCursor < this.queryEditBuffer.length) {
         this.queryEditBuffer =
           this.queryEditBuffer.slice(0, this.queryEditCursor) +
           this.queryEditBuffer.slice(this.queryEditCursor + 1);
       }
-    } else if (isBackspaceKey(data)) {
+    } else if (key === "backspace") {
       if (this.queryEditCursor > 0) {
         this.queryEditBuffer =
           this.queryEditBuffer.slice(0, this.queryEditCursor - 1) +
           this.queryEditBuffer.slice(this.queryEditCursor);
         this.queryEditCursor -= 1;
       }
-    } else if (data.length > 0 && !data.startsWith("\u001b")) {
-      const printable = data.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
-      if (printable) {
-        this.queryEditBuffer =
-          this.queryEditBuffer.slice(0, this.queryEditCursor) +
-          printable +
-          this.queryEditBuffer.slice(this.queryEditCursor);
-        this.queryEditCursor += printable.length;
-      }
-    }
+    } else if (key === "tab") this.insertQueryEditText("\t");
+    else if (text) this.insertQueryEditText(text);
     this.args.requestRender();
+  }
+
+  private insertQueryEditText(text: string): void {
+    const printable = stripAnsi(text)
+      .replace(/\r\n?/g, "\n")
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, "");
+    if (!printable) return;
+    this.queryEditBuffer =
+      this.queryEditBuffer.slice(0, this.queryEditCursor) +
+      printable +
+      this.queryEditBuffer.slice(this.queryEditCursor);
+    this.queryEditCursor += printable.length;
   }
 
   private moveQueryEditCursorVertical(delta: -1 | 1): void {
@@ -788,15 +788,15 @@ export class ExplorerSpa<TObject, TField> implements Component {
   }
 
   private async handleSaveMenuInput(data: string): Promise<void> {
-    if (matchesKey(data, Key.escape) || data === "q") {
+    if (data === "escape" || data === "q") {
       this.saveMenuOpen = false;
       this.args.requestRender();
       return;
     }
-    if (matchesKey(data, Key.up)) this.saveMenuCursor = Math.max(0, this.saveMenuCursor - 1);
-    else if (matchesKey(data, Key.down))
+    if (data === "up") this.saveMenuCursor = Math.max(0, this.saveMenuCursor - 1);
+    else if (data === "down")
       this.saveMenuCursor = Math.min(this.saveOptions().length - 1, this.saveMenuCursor + 1);
-    else if (matchesKey(data, Key.enter)) {
+    else if (data === "enter") {
       const picked = this.saveOptions()[this.saveMenuCursor];
       if (picked === "Back") {
         this.saveMenuOpen = false;
@@ -964,13 +964,13 @@ export class ExplorerSpa<TObject, TField> implements Component {
   }
 
   private handleEditInput(data: string): void {
-    if (matchesKey(data, Key.escape)) {
+    if (data === "escape") {
       this.editing = null;
       this.editBuffer = "";
       this.args.requestRender();
       return;
     }
-    if (matchesKey(data, Key.enter)) {
+    if (data === "enter") {
       if (this.editing === "where") {
         this.whereClause = this.editBuffer.trim();
         this.status = this.whereClause
@@ -988,7 +988,7 @@ export class ExplorerSpa<TObject, TField> implements Component {
       this.maybeRegenerateQuery();
       return;
     }
-    if (isBackspaceKey(data)) {
+    if (data === "backspace") {
       this.editBuffer = this.editBuffer.slice(0, -1);
       this.args.requestRender();
       return;
@@ -1002,23 +1002,23 @@ export class ExplorerSpa<TObject, TField> implements Component {
 
   private handleSearchInput(data: string): void {
     this.confirmQuit = false;
-    if (matchesKey(data, Key.up)) return this.move(-1);
-    if (matchesKey(data, Key.down)) return this.move(1);
-    if (matchesKey(data, Key.left)) return this.moveFocus(-1);
-    if (matchesKey(data, Key.right) || matchesKey(data, Key.tab)) return this.moveFocus(1);
-    if (matchesKey(data, Key.enter)) {
+    if (data === "up") return this.move(-1);
+    if (data === "down") return this.move(1);
+    if (data === "left") return this.moveFocus(-1);
+    if (data === "right" || data === "tab") return this.moveFocus(1);
+    if (data === "enter") {
       this.searchMode = false;
       if (this.focus === "objects") void this.selectObject(false);
       else if (this.focus === "fields") this.toggleField();
       else this.args.requestRender();
       return;
     }
-    if (matchesKey(data, Key.escape)) {
+    if (data === "escape") {
       this.searchMode = false;
       this.args.requestRender();
       return;
     }
-    if (isBackspaceKey(data)) {
+    if (data === "backspace") {
       this.setCurrentQuery(this.currentQuery().slice(0, -1));
       this.resetScrollForFocus();
       this.args.requestRender();
@@ -1032,25 +1032,25 @@ export class ExplorerSpa<TObject, TField> implements Component {
   }
 
   private handleDetailInput(data: string): void {
-    if (matchesKey(data, Key.ctrl("c"))) return this.args.done();
-    if (matchesKey(data, Key.escape) || data === "q") {
+    if (data === "ctrl+c") return this.args.done();
+    if (data === "escape" || data === "q") {
       this.detailMode = false;
       this.detailScrollTop = 0;
       this.args.requestRender();
       return;
     }
-    if (matchesKey(data, Key.up)) {
+    if (data === "up") {
       this.detailScrollTop = Math.max(0, this.detailScrollTop - 1);
       this.args.requestRender();
       return;
     }
-    if (matchesKey(data, Key.down)) {
+    if (data === "down") {
       this.detailScrollTop += 1;
       this.args.requestRender();
       return;
     }
-    if (matchesKey(data, Key.left)) return this.detailNav(-1);
-    if (matchesKey(data, Key.right)) return this.detailNav(1);
+    if (data === "left") return this.detailNav(-1);
+    if (data === "right") return this.detailNav(1);
     if (data === "c") {
       const row = this.result?.rows[this.resultCursor];
       if (row)

@@ -6,6 +6,7 @@
  */
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
+import { type } from "@oh-my-pi/pi-ai";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import type { RuntimeSurfaceScenarioModule } from "./runtime-surface/types.ts";
 
@@ -35,12 +36,12 @@ export default async function parityProbe(pi: ExtensionAPI): Promise<void> {
       name,
       label: name,
       description: `Parity placeholder for external prerequisite ${name}.`,
-      parameters: { type: "object", properties: {} },
+      parameters: type({}),
       execute: async () => ({
         content: [{ type: "text", text: "Parity placeholder." }],
         details: undefined,
       }),
-    } as unknown as Parameters<ExtensionAPI["registerTool"]>[0]);
+    });
   }
 
   pi.on("session_start", async (_event, ctx) => {

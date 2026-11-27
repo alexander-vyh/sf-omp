@@ -37,7 +37,6 @@ import type {
   ExtensionContext,
   ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
-import { isEditToolResult, isWriteToolResult } from "@earendil-works/pi-coding-agent";
 import { isAgentScriptCompileValid } from "./lib/diagnostics.ts";
 import { isAgentScriptFile, resolveToolPath } from "./lib/file-classify.ts";
 import {
@@ -485,7 +484,7 @@ async function handleToolResult(
   state: AgentScriptAssistState,
 ) {
   if (event.isError) return undefined;
-  if (!isEditToolResult(event) && !isWriteToolResult(event)) return undefined;
+  if (event.toolName !== "edit" && event.toolName !== "write") return undefined;
 
   const rawPath = event?.input?.path;
   if (typeof rawPath !== "string" || rawPath.trim() === "") return undefined;

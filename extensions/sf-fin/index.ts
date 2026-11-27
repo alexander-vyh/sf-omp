@@ -163,7 +163,7 @@ function buildManagerActions(service: FinService): ManagerDetailAction[] {
     ...(action.value === "install"
       ? {
           // Same plan → confirm → run → verify path as `/sf-fin install`, inside the Manager.
-          createPanel: (theme, _cwd, _scope, done) =>
+          createPanel: (theme, _cwd, _scope, done, _ctx, ui) =>
             createFinConfirmPanel({
               theme,
               title: "Install or update Fin CLI",
@@ -185,6 +185,7 @@ function buildManagerActions(service: FinService): ManagerDetailAction[] {
               },
               confirmLabel: "Install",
               done,
+              requestRender: ui.requestRender,
             }),
         }
       : {}),

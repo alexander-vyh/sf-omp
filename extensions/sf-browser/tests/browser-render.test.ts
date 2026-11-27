@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { UiNode } from "@oh-my-pi/pi-tui";
+import { getBlob } from "@oh-my-pi/pi-tui/native/blobs";
+import { renderBlock } from "@oh-my-pi/pi-tui/term/render";
+import { currentTheme } from "@oh-my-pi/pi-tui/theme/runtime";
 import { describe, expect, it } from "vitest";
 import {
   renderBrowserToolCall,
@@ -11,10 +14,10 @@ const theme = {
   fg: (_color: string, text: string) => text,
   bold: (text: string) => text,
   bg: (_color: string, text: string) => text,
-} as unknown as Theme;
+};
 
-function render(component: { render(width: number): string[] }): string {
-  return component.render(120).join("\n");
+function render(node: UiNode): string {
+  return renderBlock(node, 120, { theme: currentTheme() }).rows.join("\n");
 }
 
 describe("SF Browser tool cards", () => {
@@ -50,7 +53,7 @@ describe("SF Browser tool cards", () => {
         },
         { expanded: false, isPartial: false },
         theme,
-        { args },
+        args,
       ),
     );
 
@@ -88,7 +91,7 @@ describe("SF Browser tool cards", () => {
         },
         { expanded: false, isPartial: false },
         theme,
-        { args: { focus: ["External Client App Manager", "Nothing to show yet"] } },
+        { focus: ["External Client App Manager", "Nothing to show yet"] },
       ),
     );
 
@@ -104,10 +107,44 @@ describe("SF Browser tool cards", () => {
         { content: [], details: { phase: "Capturing controls" } },
         { expanded: false, isPartial: true },
         theme,
-        { args: { focus: ["Agentforce"] } },
+        { focus: ["Agentforce"] },
       ),
     );
 
     expect(rendered).toContain("⏳ SF Browser · Capturing controls");
+  });
+
+  it("draws attached evidence as a native image in the terminal tool view", () => {
+    const png =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9kAAAAASUVORK5CYII=";
+    const node = renderBrowserToolResult(
+      "sf_browser_capture_evidence",
+      { content: [{ type: "image", data: png, mimeType: "image/png" }] },
+      {},
+      theme,
+    );
+
+    const previews = node.children().filter((child) => child.kind === "image");
+    expect(previews).toHaveLength(1);
+    expect(previews[0]?.props()).toMatchObject({ w: 1, h: 1, max: { w: "90ch" } });
+    const blob = (previews[0] as UiNode<"image">).props().blob!;
+    expect(getBlob(blob)?.bytes).toEqual(Buffer.from(png, "base64"));
+  });
+
+  it("keeps the evidence card but skips the inline image when disabled", () => {
+    const node = renderBrowserToolResult(
+      "sf_browser_capture_evidence",
+      {
+        content: [{ type: "image", data: "not-decoded", mimeType: "image/png" }],
+        details: { ok: true },
+      },
+      {},
+      theme,
+      undefined,
+      false,
+    );
+
+    expect(node.kind).toBe("ansi");
+    expect(render(node)).toContain("success");
   });
 });

@@ -61,7 +61,6 @@ function context(): ExtensionContext {
     ui: {
       setStatus: vi.fn(),
       notify: vi.fn(),
-      setWorkingVisible: vi.fn(),
     },
   } as unknown as ExtensionContext;
 }

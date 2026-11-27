@@ -18,8 +18,8 @@
  *   terminals that lack emoji font fallback (notably Terminal.app without
  *   an emoji-capable Nerd Font) get ASCII equivalents instead of tofu.
  */
-import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { ExtensionRows } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import { normalizeAnsiForTerminal } from "../../../lib/common/color-policy.ts";
 import { glyph, resolveGlyphMode, type GlyphMode } from "../../../lib/common/glyph-policy.ts";
 import {
@@ -225,7 +225,7 @@ function paintWordmarkRowsWithShadow(rows: string[], offset: number): string[] {
 
 function centerText(text: string, width: number): string {
   const visLen = visibleWidth(text);
-  if (visLen >= width) return truncateToWidth(text, width, "…");
+  if (visLen >= width) return truncate(text, width);
   const leftPad = Math.floor((width - visLen) / 2);
   const rightPad = width - visLen - leftPad;
   return " ".repeat(leftPad) + text + " ".repeat(rightPad);
@@ -260,7 +260,7 @@ function wrapPlainText(text: string, width: number): string[] {
 
 function fitToWidth(str: string, width: number): string {
   const visLen = visibleWidth(str);
-  if (visLen > width) return truncateToWidth(str, width, "…");
+  if (visLen > width) return truncate(str, width);
   return str + " ".repeat(width - visLen);
 }
 
@@ -991,7 +991,7 @@ function buildLeftColumn(
   lines.push("");
 
   // Model info
-  const modelTruncated = truncateToWidth(data.modelName, colWidth - 4, "…");
+  const modelTruncated = truncate(data.modelName, colWidth - 4);
   lines.push(centerText(SF_BLUE(modelTruncated), colWidth));
   lines.push(centerText(MUTED(data.providerName), colWidth));
   // Trademark caption — anchored under the provider name and wrapped to fit
@@ -1051,7 +1051,7 @@ function buildLeftColumn(
     // row never adds boot-time work.
     if (data.caBundleNudge) {
       const hint = `${data.caBundleNudge.command} \u2014 ${data.caBundleNudge.message}`;
-      const truncated = truncateToWidth(hint, Math.max(10, colWidth - 4), "…");
+      const truncated = truncate(hint, Math.max(10, colWidth - 4));
       lines.push(`   ${SF_ORANGE("⚠")} ${MUTED(truncated)}`);
     }
   }
@@ -1067,7 +1067,7 @@ function buildLeftColumn(
     );
     const hint = compactionActionHint(data);
     if (hint) {
-      const truncated = truncateToWidth(hint, Math.max(10, colWidth - 4), "…");
+      const truncated = truncate(hint, Math.max(10, colWidth - 4));
       lines.push(`   ${MUTED(`→ ${truncated}`)}`);
     }
   }
@@ -1097,7 +1097,7 @@ function buildLeftColumn(
   lines.push(formatGlyphInfoRow("fonts", mode, "Fonts", formatFontRuntimeStatusValue(data, mode)));
   const fontHint = fontActionHint(data);
   if (fontHint) {
-    const truncated = truncateToWidth(fontHint, Math.max(10, colWidth - 4), "…");
+    const truncated = truncate(fontHint, Math.max(10, colWidth - 4));
     lines.push(`   ${MUTED(`→ ${truncated}`)}`);
   }
 
@@ -1118,7 +1118,7 @@ function buildLeftColumn(
   );
   const browserHint = browserRuntimeActionHint(data);
   if (browserHint) {
-    const truncated = truncateToWidth(browserHint, Math.max(10, colWidth - 4), "…");
+    const truncated = truncate(browserHint, Math.max(10, colWidth - 4));
     lines.push(`   ${MUTED(`→ ${truncated}`)}`);
   }
 
@@ -1133,7 +1133,7 @@ function buildLeftColumn(
     );
     const codeAnalyzerHint = codeAnalyzerActionHint(data);
     if (codeAnalyzerHint) {
-      const truncated = truncateToWidth(codeAnalyzerHint, Math.max(10, colWidth - 4), "…");
+      const truncated = truncate(codeAnalyzerHint, Math.max(10, colWidth - 4));
       lines.push(`   ${MUTED(`→ ${truncated}`)}`);
     }
   }
@@ -1146,7 +1146,7 @@ function buildLeftColumn(
   );
   const nodeCertHint = nodeCertActionHint(data.nodeCert);
   if (nodeCertHint) {
-    const truncated = truncateToWidth(nodeCertHint, Math.max(10, colWidth - 4), "…");
+    const truncated = truncate(nodeCertHint, Math.max(10, colWidth - 4));
     lines.push(`   ${MUTED(`→ ${truncated}`)}`);
   }
 
@@ -1165,7 +1165,7 @@ function buildLeftColumn(
   );
   const autoUpdateHint = autoUpdateActionHint(data);
   if (autoUpdateHint) {
-    const truncated = truncateToWidth(autoUpdateHint, Math.max(10, colWidth - 4), "…");
+    const truncated = truncate(autoUpdateHint, Math.max(10, colWidth - 4));
     lines.push(`   ${MUTED(`→ ${truncated}`)}`);
   }
 
@@ -1181,7 +1181,7 @@ function buildLeftColumn(
   // from the row's current state.
   const sfSkillsHint = sfSkillsActionHint(data.sfSkills);
   if (sfSkillsHint) {
-    const truncated = truncateToWidth(sfSkillsHint, Math.max(10, colWidth - 4), "…");
+    const truncated = truncate(sfSkillsHint, Math.max(10, colWidth - 4));
     lines.push(`   ${MUTED(`→ ${truncated}`)}`);
   }
 
@@ -1199,7 +1199,7 @@ function buildLeftColumn(
   );
   const sfPiHint = releaseActionHint(data.sfPiRelease);
   if (sfPiHint) {
-    const truncated = truncateToWidth(sfPiHint, Math.max(10, colWidth - 4), "…");
+    const truncated = truncate(sfPiHint, Math.max(10, colWidth - 4));
     lines.push(`   ${MUTED(`→ ${truncated}`)}`);
   }
 
@@ -1237,7 +1237,7 @@ function buildRightColumn(data: SplashData, colWidth: number, mode: GlyphMode): 
   // of being buried behind general announcements or recommendations.
   if (data.doctor && data.doctor.issueCount > 0) {
     lines.push(` ${BOLD}${SF_ORANGE(`${glyph("warn", mode)} Setup check`)}${RESET}`);
-    const detail = truncateToWidth(data.doctor.message, Math.max(10, colWidth - 4), "…");
+    const detail = truncate(data.doctor.message, Math.max(10, colWidth - 4));
     lines.push(` ${SF_ORANGE("!")} ${MUTED(detail)}`);
     lines.push(` ${MUTED("→")} ${SF_CYAN(data.doctor.command)} ${MUTED("to repair")}`);
     lines.push(horizontalRule(colWidth));
@@ -1259,7 +1259,7 @@ function buildRightColumn(data: SplashData, colWidth: number, mode: GlyphMode): 
       const markerColor =
         item.severity === "critical" ? SF_RED : item.severity === "warn" ? SF_ORANGE : SF_CYAN;
       const marker = markerColor(announcementMarker(item.kind));
-      const truncated = truncateToWidth(item.title, Math.max(10, colWidth - 4), "…");
+      const truncated = truncate(item.title, Math.max(10, colWidth - 4));
       lines.push(` ${marker} ${MUTED(truncated)}`);
     }
     lines.push(horizontalRule(colWidth));
@@ -1315,7 +1315,7 @@ function buildRightColumn(data: SplashData, colWidth: number, mode: GlyphMode): 
     );
     const pending = recs.items.filter((i) => i.status === "pending").slice(0, 4);
     for (const item of pending) {
-      const truncated = truncateToWidth(item.name, Math.max(8, colWidth - 4), "…");
+      const truncated = truncate(item.name, Math.max(8, colWidth - 4));
       lines.push(` ${MUTED("○")} ${MUTED(truncated)}`);
     }
     if (recs.pendingCount > 0) {
@@ -1411,7 +1411,7 @@ function getBoxWidth(termWidth: number): number {
 }
 
 function fitSplashLines(lines: string[], termWidth: number): string[] {
-  return lines.map((line) => truncateToWidth(normalizeAnsiForTerminal(line), termWidth, ""));
+  return lines.map((line) => truncate(normalizeAnsiForTerminal(line), termWidth, ""));
 }
 
 function getColumnWidths(boxWidth: number): { leftCol: number; rightCol: number } {
@@ -1496,7 +1496,7 @@ function renderSplashBox(
 // Splash overlay component
 // ═══════════════════════════════════════════════════════════════════════════
 
-export class SfWelcomeOverlay implements Component {
+export class SfWelcomeOverlay implements ExtensionRows {
   private data: SplashData;
   // Per-character color offset driven by the extension's animation
   // interval. Incremented each tick for the startup animation window,
@@ -1510,8 +1510,6 @@ export class SfWelcomeOverlay implements Component {
   setHeaderOffset(offset: number): void {
     this.headerOffset = offset;
   }
-
-  invalidate(): void {}
 
   render(termWidth: number): string[] {
     if (termWidth < ABSOLUTE_MIN_TERM_WIDTH) return [];
@@ -1541,7 +1539,7 @@ export class SfWelcomeOverlay implements Component {
 // Splash header component (persistent)
 // ═══════════════════════════════════════════════════════════════════════════
 
-export class SfWelcomeHeader implements Component {
+export class SfWelcomeHeader implements ExtensionRows {
   private data: SplashData;
   // Mirrors SfWelcomeOverlay.headerOffset so non-overlay renders (e.g.
   // the persistent header shown in session lists) can show the same
@@ -1555,8 +1553,6 @@ export class SfWelcomeHeader implements Component {
   setHeaderOffset(offset: number): void {
     this.headerOffset = offset;
   }
-
-  invalidate(): void {}
 
   render(termWidth: number): string[] {
     if (termWidth < ABSOLUTE_MIN_TERM_WIDTH) return [];

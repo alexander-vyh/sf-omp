@@ -17,7 +17,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue } from "@oh-my-pi/pi-coding-agent/tools/file-mutation-queue";
 import { chooseAgentTypeFromSpec, type ScaffoldAgentType } from "./templates/agent-type.ts";
 import { generateAgentforceDefault } from "./templates/agentforce-default.ts";
 import { generateMinimal } from "./templates/minimal.ts";

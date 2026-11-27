@@ -10,8 +10,9 @@
  */
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { UiNode } from "@oh-my-pi/pi-tui";
 import { Type } from "typebox";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
 import type { FinService } from "./service.ts";
 import { statusText } from "./service.ts";
 import { COMMAND_NAME, PROVIDER_NAME, TOOL_NAME } from "./types.ts";
@@ -222,7 +223,7 @@ export function registerSfFinTool(
   service: FinService,
   meta: () => { sfPiVersion?: string; piVersion?: string },
 ): void {
-  pi.registerTool<typeof Params>({
+  registerNativeUiTool(pi, {
     name: TOOL_NAME,
     label: "SF Fin",
     // setup reads the workspace's Intercom MCP connection (read-only
@@ -250,18 +251,26 @@ export function registerSfFinTool(
       "Use sf_fin action='agent' operation='access' before Fin Agent API runs; never ask for the Fin Agent API key in chat (use /login sf-fin-agent). Runs Fin resolves are billable outcomes.",
     ],
     parameters: Params,
-    renderCall: (args, theme) => {
+    renderCall: (args, _options, theme) => {
       const input = args as Params;
       const bits: string[] = [input.action ?? "status"];
       if (input.action === "install") bits.push(input.allow_mutation ? "execute" : "plan");
       if (input.version) bits.push(input.version);
       if (input.verbose) bits.push(`verbose ${input.verbose}`);
       if (input.operation) bits.push(input.operation);
-      return new Text(
-        theme.fg("toolTitle", theme.bold("🐟 SF Fin ")) + theme.fg("muted", bits.join(" · ")),
-        0,
-        0,
-      );
+      return new UiNode("ansi", {
+        text: theme.fg("toolTitle", theme.bold("🐟 SF Fin ")) + theme.fg("muted", bits.join(" · ")),
+      });
+    },
+    renderResult: (result, options, theme) => {
+      let text = "";
+      for (const part of result.content) {
+        if (part.type === "text") text += `${text ? "\n" : ""}${part.text}`;
+      }
+      return new UiNode("ansi", {
+        text: theme.fg("toolOutput", text),
+        preview: options.expanded ? undefined : { lines: 10 },
+      });
     },
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const input = params as Params;

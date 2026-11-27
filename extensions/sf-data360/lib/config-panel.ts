@@ -6,10 +6,11 @@
  * low-risk preference: default output mode for sf_data360 calls when the
  * caller omits output_mode.
  */
-import { type Focusable, matchesKey, visibleWidth } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
 import { isSfPiExtensionEnabled } from "../../../lib/common/sf-pi-extension-state.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import {
   DATA360_OUTPUT_MODES,
   describeData360SettingsSource,
@@ -24,7 +25,7 @@ function padAnsi(text: string, width: number): string {
   return `${text}${" ".repeat(Math.max(0, width - visibleWidth(text)))}`;
 }
 
-class SfData360ConfigPanel implements Focusable {
+class SfData360ConfigPanel implements RowsPanel {
   focused = false;
 
   private outputMode: Data360OutputModeSetting;
@@ -33,7 +34,7 @@ class SfData360ConfigPanel implements Focusable {
   private message = "";
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: Pick<ExtensionTheme, "fg">,
     private readonly cwd: string,
     private readonly scope: Data360SettingsScope,
     private readonly done: (result: ConfigPanelResult | undefined) => void,
@@ -60,7 +61,7 @@ class SfData360ConfigPanel implements Focusable {
       this.cycleOutputMode(1);
       return;
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "s") {
+    if (matchesKey(data, "enter") || matchesKey(data, "s")) {
       this.save();
     }
   }
@@ -141,6 +142,10 @@ class SfData360ConfigPanel implements Focusable {
     return lines;
   }
 
+  render(width: number): string[] {
+    return this.renderContent(width);
+  }
+
   private cycleOutputMode(direction: -1 | 1): void {
     const currentIndex = DATA360_OUTPUT_MODES.indexOf(this.outputMode);
     const nextIndex =
@@ -163,7 +168,7 @@ class SfData360ConfigPanel implements Focusable {
   }
 }
 
-function toolDot(t: Theme, enabled: boolean): string {
+function toolDot(t: Pick<ExtensionTheme, "fg">, enabled: boolean): string {
   return enabled ? t.fg("success", "●") : t.fg("dim", "○");
 }
 

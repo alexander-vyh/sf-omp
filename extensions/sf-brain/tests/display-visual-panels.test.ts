@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { describe, expect, it } from "vitest";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 
 import { renderDisplayCapabilitiesReport } from "../lib/display-capabilities-panel.ts";
 import { renderVisualResponseAuditReport } from "../lib/visual-response-panel.ts";

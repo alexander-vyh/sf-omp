@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Config panel for core sf-pi settings. */
-import { type Focusable, matchesKey } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
 import {
   readAutoUpdateEnabled,
@@ -19,11 +18,12 @@ import {
   SF_PI_DISPLAY_PROFILES,
   type SfPiDisplayProfile,
 } from "../../../lib/common/display/types.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import { padAnsi, wrapPlainText } from "./render.ts";
 
 type SettingsRow = "auto-update" | "display";
 
-class SfPiManagerConfigPanel implements Focusable {
+class SfPiManagerConfigPanel implements RowsPanel {
   focused = false;
 
   private profile: SfPiDisplayProfile;
@@ -161,8 +161,6 @@ class SfPiManagerConfigPanel implements Focusable {
   render(width: number): string[] {
     return this.renderContent(width);
   }
-
-  invalidate(): void {}
 
   private toggleSelectedRow(): void {
     this.selectedRow = this.selectedRow === "auto-update" ? "display" : "auto-update";

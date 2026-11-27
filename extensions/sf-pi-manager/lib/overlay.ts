@@ -18,21 +18,20 @@
  *   S        cycle scope (global ↔ project)
  *   Esc      back to list (from detail) or apply/close (from list)
  */
-import {
-  type Component,
-  type Focusable,
-  type TUI,
-  matchesKey,
-  truncateToWidth,
-  visibleWidth,
-} from "@earendil-works/pi-tui";
-import type { ExtensionCommandContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionRows,
+  ExtensionTheme as Theme,
+  ExtensionUiHost,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import type {
   SfPiExtension,
   ConfigPanelFactory,
   ConfigPanelResult,
 } from "../../../catalog/registry.ts";
 import type { ManagerDetailAction, ManagerScope } from "../../../lib/common/manager-actions.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import {
   iconForCommandGroup,
   iconForExtension,
@@ -44,17 +43,12 @@ import {
   getExtensionStatusLabel,
 } from "./extension-details.ts";
 
-/**
- * A config panel is both a Component (render, handleInput, invalidate) and
- * Focusable (focused). It may also expose renderContent() for borderless
- * rendering inside the manager's border box.
- */
-type ConfigPanel = Component &
-  Focusable & {
-    renderContent?: (width: number) => string[];
-    /** Zero-based rendered row that should remain visible during keyboard navigation. */
-    getActiveRow?: () => number | undefined;
-  };
+/** SF-owned pages that the Manager composes inside its frame. */
+type ConfigPanel = RowsPanel & {
+  renderContent?: (width: number) => string[];
+  getActiveRow?: () => number | undefined;
+  capturesNavigation?: () => boolean;
+};
 
 const LIST_MAX_TERMINAL_FRACTION = 0.85;
 const LIST_NON_VIEWPORT_ROWS = 7;
@@ -142,8 +136,8 @@ function wrapPlainText(text: string, width: number): string[] {
 // Component
 // -------------------------------------------------------------------------------------------------
 
-export class SfPiOverlayComponent implements Focusable {
-  focused = false;
+export class SfPiOverlayComponent implements ExtensionRows {
+  private disposed = false;
 
   private selectedIndex = 0;
   private listScrollOffset = 0;
@@ -161,7 +155,6 @@ export class SfPiOverlayComponent implements Focusable {
   private closeDetailOnBack = false;
 
   // Resolved config panel factories keyed by extension id.
-  // ConfigPanelFactory returns Focusable, but our panels also implement Component.
   private configFactories = new Map<string, ConfigPanelFactory>();
   private pendingFactories = new Map<string, Promise<ConfigPanelFactory>>();
 
@@ -173,10 +166,9 @@ export class SfPiOverlayComponent implements Focusable {
     initialStates: ExtensionState[],
     private readonly registryEntries: readonly SfPiExtension[],
     initialScope: ManagerScope,
-    private readonly getTerminalRows: () => number,
     private readonly done: (result: OverlayResult | undefined) => void,
     private readonly commandCtx: ExtensionCommandContext,
-    private readonly tui: TUI,
+    private readonly ui: ExtensionUiHost,
     private readonly getExtensionActions: (extensionId: string) => ManagerDetailAction[],
     private readonly runManagerAction: (
       action: ManagerDetailAction,
@@ -198,6 +190,7 @@ export class SfPiOverlayComponent implements Focusable {
         this.pendingFactories.set(ext.id, promise);
         promise
           .then((factory) => {
+            if (this.disposed) return;
             this.configFactories.set(ext.id, factory);
             this.pendingFactories.delete(ext.id);
             if (
@@ -206,10 +199,12 @@ export class SfPiOverlayComponent implements Focusable {
               !this.activePanel
             ) {
               this.attachConfigPanel(ext.id);
+              this.ui.requestRender();
             }
           })
           .catch(() => {
             this.pendingFactories.delete(ext.id);
+            if (!this.disposed && this.activePanelExtId === ext.id) this.ui.requestRender();
           });
       }
     }
@@ -223,12 +218,11 @@ export class SfPiOverlayComponent implements Focusable {
   handleInput(data: string): void {
     // --- Settings / extension action page ---
     if (this.view.kind === "settings" || this.view.kind === "managerAction") {
-      if (this.handlePanelScrollInput(data)) {
+      if (this.handlePanelScrollInput(data, this.activePanel?.capturesNavigation?.() ?? false)) {
         return;
       }
       if (this.activePanel) {
         this.panelFollowActiveRow = true;
-        this.activePanel.focused = this.focused;
         this.activePanel.handleInput?.(data);
       } else if (matchesKey(data, "escape")) {
         this.returnToDetail();
@@ -257,12 +251,12 @@ export class SfPiOverlayComponent implements Focusable {
         return;
       }
 
-      if (data === "s" || data === "S") {
+      if (matchesKey(data, "s") || matchesKey(data, "shift+s")) {
         this.toggleScope();
         return;
       }
 
-      if (matchesKey(data, "return") || matchesKey(data, "enter") || matchesKey(data, "space")) {
+      if (matchesKey(data, "enter") || matchesKey(data, "space")) {
         this.runSelectedDetailAction();
       }
       return;
@@ -279,7 +273,7 @@ export class SfPiOverlayComponent implements Focusable {
       return;
     }
 
-    if (matchesKey(data, "return") || matchesKey(data, "enter")) {
+    if (matchesKey(data, "enter")) {
       const ext = this.extensions[this.selectedIndex];
       if (ext) {
         this.drillIntoDetail(ext.id);
@@ -302,7 +296,7 @@ export class SfPiOverlayComponent implements Focusable {
       return;
     }
 
-    if (data === "a" || data === "A") {
+    if (matchesKey(data, "a") || matchesKey(data, "shift+a")) {
       const allEnabled = this.extensions.filter((e) => !e.alwaysActive).every((e) => e.enabled);
       for (const ext of this.extensions) {
         if (!ext.alwaysActive) ext.enabled = !allEnabled;
@@ -311,20 +305,21 @@ export class SfPiOverlayComponent implements Focusable {
       return;
     }
 
-    if (data === "s" || data === "S") {
+    if (matchesKey(data, "s") || matchesKey(data, "shift+s")) {
       this.toggleScope();
       return;
     }
   }
 
   render(width: number): string[] {
-    const innerWidth = Math.max(50, width - 2);
+    if (width < 3) return [];
+    const innerWidth = width - 2;
     const theme = this.theme;
 
     const row = (content: string = "", scrollBar: string = "") => {
       const scrollBarWidth = scrollBar ? 1 : 0;
       const contentWidth = Math.max(1, innerWidth - scrollBarWidth);
-      const padded = padAnsi(truncateToWidth(content, contentWidth, ""), contentWidth);
+      const padded = padAnsi(truncate(content, contentWidth, ""), contentWidth);
       return `${theme.fg("border", "│")}${padded}${scrollBar}${theme.fg("border", "│")}`;
     };
 
@@ -339,8 +334,11 @@ export class SfPiOverlayComponent implements Focusable {
     return this.renderListView(innerWidth, row);
   }
 
-  invalidate(): void {
-    this.activePanel?.invalidate?.();
+  dispose(): void {
+    this.disposed = true;
+    this.dropActivePanel();
+    this.configFactories.clear();
+    this.pendingFactories.clear();
   }
 
   // -------------------------------------------------------------------------------------------------
@@ -628,11 +626,10 @@ export class SfPiOverlayComponent implements Focusable {
     return lines;
   }
 
-  private panelContentRows(innerWidth: number): string[] {
+  private panelContentRows(innerWidth: number): readonly string[] {
     const ext = this.getActiveExtension();
     if (!ext) return [];
     if (this.activePanel) {
-      this.activePanel.focused = this.focused;
       return this.activePanel.renderContent
         ? this.activePanel.renderContent(innerWidth)
         : this.activePanel.render(innerWidth);
@@ -644,7 +641,7 @@ export class SfPiOverlayComponent implements Focusable {
   }
 
   private getPanelMaxRows(): number {
-    return Math.max(8, Math.floor(this.getTerminalRows() * 0.85));
+    return Math.max(8, Math.floor(this.ui.size().rows * LIST_MAX_TERMINAL_FRACTION));
   }
 
   private panelPageStep(): number {
@@ -669,14 +666,12 @@ export class SfPiOverlayComponent implements Focusable {
 
   private drillIntoDetail(extensionId: string): void {
     this.activePanelExtId = null;
-    this.activePanel = null;
     this.detailScrollOffset = 0;
     this.view = { kind: "detail", extensionId, actionIndex: 0 };
   }
 
   private drillIntoSettings(extensionId: string): void {
     this.activePanelExtId = extensionId;
-    this.activePanel = null;
     this.panelScrollOffset = 0;
     this.panelFollowActiveRow = true;
     this.view = { kind: "settings", extensionId };
@@ -685,7 +680,6 @@ export class SfPiOverlayComponent implements Focusable {
 
   private drillIntoManagerAction(extensionId: string, action: ManagerDetailAction): void {
     this.activePanelExtId = extensionId;
-    this.activePanel = null;
     this.panelScrollOffset = 0;
     this.panelFollowActiveRow = true;
     this.view = { kind: "managerAction", extensionId, label: action.label };
@@ -709,9 +703,10 @@ export class SfPiOverlayComponent implements Focusable {
         }
         this.returnToDetail();
       },
-      this.tui,
+      this.ui,
       this.commandCtx,
-    ) as ConfigPanel;
+    );
+    this.activePanel.focused = true;
   }
 
   private attachManagerActionPanel(extensionId: string, action: ManagerDetailAction): void {
@@ -728,8 +723,9 @@ export class SfPiOverlayComponent implements Focusable {
         this.returnToDetail();
       },
       this.commandCtx,
-      this.tui,
-    ) as ConfigPanel;
+      this.ui,
+    );
+    this.activePanel.focused = true;
     this.activePanelExtId = extensionId;
   }
 
@@ -738,18 +734,20 @@ export class SfPiOverlayComponent implements Focusable {
       this.view.kind === "settings" || this.view.kind === "managerAction"
         ? this.view.extensionId
         : this.activePanelExtId;
-    this.activePanel = null;
+    this.dropActivePanel();
     this.activePanelExtId = null;
     this.panelScrollOffset = 0;
-    if (extensionId) {
-      this.view = { kind: "detail", extensionId, actionIndex: 0 };
-      return;
-    }
-    this.view = { kind: "list" };
+    this.view = extensionId ? { kind: "detail", extensionId, actionIndex: 0 } : { kind: "list" };
+    if (!this.disposed) this.ui.requestRender();
+  }
+
+  private dropActivePanel(): void {
+    const panel = this.activePanel;
+    this.activePanel = null;
+    panel?.dispose?.();
   }
 
   private returnToList(): void {
-    this.activePanel = null;
     this.activePanelExtId = null;
     this.detailScrollOffset = 0;
     if (this.closeDetailOnBack) {
@@ -797,7 +795,7 @@ export class SfPiOverlayComponent implements Focusable {
     return this.theme.fg(isThumb ? "accent" : "dim", isThumb ? "█" : "│");
   }
 
-  private handlePanelScrollInput(data: string): boolean {
+  private handlePanelScrollInput(data: string, editing: boolean): boolean {
     if (matchesKey(data, "pageUp")) {
       this.panelFollowActiveRow = false;
       this.panelScrollOffset = Math.max(0, this.panelScrollOffset - this.panelPageStep());
@@ -808,6 +806,7 @@ export class SfPiOverlayComponent implements Focusable {
       this.panelScrollOffset += this.panelPageStep();
       return true;
     }
+    if (editing) return false;
     if (matchesKey(data, "home")) {
       this.panelFollowActiveRow = false;
       this.panelScrollOffset = 0;
@@ -936,6 +935,7 @@ export class SfPiOverlayComponent implements Focusable {
       await this.runManagerAction(action, this.scope);
     } finally {
       this.actionInFlight = false;
+      if (!this.disposed) this.ui.requestRender();
     }
   }
 
@@ -955,7 +955,7 @@ export class SfPiOverlayComponent implements Focusable {
   }
 
   private getVisibleExtensionCount(): number {
-    const terminalRows = Math.max(1, this.getTerminalRows());
+    const terminalRows = Math.max(1, this.ui.size().rows);
     const overlayRows = Math.max(1, Math.floor(terminalRows * LIST_MAX_TERMINAL_FRACTION));
     const availableListRows = Math.max(
       EXTENSION_ROW_HEIGHT * MIN_VISIBLE_EXTENSIONS,

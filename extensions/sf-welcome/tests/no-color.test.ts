@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
+import { currentTheme, setCurrentTheme, ThemeController } from "@oh-my-pi/pi-tui/theme/runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SfWelcomeHeader, SfWelcomeOverlay } from "../lib/splash-component.ts";
@@ -32,7 +32,7 @@ describe("SF Welcome terminal color behavior", () => {
     });
   });
 
-  it("removes raw truecolor while preserving indexed colors when Pi disables truecolor", () => {
+  it("removes raw truecolor while preserving indexed colors on OMP's 256-color theme", () => {
     withTrueColor(false, () => {
       const data = collectInitialSplashData("Example Model", "example-provider", 100);
       const overlay = new SfWelcomeOverlay(data).render(140).join("\n");
@@ -58,11 +58,11 @@ function withNoColor(work: () => void): void {
 }
 
 function withTrueColor(enabled: boolean, work: () => void): void {
-  const prior = getCapabilities();
-  setCapabilities({ ...prior, trueColor: enabled });
+  const prior = currentTheme();
+  new ThemeController().initSync({ truecolor: enabled, colors: 256, dark: true });
   try {
     work();
   } finally {
-    setCapabilities(prior);
+    setCurrentTheme(prior);
   }
 }

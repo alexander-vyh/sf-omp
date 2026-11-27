@@ -2,8 +2,8 @@
 /**
  * slack_file tool — info, list.
  */
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { callLabel, registerSlackUiTool, slackText } from "./render.ts";
 import {
   SlackFileParams,
   type ApiErr,
@@ -37,16 +37,8 @@ interface FileToolRenderResult {
   };
 }
 
-function callLabel(label: string, summary: string, theme: Theme): Text {
-  return new Text(
-    theme.fg("toolTitle", theme.bold(label + " ")) + theme.fg("muted", summary),
-    0,
-    0,
-  );
-}
-
 export function registerFileTool(pi: ExtensionAPI): void {
-  pi.registerTool<typeof SlackFileParams>({
+  registerSlackUiTool<typeof SlackFileParams>(pi, {
     name: "slack_file",
     label: "Slack File",
     description:
@@ -55,7 +47,7 @@ export function registerFileTool(pi: ExtensionAPI): void {
     promptSnippet: "Get Slack file details by ID, or list files in a channel/by a user",
     parameters: SlackFileParams,
 
-    renderCall(args: FileToolCallArgs, theme: Theme) {
+    renderCall(args: FileToolCallArgs, _options, theme) {
       const action = args.action || "info";
       if (action === "info") return callLabel("Slack File Info", args.file || "?", theme);
       let summary = "files";
@@ -65,28 +57,22 @@ export function registerFileTool(pi: ExtensionAPI): void {
       return callLabel("Slack Files", summary, theme);
     },
 
-    renderResult(
-      result: FileToolRenderResult,
-      opts: { expanded: boolean; isPartial: boolean },
-      theme: Theme,
-    ) {
+    renderResult(result: FileToolRenderResult, opts, theme) {
       if (opts.isPartial) {
-        return new Text(theme.fg("warning", "Slack file lookup running…"), 0, 0);
+        return slackText(theme.fg("warning", "Slack file lookup running…"));
       }
 
       const details = result.details || {};
       if (!details.ok) {
-        return new Text(
+        return slackText(
           theme.fg("error", "✗ " + (getFirstText(result.content) || "File call failed")),
-          0,
-          0,
         );
       }
       const action = details.action || "info";
 
       if (action === "info") {
         const file = details.fileData;
-        if (!file) return new Text(theme.fg("warning", "No file data"), 0, 0);
+        if (!file) return slackText(theme.fg("warning", "No file data"));
 
         let text =
           theme.fg("success", "✓ ") +
@@ -108,11 +94,11 @@ export function registerFileTool(pi: ExtensionAPI): void {
         if (file.permalink)
           text += "\n  " + theme.fg("muted", "Link:      ") + theme.fg("mdLink", file.permalink);
         text += "\n" + theme.fg("borderMuted", "  ─────────────────────────────────────");
-        return new Text(text, 0, 0);
+        return slackText(text);
       }
 
       const files = details.files || [];
-      if (!files.length) return new Text(theme.fg("warning", "No files found"), 0, 0);
+      if (!files.length) return slackText(theme.fg("warning", "No files found"));
       let text = theme.fg("success", `✓ ${files.length} file${files.length !== 1 ? "s" : ""}`);
       if (details.total) text += theme.fg("dim", ` (${details.total} total)`);
       text += "\n" + theme.fg("borderMuted", "  ─────────────────────────────────────");
@@ -128,7 +114,7 @@ export function registerFileTool(pi: ExtensionAPI): void {
           theme.fg("warning", `by ${file.sharedBy || "?"}`);
       }
       text += "\n" + theme.fg("borderMuted", "  ─────────────────────────────────────");
-      return new Text(text, 0, 0);
+      return slackText(text);
     },
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {

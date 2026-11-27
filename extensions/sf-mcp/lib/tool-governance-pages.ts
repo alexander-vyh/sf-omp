@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Pure Manager pages for exact tool conflicts and observed contract drift. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate } from "@oh-my-pi/pi-tui/text/width";
 import type { ObservedToolDrift } from "./observed-tools.ts";
 import type { McpPreset } from "./presets.ts";
 import type { McpToolDetail } from "./tool-catalog.ts";
@@ -38,10 +38,11 @@ export function renderToolConflictReviewPage(input: {
     const conflict = input.conflicts[index];
     if (!conflict) continue;
     const selected = index === input.cursor;
-    const heading = `${selected ? "❯" : " "} ${conflict.toolName}`;
-    lines.push(
-      ` ${selected ? t.fg("accent", t.bold(truncateToWidth(heading, Math.max(20, width - 2)))) : t.fg("text", truncateToWidth(heading, Math.max(20, width - 2)))}`,
+    const heading = truncate(
+      `${selected ? "❯" : " "} ${conflict.toolName}`,
+      Math.max(20, width - 2),
     );
+    lines.push(` ${selected ? t.fg("accent", t.bold(heading)) : t.fg("text", heading)}`);
     lines.push(
       ...wrapText(
         `${conflict.capability} · ${relationshipLabel(conflict)} · recommended ${exposureLabel(conflict.recommendedExposure)}`,

@@ -1,13 +1,14 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Behavior tests for the shared masked provider-login credential prompt. */
 import { describe, expect, it, vi } from "vitest";
+import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type {
-  ExtensionContext,
-  ExtensionUIContext,
+  ExtensionCustomFactory,
+  ExtensionCustomOptions,
+  ExtensionTheme,
+  ExtensionUiHost,
   KeybindingsManager,
-  Theme,
-} from "@earendil-works/pi-coding-agent";
-import type { TUI } from "@earendil-works/pi-tui";
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import {
   MaskedCredentialInput,
   createSecureCredentialPromptBridge,
@@ -18,17 +19,22 @@ const theme = {
   fg: (_color: string, text: string) => text,
   bg: (_color: string, text: string) => text,
   bold: (text: string) => text,
-} as unknown as Theme;
+  inverse: (text: string) => text,
+} as unknown as ExtensionTheme;
 
 const keybindings = {} as KeybindingsManager;
 
-function makeTui(onRender: () => void = () => undefined): TUI {
-  return { requestRender: onRender } as unknown as TUI;
+function makeHost(): ExtensionUiHost {
+  return {
+    requestRender: vi.fn(),
+    size: () => ({ columns: 80, rows: 24 }),
+    suspend: (run) => run(),
+  };
 }
 
 describe("MaskedCredentialInput", () => {
   it("renders provider-specific, non-secret prompt copy", () => {
-    const component = new MaskedCredentialInput(makeTui(), theme, () => undefined, {
+    const component = new MaskedCredentialInput(makeHost(), theme, () => undefined, {
       title: "SF Docs credential",
       description: "Pi will store the submitted token.",
     });
@@ -43,10 +49,9 @@ describe("MaskedCredentialInput", () => {
     const sentinel = "sk-proof-7Zq9-private";
     const frames: string[] = [];
     let submitted: string | undefined;
-    const component = new MaskedCredentialInput(makeTui(), theme, (value) => {
+    const component = new MaskedCredentialInput(makeHost(), theme, (value) => {
       submitted = value;
     });
-    component.focused = true;
 
     component.handleInput(sentinel);
     frames.push(component.render(40).join("\n"));
@@ -60,9 +65,9 @@ describe("MaskedCredentialInput", () => {
   });
 
   it("renders the same fixed mask for short and long credentials", () => {
-    const short = new MaskedCredentialInput(makeTui(), theme, () => undefined);
+    const short = new MaskedCredentialInput(makeHost(), theme, () => undefined);
     short.handleInput("x");
-    const long = new MaskedCredentialInput(makeTui(), theme, () => undefined);
+    const long = new MaskedCredentialInput(makeHost(), theme, () => undefined);
     long.handleInput("a-much-longer-private-credential");
 
     const countBullets = (value: string) => value.match(/•/gu)?.length ?? 0;
@@ -72,10 +77,9 @@ describe("MaskedCredentialInput", () => {
 
   it("supports bracketed paste and backspace while keeping narrow and wide frames masked", () => {
     let submitted: string | undefined;
-    const component = new MaskedCredentialInput(makeTui(), theme, (value) => {
+    const component = new MaskedCredentialInput(makeHost(), theme, (value) => {
       submitted = value;
     });
-    component.focused = true;
 
     component.handleInput("\x1b[200~paste-secret-X\x1b[201~");
     component.handleInput("\x7f");
@@ -90,21 +94,24 @@ describe("MaskedCredentialInput", () => {
 
   it("decodes plain, shifted, and non-ASCII Kitty printable input", () => {
     let submitted: string | undefined;
-    const component = new MaskedCredentialInput(makeTui(), theme, (value) => {
+    const component = new MaskedCredentialInput(makeHost(), theme, (value) => {
       submitted = value;
     });
 
     component.handleInput("\x1b[97u");
     component.handleInput("\x1b[65;2u");
     component.handleInput("\x1b[233u");
+    component.handleInput("\x1b[128512u");
+    component.handleInput("\x1b[98;1:3u"); // Kitty key release
+    component.handleInput("\x1bc"); // Alt+c
     component.handleInput("\r");
 
-    expect(submitted).toBe("aAé");
+    expect(submitted).toBe("aAé😀");
   });
 
   it("removes one grapheme per backspace for combining and ZWJ input", () => {
     let submitted: string | undefined;
-    const component = new MaskedCredentialInput(makeTui(), theme, (value) => {
+    const component = new MaskedCredentialInput(makeHost(), theme, (value) => {
       submitted = value;
     });
 
@@ -118,7 +125,7 @@ describe("MaskedCredentialInput", () => {
 
   it("rejects C1 control characters", () => {
     let submitted: string | undefined;
-    const component = new MaskedCredentialInput(makeTui(), theme, (value) => {
+    const component = new MaskedCredentialInput(makeHost(), theme, (value) => {
       submitted = value;
     });
 
@@ -130,7 +137,7 @@ describe("MaskedCredentialInput", () => {
 
   it("clears the buffer and returns no value on escape", () => {
     let submitted: string | undefined = "not-set";
-    const component = new MaskedCredentialInput(makeTui(), theme, (value) => {
+    const component = new MaskedCredentialInput(makeHost(), theme, (value) => {
       submitted = value;
     });
     component.handleInput("cancelled-secret");
@@ -141,9 +148,6 @@ describe("MaskedCredentialInput", () => {
   });
 });
 
-type CustomFactory = Parameters<ExtensionUIContext["custom"]>[0];
-type CustomOptions = Parameters<ExtensionUIContext["custom"]>[1];
-
 function makeUi() {
   let active:
     | {
@@ -152,14 +156,24 @@ function makeUi() {
       }
     | undefined;
   const custom = vi.fn(
-    <T>(factory: CustomFactory, _options?: CustomOptions): Promise<T> =>
-      new Promise<T>((resolve) => {
-        const done = (value: string | undefined) => resolve(value as T);
-        active = {
-          component: factory(makeTui(), theme, keybindings, done) as MaskedCredentialInput,
-          done,
-        };
-      }),
+    (factory: ExtensionCustomFactory<string | undefined>, options?: ExtensionCustomOptions) => {
+      const { promise, resolve, reject } = Promise.withResolvers<string | undefined>();
+      const signal = options?.signal;
+      let closed = false;
+      const finish = (settle: () => void) => {
+        if (closed) return;
+        closed = true;
+        signal?.removeEventListener("abort", abort);
+        component.dispose();
+        settle();
+      };
+      const abort = () => finish(() => reject(signal?.reason));
+      const done = (value: string | undefined) => finish(() => resolve(value));
+      const component = factory(makeHost(), theme, keybindings, done) as MaskedCredentialInput;
+      active = { component, done };
+      signal?.addEventListener("abort", abort, { once: true });
+      return promise;
+    },
   );
   return {
     ui: { custom } as unknown as ExtensionUIContext,
@@ -179,7 +193,7 @@ async function expectModeRejected(mode: ExtensionContext["mode"]): Promise<void>
 }
 
 describe("secure credential prompt bridge", () => {
-  it("opens the configured component inline, reports blocked auth input, and returns its submitted value", async () => {
+  it("opens the configured component inline with a scoped cancellation signal", async () => {
     const bridge = createSecureCredentialPromptBridge({
       title: "SF Slack credential",
       description: "Pi owns persistence.",
@@ -189,7 +203,7 @@ describe("secure credential prompt bridge", () => {
 
     const result = bridge.prompt();
     expect(fake.custom).toHaveBeenCalledWith(expect.any(Function), {
-      blocked: { kind: "auth", message: "SF Slack credential" },
+      signal: expect.any(AbortSignal),
     });
     expect(fake.active?.component.render(80).join("\n")).toContain("SF Slack credential");
     expect(fake.active?.component.render(80).join("\n")).toContain("Pi owns persistence.");
@@ -249,6 +263,7 @@ describe("secure credential prompt bridge", () => {
     first.active?.component.handleInput("abort-secret");
     controller.abort();
     await expect(aborted).rejects.toThrow("Login cancelled");
+    expect(first.active?.component.render(40)[2]).not.toContain("•");
 
     const stale = makeUi();
     bridge.bind(stale.ui, "tui");

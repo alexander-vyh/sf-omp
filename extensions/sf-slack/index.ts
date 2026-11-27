@@ -38,13 +38,14 @@
  *   - Read-only except slack_canvas create/edit, slack_send, and slack_schedule
  *     schedule/delete
  *   - Uses existing Pi auth credentials, with an env fallback for automation
- *   - Uses SF Pi's fixed-mask component while Pi owns persistence and logout
+ *   - Uses masked credential entry while OMP owns persistence and logout
  */
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { nativeUi, textRows } from "../../lib/common/ui-rows.ts";
 import {
   PROVIDER_NAME,
   COMMAND_NAME,
@@ -153,7 +154,7 @@ const SLACK_COMMAND_ACTIONS: SfPiCommandAction<SlackCommandAction>[] = [
   {
     value: "connect",
     label: "Connect to Slack",
-    description: "Prepare fixed-mask native login and environment-variable setup guidance.",
+    description: "Prepare masked native login and environment-variable setup guidance.",
     group: "Connect",
   },
   {
@@ -308,22 +309,20 @@ export default function sfSlack(pi: ExtensionAPI) {
   function renderResearchWidget(): void {
     const ctx = widgetCtx;
     if (!ctx || !ctx.hasUI || !isActiveSession(ctx, widgetGeneration)) return;
-    const prefs = getPreferences();
-    if (prefs.showWidget === "off") {
-      ctx.ui.setWidget(RESEARCH_WIDGET_KEY, undefined);
+    const ui = nativeUi(ctx.ui);
+    if (getPreferences().showWidget === "off") {
+      ui.setWidget(RESEARCH_WIDGET_KEY, undefined);
       return;
     }
-    ctx.ui.setWidget(RESEARCH_WIDGET_KEY, (_tui, theme) => {
-      const lines = renderStatsLines({
-        dim: (s) => theme.fg("dim", s),
-        muted: (s) => theme.fg("muted", s),
-        accent: (s) => theme.fg("accent", s),
-      });
-      return {
-        render: () => lines,
-        invalidate: () => {},
-      };
-    });
+    ui.setWidget(RESEARCH_WIDGET_KEY, (_ui, theme) =>
+      textRows(
+        renderStatsLines({
+          dim: (s) => theme.fg("dim", s),
+          muted: (s) => theme.fg("muted", s),
+          accent: (s) => theme.fg("accent", s),
+        }).join("\n"),
+      ),
+    );
   }
 
   function updateScopeCounts(
@@ -620,7 +619,7 @@ export default function sfSlack(pi: ExtensionAPI) {
     tokenType = "unknown";
     if (ctx.hasUI) {
       ctx.ui.setStatus(WIDGET_KEY, undefined);
-      ctx.ui.setWidget(RESEARCH_WIDGET_KEY, undefined);
+      nativeUi(ctx.ui).setWidget(RESEARCH_WIDGET_KEY, undefined);
     }
     setStatsListener(undefined);
     widgetCtx = null;
@@ -681,10 +680,11 @@ export default function sfSlack(pi: ExtensionAPI) {
       run: (ctx) => handleSlackCommand(action.value, ctx, true),
       ...(action.value === "connect"
         ? {
-            createPanel: (theme, _cwd, _scope, done, ctx) =>
+            createPanel: (theme, _cwd, _scope, done, ctx, ui) =>
               createSlackConnectPanel({
                 theme,
                 done,
+                ui,
                 prepareLogin: () =>
                   prepareSlackLogin(ctx)
                     ? `Prepared /login ${PROVIDER_NAME} in Pi's editor. After login, run /${COMMAND_NAME} refresh.`
@@ -694,11 +694,12 @@ export default function sfSlack(pi: ExtensionAPI) {
         : {}),
       ...(action.value === "disconnect"
         ? {
-            createPanel: (theme, _cwd, _scope, done, ctx) =>
+            createPanel: (theme, _cwd, _scope, done, ctx, ui) =>
               createSlackDisconnectPanel({
                 theme,
                 tokenSourceLabel: detectTokenSource(),
                 done,
+                ui,
                 disconnect: () => prepareSlackLogout(ctx),
               }),
           }
@@ -897,7 +898,7 @@ export default function sfSlack(pi: ExtensionAPI) {
       prepared
         ? [
             `Prefilled /login ${PROVIDER_NAME}.`,
-            "Credential entry uses a fixed-mask SF Pi component; Pi alone persists the result.",
+            "OMP masks credential entry and alone persists the result.",
             `After login, run /${COMMAND_NAME} refresh to verify identity, scopes, and tools.`,
             `${ENV_TOKEN} remains available for automation and is never modified.`,
           ].join("\n")
@@ -992,7 +993,7 @@ export default function sfSlack(pi: ExtensionAPI) {
       "",
       "Commands:",
       `  /${COMMAND_NAME}            Open SF Slack in the SF Pi Manager`,
-      `  /${COMMAND_NAME} connect    Prepare fixed-mask native login`,
+      `  /${COMMAND_NAME} connect    Prepare masked native login`,
       `  /${COMMAND_NAME} disconnect Prepare native logout for review`,
       `  /${COMMAND_NAME} status     Show current auth status`,
       `  /${COMMAND_NAME} refresh    Re-detect identity, re-probe scopes, refresh cache`,

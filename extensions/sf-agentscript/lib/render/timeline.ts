@@ -5,15 +5,15 @@
  * Reads the same `TraceDigest` we already ship in `details.digest` (no new
  * extraction), and emits two surfaces:
  *
- *   - `renderPreviewSendResult(...)` — pi-tui Text component for renderResult
+ *   - `renderPreviewSendResult(...)` — styled terminal rows for renderResult
  *   - `previewSendMarkdown(...)`     — Markdown string for slash panels / reports
  *
  * The LLM-facing `content[0].text` is unchanged; this module only adds
  * visual rendering for the human watching the tool row.
  */
 
-import { Text } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionRows, ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
+import { textRows } from "../../../../lib/common/ui-rows.ts";
 import type {
   ActionValuePreview,
   TraceDigest,
@@ -57,28 +57,26 @@ interface SendArgs {
 
 // ─── renderCall: thin pre-result label ───────────────────────────────────────
 
-export function renderPreviewCall(args: SendArgs, theme: Theme): Text {
+export function renderPreviewCall(args: SendArgs, theme: Theme): ExtensionRows {
   const label = theme.fg("toolTitle", theme.bold("🎬 Agent Script preview "));
   switch (args.action) {
     case "start":
-      return new Text(label + theme.fg("muted", `start · ${args.agent_name ?? "?"}`), 0, 0);
+      return textRows(label + theme.fg("muted", `start · ${args.agent_name ?? "?"}`));
     case "send": {
       const sid = args.session_id ? args.session_id.slice(0, 8) : "?";
       const utterance = args.message ? `"${clipLine(args.message, 60)}"` : "";
-      return new Text(
+      return textRows(
         label + theme.fg("muted", `send · ${args.agent_name ?? "?"} · ${sid}…  ${utterance}`),
-        0,
-        0,
       );
     }
     case "end":
-      return new Text(label + theme.fg("muted", `end · ${args.agent_name ?? "?"}`), 0, 0);
+      return textRows(label + theme.fg("muted", `end · ${args.agent_name ?? "?"}`));
     case "trace":
-      return new Text(label + theme.fg("muted", `trace · ${args.session_id ?? "?"}`), 0, 0);
+      return textRows(label + theme.fg("muted", `trace · ${args.session_id ?? "?"}`));
     case "cleanup":
-      return new Text(label + theme.fg("muted", "cleanup"), 0, 0);
+      return textRows(label + theme.fg("muted", "cleanup"));
     default:
-      return new Text(label + theme.fg("muted", args.action ?? ""), 0, 0);
+      return textRows(label + theme.fg("muted", args.action ?? ""));
   }
 }
 
@@ -93,19 +91,19 @@ export function renderPreviewSendResult(
   result: { details?: PreviewSendDetails | unknown; content?: unknown[] },
   opts: RenderOpts,
   theme: Theme,
-): Text {
+): ExtensionRows {
   if (opts.isPartial) {
-    return new Text(theme.fg("warning", "🎬 preview · streaming…"), 0, 0);
+    return textRows(theme.fg("warning", "🎬 preview · streaming…"));
   }
   const details = (result.details ?? {}) as PreviewSendDetails;
   if (!details.ok) {
     // Error envelope — let the default text fallback show; render a tight
     // single line referencing what we know.
     const text = getFirstText(result.content) || "preview send failed";
-    return new Text(theme.fg("error", `✗ ${text}`), 0, 0);
+    return textRows(theme.fg("error", `✗ ${text}`));
   }
   if (details.preview_end && details.conversation_summary) {
-    return new Text(
+    return textRows(
       previewSessionEndBody(
         {
           agent_name: details.agent_name ?? details.conversation?.[0]?.test_id ?? "Agent",
@@ -116,24 +114,20 @@ export function renderPreviewSendResult(
         theme,
         opts.expanded ?? false,
       ),
-      0,
-      0,
     );
   }
   const digest = details.digest;
   if (!digest) {
     // Defensive: pre-digest result. Render the simple summary.
     const reply = details.agent_response ?? "(no response)";
-    return new Text(
+    return textRows(
       `${theme.fg("success", "🤖 ")}${reply}\n${theme.fg(
         "dim",
         `plan=${(details.plan_id ?? "").slice(0, 8)}…`,
       )}`,
-      0,
-      0,
     );
   }
-  return new Text(formatSendBody(digest, details, theme, /*ansi=*/ true), 0, 0);
+  return textRows(formatSendBody(digest, details, theme, /*ansi=*/ true));
 }
 
 // ─── Markdown emitter (slash-command panels, reports) ─────────────────────────

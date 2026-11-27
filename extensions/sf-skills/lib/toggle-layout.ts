@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Fixed split-pane geometry and preview model for the skills toggle. */
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncate } from "@oh-my-pi/pi-tui/text/width";
 
 export const TOGGLE_BODY_LINES = 20;
 export const TOGGLE_PREVIEW_WHY_LINES = 8;
@@ -77,10 +77,8 @@ export function buildPreviewLines(input: {
   const row = input.row;
   if (!row) return padLines(["No selection"], TOGGLE_BODY_LINES);
 
-  const lines: string[] = [
-    truncateToWidth(row.kind === "pack" ? row.packLabel : row.id, width, "…"),
-  ];
-  lines.push(truncateToWidth(`${row.origin} · ${row.packLabel}`, width, "…"));
+  const lines: string[] = [truncate(row.kind === "pack" ? row.packLabel : row.id, width)];
+  lines.push(truncate(`${row.origin} · ${row.packLabel}`, width));
   lines.push(stateLabel(row));
   lines.push("");
 
@@ -89,16 +87,11 @@ export function buildPreviewLines(input: {
     const on = members.filter((member) => member.on).length;
     const locked = members.filter((member) => member.locked).length;
     lines.push("Pack");
-    lines.push(
-      truncateToWidth(`${members.length} skills · ${on} on · ${locked} locked`, width, "…"),
-    );
+    lines.push(truncate(`${members.length} skills · ${on} on · ${locked} locked`, width));
     lines.push("");
     lines.push("Members");
-    const names = members
-      .slice(0, 6)
-      .map((member) => truncateToWidth(`· ${member.name}`, width, "…"));
-    if (members.length > 6)
-      names[5] = truncateToWidth(`· … +${members.length - 6} more`, width, "…");
+    const names = members.slice(0, 6).map((member) => truncate(`· ${member.name}`, width));
+    if (members.length > 6) names[5] = truncate(`· … +${members.length - 6} more`, width);
     lines.push(...padLines(names, 6));
   } else {
     lines.push("When to load");
@@ -106,7 +99,7 @@ export function buildPreviewLines(input: {
     lines.push(...padLines(why.length > 0 ? why : ["No description."], TOGGLE_PREVIEW_WHY_LINES));
     lines.push("");
     lines.push("Path");
-    lines.push(truncateToWidth(row.filePath || "—", width, "…"));
+    lines.push(truncate(row.filePath || "—", width));
   }
 
   lines.push("");

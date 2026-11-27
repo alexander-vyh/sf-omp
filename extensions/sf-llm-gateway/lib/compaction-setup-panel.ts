@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Focused dedicated-compaction setup shared by slash command and Manager action. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { matchesKey, visibleWidth, type Focusable } from "@earendil-works/pi-tui";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate } from "@oh-my-pi/pi-tui/text/width";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import { GatewayCompactionModelPicker } from "./compaction-model-picker.ts";
 import type {
   CompactionSettingsScope,
@@ -30,8 +31,7 @@ export function recommendGatewayCompactionModel(
   return eligible.length === 1 ? eligible[0]?.value : undefined;
 }
 
-export class GatewayCompactionSetupComponent implements Focusable {
-  focused = false;
+export class GatewayCompactionSetupComponent implements RowsPanel {
   private readonly picker: GatewayCompactionModelPicker;
   private readonly focusOrder: readonly PanelFocus[] = ["model", "save", "cancel"];
   private focusIndex = 0;
@@ -61,22 +61,22 @@ export class GatewayCompactionSetupComponent implements Focusable {
     }
 
     const focus = this.currentFocus();
-    if (focus === "model" && (isLeft(data) || isRight(data))) {
+    if (focus === "model" && (matchesKey(data, "left") || matchesKey(data, "right"))) {
       this.errorMessage = null;
-      this.picker.cycle(isLeft(data) ? -1 : 1);
+      this.picker.cycle(matchesKey(data, "left") ? -1 : 1);
       return;
     }
-    if (matchesKey(data, "tab") || isDown(data)) {
+    if (matchesKey(data, "tab") || matchesKey(data, "down")) {
       this.errorMessage = null;
       this.focusIndex = (this.focusIndex + 1) % this.focusOrder.length;
       return;
     }
-    if (matchesKey(data, "shift+tab") || isUp(data)) {
+    if (matchesKey(data, "shift+tab") || matchesKey(data, "up")) {
       this.errorMessage = null;
       this.focusIndex = (this.focusIndex - 1 + this.focusOrder.length) % this.focusOrder.length;
       return;
     }
-    if (!matchesKey(data, "enter") && !matchesKey(data, "return")) return;
+    if (!matchesKey(data, "enter")) return;
 
     if (focus === "cancel") {
       this.done(undefined);
@@ -116,14 +116,12 @@ export class GatewayCompactionSetupComponent implements Focusable {
     ];
     if (this.errorMessage) lines.push("", this.theme.fg("error", `⚠ ${this.errorMessage}`));
     lines.push("", this.theme.fg("dim", "←/→ choose · ↑/↓ move · Enter action · Esc cancel"));
-    return lines.map((line) => truncateVisible(line, width));
+    return lines.map((line) => truncate(line, width));
   }
 
   render(width: number): string[] {
     return this.renderContent(width);
   }
-
-  invalidate(): void {}
 
   private currentFocus(): PanelFocus {
     return this.focusOrder[this.focusIndex] ?? "model";
@@ -133,29 +131,4 @@ export class GatewayCompactionSetupComponent implements Focusable {
     const active = this.currentFocus() === field;
     return this.theme.fg(active ? "accent" : "muted", active ? `[ ${label} ]` : `  ${label}  `);
   }
-}
-
-function isUp(data: string): boolean {
-  return matchesKey(data, "up") || data === "\x1b[A";
-}
-
-function isDown(data: string): boolean {
-  return matchesKey(data, "down") || data === "\x1b[B";
-}
-
-function isLeft(data: string): boolean {
-  return matchesKey(data, "left") || data === "\x1b[D";
-}
-
-function isRight(data: string): boolean {
-  return matchesKey(data, "right") || data === "\x1b[C";
-}
-
-function truncateVisible(text: string, width: number): string {
-  if (visibleWidth(text) <= width) return text;
-  let output = text;
-  while (output.length > 0 && visibleWidth(`${output}…`) > width) {
-    output = output.slice(0, -1);
-  }
-  return `${output}…`;
 }

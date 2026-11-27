@@ -3,7 +3,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { renderBrowserToolCall, renderBrowserToolResult } from "./browser-render.ts";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
+import { browserToolRenderers } from "./browser-render.ts";
 import { captureEvidence } from "./operations.ts";
 import { readEffectiveSfBrowserSettings } from "./settings.ts";
 
@@ -15,7 +16,7 @@ const EvidenceMode = StringEnum(["artifact", "thumbnail", "full"] as const, {
 });
 
 export function registerSfBrowserCaptureEvidenceTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool(pi, {
     name: SF_BROWSER_CAPTURE_EVIDENCE_TOOL_NAME,
     label: "SF Browser Capture Evidence",
     description:
@@ -25,16 +26,7 @@ export function registerSfBrowserCaptureEvidenceTool(pi: ExtensionAPI): void {
     promptGuidelines: [
       "Use sf_browser_capture_evidence with imageMode=thumbnail when the model should inspect the current screen; use imageMode=artifact for repeated or batch captures.",
     ],
-    renderCall: (args, theme) =>
-      renderBrowserToolCall(SF_BROWSER_CAPTURE_EVIDENCE_TOOL_NAME, args, theme),
-    renderResult: (result, options, theme, context) =>
-      renderBrowserToolResult(
-        SF_BROWSER_CAPTURE_EVIDENCE_TOOL_NAME,
-        result,
-        options,
-        theme,
-        context,
-      ),
+    ...browserToolRenderers(SF_BROWSER_CAPTURE_EVIDENCE_TOOL_NAME),
     parameters: Type.Object({
       label: Type.Optional(
         Type.String({ description: "Short public-safe label for the evidence file." }),

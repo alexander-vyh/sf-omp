@@ -331,25 +331,23 @@ describe("sf-planreview review", () => {
       factory(pi as never);
       const command = pi.registerCommand.mock.calls.find(([name]) => name === "sf-planreview")?.[1];
       const context = ctx();
-      const stop = vi.fn();
-      const start = vi.fn();
+      const suspend = vi.fn((run: () => Promise<number | null>) => run());
       context.ui.confirm.mockResolvedValue(true);
       type TuiFactory = (
-        tui: { stop: () => void; start: () => void; requestRender: () => void },
+        ui: { suspend: typeof suspend },
         theme: unknown,
         keys: unknown,
         done: (code: number | null) => void,
       ) => unknown;
       (context.ui as Record<string, unknown>).custom = async (review: TuiFactory) => {
         let result: number | null = null;
-        review({ stop, start, requestRender: vi.fn() }, {}, {}, (code) => {
+        await review({ suspend }, {}, {}, (code) => {
           result = code;
         });
         return result;
       };
       await command.handler('file "stale-plan.md"', context as never);
-      expect(stop).toHaveBeenCalledOnce();
-      expect(start).toHaveBeenCalledOnce();
+      expect(suspend).toHaveBeenCalledOnce();
       expect(pi.sendUserMessage).toHaveBeenCalledOnce();
       expect(pi.sendUserMessage.mock.calls[0]?.[0]).toContain("source changed since review began");
       expect(listReviewDataDirs()).toHaveLength(0);

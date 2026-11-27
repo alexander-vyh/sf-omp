@@ -45,7 +45,6 @@ function createCtx(cwd: string, sessionId = "session-1") {
       getSessionId: () => sessionId,
     },
     ui: {
-      setWorkingIndicator: vi.fn(),
       setWorkingMessage: vi.fn(),
     },
   };
@@ -70,7 +69,7 @@ async function runSessionShutdown(
 }
 
 describe("sf-ohana-spinner waiting-state outcome", () => {
-  it("rotates Salesforce chrome through Pi's working message in Ohana mode", async () => {
+  it("rotates Salesforce chrome through OMP's working message in Ohana mode", async () => {
     const cwd = tempCwd();
     writeScopedOhanaSpinnerSettings(cwd, "project", { mode: "ohana" });
     vi.spyOn(Math, "random").mockReturnValue(0);
@@ -79,12 +78,11 @@ describe("sf-ohana-spinner waiting-state outcome", () => {
     const ctx = createCtx(cwd);
     await runSessionStart(handlers, ctx);
 
-    expect(ctx.ui.setWorkingIndicator).toHaveBeenCalledWith();
     expect(ctx.ui.setWorkingMessage).toHaveBeenLastCalledWith(messages[0]);
     expect(messages[0]).toMatch(/opp|pipeline|SOQL|Apex|Flow|Agentforce|CSV/i);
   });
 
-  it("restores Pi's default Working label in Calm mode", async () => {
+  it("restores OMP's default Working label in Calm mode", async () => {
     const cwd = tempCwd();
     writeScopedOhanaSpinnerSettings(cwd, "project", { mode: "calm" });
 
@@ -92,35 +90,20 @@ describe("sf-ohana-spinner waiting-state outcome", () => {
     const ctx = createCtx(cwd);
     await runSessionStart(handlers, ctx);
 
-    expect(ctx.ui.setWorkingIndicator).toHaveBeenCalledWith();
     expect(ctx.ui.setWorkingMessage).toHaveBeenLastCalledWith();
   });
 
-  it("restores Pi's default waiting indicator on shutdown", async () => {
-    const cwd = tempCwd();
-    writeScopedOhanaSpinnerSettings(cwd, "project", { mode: "calm" });
-
-    const handlers = registerExtension();
-    const ctx = createCtx(cwd);
-    await runSessionStart(handlers, ctx);
-    await runSessionShutdown(handlers, ctx);
-
-    expect(ctx.ui.setWorkingIndicator).toHaveBeenLastCalledWith();
-    expect(ctx.ui.setWorkingMessage).toHaveBeenLastCalledWith();
-  });
-
-  it("drives OMP's working message when the host has no working-indicator API", async () => {
+  it("restores OMP's default working message after an Ohana session", async () => {
     const cwd = tempCwd();
     writeScopedOhanaSpinnerSettings(cwd, "project", { mode: "ohana" });
     vi.spyOn(Math, "random").mockReturnValue(0);
 
     const handlers = registerExtension();
     const ctx = createCtx(cwd);
-    const ompCtx = { ...ctx, ui: { setWorkingMessage: ctx.ui.setWorkingMessage } };
-    await runSessionStart(handlers, ompCtx as never);
+    await runSessionStart(handlers, ctx);
     expect(ctx.ui.setWorkingMessage).toHaveBeenLastCalledWith(messages[0]);
+    await runSessionShutdown(handlers, ctx);
 
-    await runSessionShutdown(handlers, ompCtx as never);
     expect(ctx.ui.setWorkingMessage).toHaveBeenLastCalledWith();
   });
 });
@@ -170,7 +153,6 @@ describe("sf-ohana-spinner stale-ctx safety", () => {
       expect(rejections).toEqual([]);
       expect(staleCtx.ui.setWorkingMessage.mock.calls.length).toBe(staleMessageCalls);
       expect(activeCtx.ui.setWorkingMessage.mock.calls.length).toBeGreaterThan(1);
-      expect(activeCtx.ui.setWorkingIndicator.mock.calls.length).toBe(1);
     } finally {
       vi.useRealTimers();
     }

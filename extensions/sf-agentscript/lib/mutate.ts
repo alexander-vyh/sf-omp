@@ -13,7 +13,7 @@
  */
 
 import fs from "node:fs/promises";
-import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue } from "@oh-my-pi/pi-coding-agent/tools/file-mutation-queue";
 import type { DocumentState } from "@sf-agentscript/lsp";
 import type { AgentforceSourceAnalysisResult } from "./agentforce-document.ts";
 import { loadAgentforceSDK, getSdkLoadError } from "./sdk.ts";

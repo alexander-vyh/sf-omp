@@ -4,11 +4,12 @@
 
 SF DevBar renders two non-blocking Salesforce-oriented terminal surfaces:
 
-- a **top bar** with SF Pi branding, model and thinking level, workspace, Git
-  state, context usage, optional session name, and non-default image width;
-- a **bottom bar** with active gateway usage, SF Pi package count, Salesforce DX
-  project indicator and effective default org, plus Slack and SF Docs readiness
-  when useful.
+- a **top bar** above the editor with SF Pi branding, model and thinking level,
+  workspace, Git state, context usage, optional session name, and non-default
+  image width;
+- a **bottom bar** below the editor with the Salesforce DX project indicator
+  and effective default org. OMP shows Gateway usage and connection statuses
+  separately in its native status area.
 
 Each source loads independently from cached or reactive state. `NO_COLOR` keeps
 the same text and layout while removing SF DevBar-owned ANSI styling.
@@ -26,7 +27,7 @@ the same text and layout while removing SF DevBar-owned ANSI styling.
 | `/sf-org`             | Show detected Salesforce org status                          |
 | `/sf-org refresh`     | Recreate the target connection and refresh org status        |
 | `Ctrl+Shift+B`        | Toggle both bars from the TUI                                |
-| `pi --no-devbar`      | Start without SF DevBar                                      |
+| `omp --no-devbar`     | Start without SF DevBar                                      |
 
 ## Default org visibility
 
@@ -66,7 +67,7 @@ accept comma-separated colors in the panel or JSON arrays in settings.
 Configurable roles include folder/model text, missing-org warning,
 sandbox/trial labels, context bar foreground/background, gateway rainbow, and
 thinking rainbow. Production warnings and Git state continue to use semantic
-Pi theme colors. `s` saves from the settings list without reloading Pi; `Esc`
+OMP theme colors. `s` saves from the settings list without reloading; `Esc`
 cancels a focused field edit.
 
 ## Troubleshooting

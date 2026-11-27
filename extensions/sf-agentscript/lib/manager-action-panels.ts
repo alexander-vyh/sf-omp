@@ -1,24 +1,26 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager action pages for SF Agent Script commands that need one input. */
-import type { ExtensionCommandContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Input, type Component, type Focusable, matchesKey } from "@earendil-works/pi-tui";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent";
 import type { ConfigPanelResult } from "../../../catalog/registry.ts";
+import { RowsTextField } from "../../../lib/common/ui-field.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 
 type Done = (result: ConfigPanelResult | undefined) => void;
 
 export function createAgentScriptInputActionPanel(args: {
-  theme: Theme;
+  theme: ExtensionTheme;
   title: string;
   help: string;
   placeholder: string;
   done: Done;
   run: (value: string) => Promise<void> | void;
-}): Component & Focusable & { renderContent(width: number): string[] } {
+}): RowsPanel & { renderContent(width: number): string[] } {
   return new AgentScriptInputActionPanel(args);
 }
 
-class AgentScriptInputActionPanel implements Focusable {
-  private input = new Input();
+class AgentScriptInputActionPanel implements RowsPanel {
+  private readonly input = new RowsTextField();
   private error = "";
 
   get focused(): boolean {
@@ -30,7 +32,7 @@ class AgentScriptInputActionPanel implements Focusable {
 
   constructor(
     private readonly args: {
-      theme: Theme;
+      theme: ExtensionTheme;
       title: string;
       help: string;
       placeholder: string;
@@ -39,13 +41,15 @@ class AgentScriptInputActionPanel implements Focusable {
     },
   ) {
     this.input.setValue(args.placeholder);
-    this.input.onSubmit = (value) => this.submit(value);
-    this.input.onEscape = () => this.args.done(undefined);
   }
 
   handleInput(data: string): void {
     if (matchesKey(data, "escape")) {
       this.args.done(undefined);
+      return;
+    }
+    if (matchesKey(data, "enter")) {
+      this.submit(this.input.getValue());
       return;
     }
     this.input.handleInput(data);
@@ -68,8 +72,12 @@ class AgentScriptInputActionPanel implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {
-    this.input.invalidate();
+  capturesNavigation(): boolean {
+    return true;
+  }
+
+  dispose(): void {
+    this.input.dispose();
   }
 
   private submit(value: string): void {

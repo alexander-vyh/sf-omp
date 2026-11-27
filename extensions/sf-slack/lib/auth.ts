@@ -7,8 +7,7 @@
  *   1. Existing Pi auth through `ctx.modelRegistry.getApiKeyForProvider()`.
  *   2. Environment variable (SLACK_USER_TOKEN) for automation / CI.
  *
- * Interactive credential entry uses SF Pi's fixed-mask component while Pi owns
- * credential persistence and logout.
+ * OMP masks native credential entry and owns credential persistence and logout.
  *
  * Config/status surfaces without ExtensionContext use a shared status-only
  * auth-store adapter that never returns token values.

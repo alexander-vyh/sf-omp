@@ -117,7 +117,7 @@ function createFixture(): void {
 }
 
 function runGenerator(args: string[] = []): GeneratorResult {
-  return spawnSync(process.execPath, [GENERATOR_PATH, ...args], {
+  return spawnSync("node", [GENERATOR_PATH, ...args], {
     cwd: REPOSITORY_ROOT,
     encoding: "utf8",
     timeout: MAX_EXECUTION_MS,

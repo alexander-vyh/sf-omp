@@ -2,11 +2,14 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ExtensionRows } from "@oh-my-pi/pi-coding-agent";
+import type { TSchema } from "typebox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { NativeUiTool } from "../../../lib/common/native-ui-tool.ts";
 import { createToolTestContext } from "../../../lib/common/tests/extension-tool-context.ts";
 import { CODE_ANALYZER_DETAILS_KEY, registerCodeAnalyzerTool } from "../lib/code_analyzer-tool.ts";
+import { createCodeAnalyzerConfirmPanel } from "../lib/manager-action-panels.ts";
 
 let cwd: string;
 
@@ -18,10 +21,12 @@ afterEach(() => {
   rmSync(cwd, { recursive: true, force: true });
 });
 
-function captureTool(sendUserMessage = vi.fn()): ToolDefinition {
-  let tool: ToolDefinition | undefined;
+type CodeAnalyzerTool = NativeUiTool<TSchema, unknown>;
+
+function captureTool(sendUserMessage = vi.fn()): CodeAnalyzerTool {
+  let tool: CodeAnalyzerTool | undefined;
   registerCodeAnalyzerTool({
-    registerTool: (definition: ToolDefinition) => {
+    registerTool: (definition: CodeAnalyzerTool) => {
       tool = definition;
     },
     sendUserMessage,
@@ -41,15 +46,7 @@ function ctx(branch: unknown[] = [], hasUI = false, confirm = vi.fn()) {
 }
 
 describe("code_analyzer tool actions", () => {
-  it("uses a self-rendered shell so Code Analyzer cards can avoid default status backgrounds", () => {
-    const tool = captureTool();
-
-    expect(tool.renderShell).toBe("self");
-    expect(tool.renderCall).toBeTypeOf("function");
-    expect(tool.renderResult).toBeTypeOf("function");
-  });
-
-  it("applies Pi's output padding to its self-rendered result", () => {
+  it("renders call, progress and result rows through OMP's native renderer interface", () => {
     const tool = captureTool();
     const theme = {
       fg: (_color: string, text: string) => text,
@@ -57,19 +54,42 @@ describe("code_analyzer tool actions", () => {
       bold: (text: string) => text,
     } as never;
 
-    const renderWithPad = (outputPad: number): string =>
-      tool
-        .renderResult?.(
-          { content: [{ type: "text", text: "Completed." }], details: {} } as never,
-          { isPartial: false, expanded: false },
-          theme,
-          { outputPad } as never,
-        )
-        ?.render(80)[0] ?? "";
+    const args = { action: "doctor" };
+    const opts = { isPartial: false, expanded: false };
+    const call = tool.renderCall?.(args, opts, theme) as ExtensionRows;
+    expect(call.render(80).join("\n")).toContain("Code Analyzer doctor");
 
-    const unpadded = renderWithPad(0).match(/^ */u)?.[0].length ?? -1;
-    const padded = renderWithPad(4).match(/^ */u)?.[0].length ?? -1;
-    expect(padded - unpadded).toBe(4);
+    const result = { content: [{ type: "text" as const, text: "Completed." }], details: {} };
+    const progress = tool.renderResult?.(
+      result,
+      { ...opts, isPartial: true },
+      theme,
+      args,
+    ) as ExtensionRows;
+    expect(progress.render(80).join("\n")).toContain("Code Analyzer running");
+    const done = tool.renderResult?.(result, opts, theme, args) as ExtensionRows;
+    expect(done.render(80).join("\n")).toContain("Completed.");
+  });
+
+  it("requests a repaint when an async Manager confirmation completes", async () => {
+    const requestRender = vi.fn();
+    const panel = createCodeAnalyzerConfirmPanel({
+      theme: {
+        fg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+      } as never,
+      title: "Confirm",
+      detail: "Run action",
+      confirmLabel: "Run",
+      onConfirm: async () => "Finished",
+      done: vi.fn(),
+      requestRender,
+    });
+    panel.handleInput?.("\r");
+    expect(panel.render(80).join("\n")).toContain("Running…");
+    await Promise.resolve();
+    expect(requestRender).toHaveBeenCalledOnce();
+    expect(panel.render(80).join("\n")).toContain("Finished");
   });
 
   it("returns scan recipes with structured suggestions and Herdr handoff details", async () => {

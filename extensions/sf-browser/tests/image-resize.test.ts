@@ -4,17 +4,12 @@ import { formatDimensionNote, resizeImage } from "../lib/image-resize.ts";
 
 const { ompResize } = vi.hoisted(() => ({ ompResize: vi.fn() }));
 
-// OMP's legacy shim exposes neither helper; the adapter must use OMP's own module.
-vi.mock("@earendil-works/pi-coding-agent", () => ({
-  resizeImage: undefined,
-  formatDimensionNote: undefined,
-}));
 vi.mock("@oh-my-pi/pi-coding-agent/utils/image-resize", () => ({ resizeImage: ompResize }));
 
 describe("image-resize OMP host adapter", () => {
   afterEach(() => ompResize.mockReset());
 
-  it("maps Pi's call shape to OMP without upscaling or WebP output", async () => {
+  it("keeps screenshots within the requested size without upscaling or WebP output", async () => {
     ompResize.mockResolvedValue({
       data: "AAAA",
       mimeType: "image/jpeg",
@@ -47,7 +42,7 @@ describe("image-resize OMP host adapter", () => {
     );
   });
 
-  it("resolves null when OMP cannot decode the image, like Pi", async () => {
+  it("resolves null when OMP cannot decode the image", async () => {
     ompResize.mockResolvedValue({ decodeFailed: true, wasResized: false });
 
     await expect(resizeImage(new Uint8Array([0]), "image/png")).resolves.toBeNull();

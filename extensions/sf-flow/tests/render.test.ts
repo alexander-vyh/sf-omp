@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import { describe, expect, it } from "vitest";
 import { renderFlowResult } from "../lib/render.ts";
 import type { FlowRunDigest, ToolResult } from "../lib/types.ts";

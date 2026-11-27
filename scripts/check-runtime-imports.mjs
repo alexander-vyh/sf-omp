@@ -4,13 +4,13 @@
  * Runtime import check: every bare module imported by extension runtime code
  * must resolve in a git-style install.
  *
- * Pi installs git packages with `npm install --omit=dev --legacy-peer-deps`,
+ * The git proof installs with `npm install --omit=dev --legacy-peer-deps`,
  * so devDependencies and peerDependencies are absent at runtime. A bare
  * import is safe only when it is:
  *
  * - a Node built-in (`node:*` or a known built-in),
  * - a production `dependencies` entry (or a subpath of one), or
- * - a module Pi's extension loader aliases to its bundled copy (HOST_ALIASES).
+ * - a module OMP's extension loader aliases to its bundled copy (HOST_ALIASES).
  *
  * Tests, fixtures, and type-only imports are excluded. Dynamic `import("x")`
  * and `require("x")` with a literal specifier are checked too. This catches a
@@ -27,25 +27,35 @@ const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const pkg = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
 
 /**
- * Modules Pi's extension loader resolves to its bundled copies (Pi 1.5
- * `dist/core/extensions/loader.js` aliases). Keep this list exact: a subpath
- * that is not aliased (for example `typebox/schema`) fails in user installs.
+ * The OMP extension loader remaps legacy Pi roots/subpaths and serves the
+ * canonical @oh-my-pi modules from the host. Keep this list to known exports.
+ * Only bare TypeBox roots are aliased; extensions vendor their deep imports.
  */
 export const HOST_ALIASES = new Set([
   "@earendil-works/pi-agent-core",
   "@earendil-works/pi-ai",
   "@earendil-works/pi-ai/compat",
-  "@earendil-works/pi-ai/models",
   "@earendil-works/pi-ai/oauth",
-  "@earendil-works/pi-ai/providers/all",
   "@earendil-works/pi-coding-agent",
-  "@earendil-works/pi-tui",
+  "@oh-my-pi/pi-coding-agent/config/keybindings/key-id",
+  "@oh-my-pi/pi-coding-agent/config/settings",
+  "@oh-my-pi/pi-coding-agent/modes/settings",
+  "@oh-my-pi/pi-coding-agent/tools/file-mutation-queue",
+  "@oh-my-pi/pi-coding-agent/utils/clipboard",
+  "@oh-my-pi/pi-coding-agent/utils/image-resize",
+  "@oh-my-pi/pi-tui",
+  "@oh-my-pi/pi-tui/driver/input/keys",
+  "@oh-my-pi/pi-tui/native/blobs",
+  "@oh-my-pi/pi-tui/term/paint",
+  "@oh-my-pi/pi-tui/term/painters/input",
+  "@oh-my-pi/pi-tui/term/widgets",
+  "@oh-my-pi/pi-tui/term/widgets/editor",
+  "@oh-my-pi/pi-tui/text/ansi",
+  "@oh-my-pi/pi-tui/text/width",
+  "@oh-my-pi/pi-tui/theme/runtime",
+  "@oh-my-pi/pi-utils",
   "typebox",
-  "typebox/compile",
-  "typebox/value",
   "@sinclair/typebox",
-  "@sinclair/typebox/compile",
-  "@sinclair/typebox/value",
 ]);
 
 const ROOTS = ["extensions", "lib"];
@@ -54,6 +64,7 @@ const SKIP_FILE = /\.(test|spec)\.ts$|\.d\.ts$/;
 const BUILTINS = new Set(builtinModules.flatMap((m) => [m, `node:${m}`]));
 const PROD = new Set(Object.keys(pkg.dependencies ?? {}));
 const ALLOW_COMMENT = "sf-pi-allow-runtime-import";
+const UNSUPPORTED_TUI = /^@(?:earendil-works|mariozechner)\/pi-tui(?:\/|$)/;
 
 export function packageName(specifier) {
   if (specifier.startsWith("@")) return specifier.split("/").slice(0, 2).join("/");
@@ -61,6 +72,7 @@ export function packageName(specifier) {
 }
 
 export function isAllowed(specifier, prod = PROD, aliases = HOST_ALIASES) {
+  if (UNSUPPORTED_TUI.test(specifier)) return false;
   if (BUILTINS.has(specifier) || specifier.startsWith("node:")) return true;
   if (aliases.has(specifier)) return true;
   return prod.has(packageName(specifier));
@@ -146,7 +158,7 @@ function main() {
     );
     for (const v of violations) console.error(`  - ${v}`);
     console.error(
-      `Move the package to "dependencies", use a module Pi's loader aliases (${[...HOST_ALIASES].filter((a) => a.startsWith("typebox")).join(", ")}), or mark an intentional optional import with // ${ALLOW_COMMENT}.`,
+      `Move the package to "dependencies", use a known OMP host export, or mark an intentional optional import with // ${ALLOW_COMMENT}.`,
     );
     process.exit(1);
   }

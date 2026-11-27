@@ -32,8 +32,9 @@
  * eyeball the diff before committing.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import type { Text } from "@earendil-works/pi-tui";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import type { UiNode } from "@oh-my-pi/pi-tui";
+import { wrap } from "@oh-my-pi/pi-tui/text/width";
 import { renderCall, renderResult } from "../lib/render.ts";
 import { resetPreferences, setPreferences } from "../lib/preferences.ts";
 import { getUserCache, getChannelCache } from "../lib/api.ts";
@@ -46,13 +47,13 @@ const passthroughTheme = {
   bold: (text: string) => text,
   italic: (text: string) => text,
   strikethrough: (text: string) => text,
-} as unknown as Theme;
+} as ExtensionTheme;
 
-/** Render a Text widget to a single multi-line string. Strips trailing
- *  whitespace from each line so right-padding does not leak into snapshots. */
-function renderToString(text: Text, width = 120): string {
-  const lines = text.render(width);
-  return lines.map((line) => line.replace(/\s+$/u, "")).join("\n");
+/** Exercise the native ANSI node's wrapping; trailing padding is not visual content. */
+function renderToString(node: UiNode<"ansi">, width = 120): string {
+  return wrap(node.props().text ?? "", width)
+    .map((line) => line.trimEnd())
+    .join("\n");
 }
 
 // ─── Fixtures (all values are synthetic) ────────────────────────────────────

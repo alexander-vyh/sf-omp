@@ -9,7 +9,8 @@ import {
   writeLatestBrowserSnapshotRefs,
 } from "../../../lib/common/sf-browser-snapshot-state.ts";
 import { runAgentBrowser } from "./agent-browser.ts";
-import { renderBrowserToolCall, renderBrowserToolResult } from "./browser-render.ts";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
+import { browserToolRenderers } from "./browser-render.ts";
 import {
   findExpansionControlByLabel,
   findExpansionControlInSnapshot,
@@ -24,7 +25,7 @@ import { okText, writeBrowserArtifact } from "./tool-support.ts";
 export const SF_BROWSER_SET_EXPANDED_TOOL_NAME = "sf_browser_set_expanded";
 
 export function registerSfBrowserSetExpandedTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool(pi, {
     name: SF_BROWSER_SET_EXPANDED_TOOL_NAME,
     label: "SF Browser Set Expanded",
     description:
@@ -41,10 +42,7 @@ export function registerSfBrowserSetExpandedTool(pi: ExtensionAPI): void {
       idempotentHint: true,
       openWorldHint: true,
     },
-    renderCall: (args, theme) =>
-      renderBrowserToolCall(SF_BROWSER_SET_EXPANDED_TOOL_NAME, args, theme),
-    renderResult: (result, options, theme, context) =>
-      renderBrowserToolResult(SF_BROWSER_SET_EXPANDED_TOOL_NAME, result, options, theme, context),
+    ...browserToolRenderers(SF_BROWSER_SET_EXPANDED_TOOL_NAME),
     parameters: Type.Object({
       ref: Type.String({
         description:

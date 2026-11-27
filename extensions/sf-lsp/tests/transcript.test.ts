@@ -3,7 +3,8 @@
  * Tests for the transcript emission policy.
  */
 import { describe, it, expect, vi } from "vitest";
-import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import {
   createTranscriptRenderer,
   registerLspTranscriptPresentation,
@@ -68,12 +69,6 @@ describe("emitTranscriptRow", () => {
 describe("createTranscriptRenderer", () => {
   it("renders the persisted human-only entry", () => {
     const renderer = createTranscriptRenderer();
-    // Pi 1.5 adds keybinding hints to entry render options; Pi 1.4 has only `expanded`.
-    const renderOptions = {
-      expanded: true,
-      keyText: () => "",
-      keyHint: (_key: string, description: string) => description,
-    };
     const component = renderer(
       {
         data: {
@@ -87,11 +82,11 @@ describe("createTranscriptRenderer", () => {
           },
         } satisfies LspTranscriptEntry,
       },
-      renderOptions,
+      { expanded: true },
       passthroughTheme,
     );
 
-    const rendered = component?.render(120).join("\n") ?? "";
+    const rendered = component.render(120).join("\n");
     expect(rendered).toContain("[sf-lsp]");
     expect(rendered).toContain("Apex · MyClass.cls · 1 error");
     expect(rendered).toContain("L3: Unexpected token");
@@ -101,7 +96,7 @@ describe("createTranscriptRenderer", () => {
 const passthroughTheme = {
   fg: (_color: string, value: string) => value,
   bg: (_color: string, value: string) => value,
-} as Theme;
+} as ExtensionTheme;
 
 describe("shouldEmitTranscriptRow", () => {
   it("balanced: emits on error", () => {

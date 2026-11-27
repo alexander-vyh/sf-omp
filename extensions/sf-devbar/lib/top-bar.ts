@@ -14,7 +14,7 @@
  * Pure function: takes state, returns themed string array (one line).
  */
 
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncate } from "@oh-my-pi/pi-tui/text/width";
 import { normalizeAnsiForTerminal } from "../../../lib/common/color-policy.ts";
 import { formatGitChanges, type GitChanges } from "./git-changes.ts";
 import { DEFAULT_DEVBAR_COLORS, type DevbarColors } from "./colors.ts";
@@ -84,7 +84,7 @@ export function renderTopBar(state: TopBarState, theme: BarTheme): string[] {
 
 /** Bound the single DevBar line to the current terminal width. */
 export function renderTopBarLine(state: TopBarState, theme: BarTheme, width: number): string[] {
-  return [truncateToWidth(renderTopBarContent(state, theme), width, "…")];
+  return [truncate(renderTopBarContent(state, theme), width)];
 }
 
 function renderTopBarContent(state: TopBarState, theme: BarTheme): string {
@@ -314,7 +314,7 @@ function formatFolderSegment(folderName: string, mode: GlyphMode, colors: Devbar
 function formatSessionSegment(sessionName: string | undefined, theme: BarTheme): string | null {
   const name = sessionName?.trim();
   if (!name) return null;
-  return theme.fg("muted", truncateToWidth(`session:${name}`, SESSION_SEGMENT_MAX_WIDTH, "…"));
+  return theme.fg("muted", truncate(`session:${name}`, SESSION_SEGMENT_MAX_WIDTH));
 }
 
 function formatGitSegment(state: TopBarState, theme: BarTheme, mode: GlyphMode): string | null {

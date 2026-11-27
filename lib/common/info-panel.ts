@@ -7,15 +7,15 @@
  * the transcript. RPC callers fall back to ctx.ui.notify(); headless callers
  * write the bounded body to stdout.
  */
-import type { ExtensionCommandContext, Theme } from "@earendil-works/pi-coding-agent";
-import {
-  matchesKey,
-  truncateToWidth,
-  visibleWidth,
-  wrapTextWithAnsi,
-} from "@earendil-works/pi-tui";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionRows,
+  ExtensionTheme,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate, wrap } from "@oh-my-pi/pi-tui/text/width";
 import { redactDisplayText } from "./redaction.ts";
 import { iconForSeverity, resolveUiGlyphs, type UiGlyphs } from "./ui-glyphs.ts";
+import { decodeRowKey, nativeUi } from "./ui-rows.ts";
 
 export type InfoPanelSeverity = "info" | "warning" | "error" | "success";
 
@@ -49,31 +49,12 @@ export async function openInfoPanel(
     return;
   }
 
-  await ctx.ui.custom<void>(
-    (tui, theme, _keybindings, done) => {
-      const panel = new InfoPanelComponent(
-        theme,
-        glyphs,
-        { ...safeOptions, body, severity },
-        done,
-        () => Math.max(8, Math.floor(tui.terminal.rows * 0.75)),
-      );
-      return {
-        render: (width: number) => panel.render(width),
-        invalidate: () => panel.invalidate(),
-        handleInput: (data: string) => panel.handleInput(data),
-      };
-    },
-    {
-      overlay: true,
-      overlayOptions: {
-        width: "62%",
-        minWidth: 64,
-        maxHeight: "75%",
-        anchor: "center",
-        margin: 2,
-      },
-    },
+  await nativeUi(ctx.ui).custom<void>(
+    (ui, theme, _keybindings, done) =>
+      new InfoPanelComponent(theme, glyphs, { ...safeOptions, body, severity }, done, () =>
+        Math.max(8, Math.floor(ui.size().rows * 0.75)),
+      ),
+    { overlay: true },
   );
 }
 
@@ -83,7 +64,7 @@ export async function openInfoPanel(
 const INFO_PANEL_CLOSE_KEYWORDS = ["exit", "quit"] as const;
 const INFO_PANEL_MAX_KEYWORD_LEN = Math.max(...INFO_PANEL_CLOSE_KEYWORDS.map((k) => k.length));
 
-class InfoPanelComponent {
+class InfoPanelComponent implements ExtensionRows {
   // Sliding window of recent printable keystrokes used to detect typed close
   // keywords (`exit`, `quit`). Reset by Enter/Esc/q so partial matches do not
   // survive across panels.
@@ -91,7 +72,7 @@ class InfoPanelComponent {
   private scrollOffset = 0;
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: ExtensionTheme,
     private readonly glyphs: UiGlyphs,
     private readonly options: Required<Pick<InfoPanelOptions, "title" | "body" | "severity">> &
       Pick<InfoPanelOptions, "footer">,
@@ -100,45 +81,40 @@ class InfoPanelComponent {
   ) {}
 
   handleInput(data: string): void {
-    if (
-      matchesKey(data, "escape") ||
-      matchesKey(data, "enter") ||
-      matchesKey(data, "return") ||
-      data === "q"
-    ) {
-      this.closeKeywordBuffer = "";
-      this.done();
-      return;
-    }
-    if (matchesKey(data, "up")) {
-      this.scrollOffset = Math.max(0, this.scrollOffset - 1);
-      return;
-    }
-    if (matchesKey(data, "down")) {
-      this.scrollOffset += 1;
-      return;
-    }
-    if (matchesKey(data, "pageUp")) {
-      this.scrollOffset = Math.max(0, this.scrollOffset - this.pageStep());
-      return;
-    }
-    if (matchesKey(data, "pageDown")) {
-      this.scrollOffset += this.pageStep();
-      return;
-    }
-    if (matchesKey(data, "home")) {
-      this.scrollOffset = 0;
-      return;
-    }
-    if (matchesKey(data, "end")) {
-      this.scrollOffset = Number.MAX_SAFE_INTEGER;
-      return;
+    const key = decodeRowKey(data);
+    if (key?.kind === "release") return;
+    switch (key?.id) {
+      case "escape":
+      case "enter":
+      case "q":
+        this.closeKeywordBuffer = "";
+        this.done();
+        return;
+      case "up":
+        this.scrollOffset = Math.max(0, this.scrollOffset - 1);
+        return;
+      case "down":
+        this.scrollOffset += 1;
+        return;
+      case "pageUp":
+        this.scrollOffset = Math.max(0, this.scrollOffset - this.pageStep());
+        return;
+      case "pageDown":
+        this.scrollOffset += this.pageStep();
+        return;
+      case "home":
+        this.scrollOffset = 0;
+        return;
+      case "end":
+        this.scrollOffset = Number.MAX_SAFE_INTEGER;
+        return;
     }
     // Detect typed `exit` / `quit` so users who reach for those keywords by
     // muscle memory don’t get stuck inside the popup. Same contract as
     // GroupedActionList in command-panel.ts.
-    if (data.length === 1 && /^[a-z]$/i.test(data)) {
-      this.closeKeywordBuffer = (this.closeKeywordBuffer + data.toLowerCase()).slice(
+    const text = key?.text;
+    if (text && /^[a-z]$/i.test(text)) {
+      this.closeKeywordBuffer = (this.closeKeywordBuffer + text.toLowerCase()).slice(
         -INFO_PANEL_MAX_KEYWORD_LEN,
       );
       if ((INFO_PANEL_CLOSE_KEYWORDS as readonly string[]).includes(this.closeKeywordBuffer)) {
@@ -151,7 +127,7 @@ class InfoPanelComponent {
   }
 
   render(width: number): string[] {
-    const innerWidth = Math.max(20, width - 4);
+    const innerWidth = Math.max(1, width - 4);
     const lines: string[] = [];
     const borderChars = this.borderChars();
     const title = `${iconForSeverity(this.options.severity, this.glyphs)} ${this.options.title}`;
@@ -202,10 +178,8 @@ class InfoPanelComponent {
         width,
       ),
     );
-    return lines.map((line) => truncateToWidth(line, width, ""));
+    return width < 2 ? lines.map((line) => truncate(line, width, "")) : lines;
   }
-
-  invalidate(): void {}
 
   private bodyRows(innerWidth: number): string[] {
     const rows: string[] = [];
@@ -214,7 +188,7 @@ class InfoPanelComponent {
         rows.push("");
         continue;
       }
-      for (const wrapped of wrapTextWithAnsi(rawLine, innerWidth)) {
+      for (const wrapped of wrap(rawLine, innerWidth)) {
         rows.push(`  ${this.theme.fg("text", wrapped)}`);
       }
     }
@@ -281,14 +255,10 @@ class InfoPanelComponent {
   private contentLine(content: string, width: number): string {
     const chars = this.borderChars();
     const innerWidth = Math.max(0, width - 2);
-    const padded = this.pad(truncateToWidth(content, innerWidth, ""), innerWidth);
+    const padded = truncate(content, innerWidth, "", true);
     return this.bg(
       `${this.colorBorder(chars.vertical)}${padded}${this.colorBorder(chars.vertical)}`,
     );
-  }
-
-  private pad(content: string, width: number): string {
-    return `${content}${" ".repeat(Math.max(0, width - visibleWidth(content)))}`;
   }
 
   private bg(content: string): string {

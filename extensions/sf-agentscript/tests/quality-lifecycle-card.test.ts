@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { describe, expect, it } from "vitest";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
 import { AGENT_SCRIPT_QUALITY_RULES } from "../lib/quality/catalog.ts";
 import { renderLifecycleResult } from "../lib/render/lifecycle.ts";
 import type { AgentScriptQualityResult } from "../lib/quality/types.ts";

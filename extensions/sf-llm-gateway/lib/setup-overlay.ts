@@ -10,8 +10,12 @@
  * The same config panel is also hosted inside the sf-pi Extension Manager overlay.
  */
 
-import { type Focusable, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionRows,
+  ExtensionTheme as Theme,
+  ExtensionUiHost,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate } from "@oh-my-pi/pi-tui/text/width";
 import type { ConfigPanelResult } from "../../../catalog/registry.ts";
 import {
   type GatewayConfig,
@@ -23,6 +27,7 @@ import {
   projectGatewayConfigPath,
 } from "./config.ts";
 import { GatewayConfigPanelComponent } from "./config-panel.ts";
+import { matchesKey } from "../../../lib/common/ui-rows.ts";
 
 // -------------------------------------------------------------------------------------------------
 // Types shared with the extension entry point
@@ -98,14 +103,6 @@ export function getTextViewport(
 }
 
 // -------------------------------------------------------------------------------------------------
-// Helpers
-// -------------------------------------------------------------------------------------------------
-
-function padAnsi(text: string, width: number): string {
-  return `${text}${" ".repeat(Math.max(0, width - visibleWidth(text)))}`;
-}
-
-// -------------------------------------------------------------------------------------------------
 // Standalone wrapper overlay (draws border, delegates to config panel)
 // -------------------------------------------------------------------------------------------------
 
@@ -115,15 +112,18 @@ function padAnsi(text: string, width: number): string {
  * Draws the border box and title, then delegates all content rendering
  * and input handling to GatewayConfigPanelComponent.
  */
-export class GatewaySetupOverlayComponent implements Focusable {
-  focused = false;
-  private panel: GatewayConfigPanelComponent;
+export class GatewaySetupOverlayComponent implements ExtensionRows {
+  private readonly panel: GatewayConfigPanelComponent;
+  private activeRow = -1;
+  private scrollOffset = 0;
+  private viewportHeight = 0;
 
   constructor(
     private readonly theme: Theme,
     scope: "global" | "project",
     cwd: string,
     private readonly done: (result: SetupOverlayResult | undefined) => void,
+    private readonly ui: ExtensionUiHost,
     projectTrusted = false,
   ) {
     // Translate the shared panel's save and external-action results into the
@@ -156,34 +156,45 @@ export class GatewaySetupOverlayComponent implements Focusable {
       },
       { externalActions: true, closeOnSave: true, projectTrusted },
     );
+    this.panel.focused = true;
   }
 
   handleInput(data: string): void {
-    // Propagate focus state to the panel
-    this.panel.focused = this.focused;
+    if (matchesKey(data, "pageUp") || matchesKey(data, "pageDown")) {
+      this.scrollOffset += matchesKey(data, "pageUp") ? -this.viewportHeight : this.viewportHeight;
+      return;
+    }
     this.panel.handleInput(data);
   }
 
   render(width: number): string[] {
-    const innerWidth = Math.max(48, width - 2);
+    if (width < 3) return [];
+    const innerWidth = width - 2;
     const lines: string[] = [];
     const theme = this.theme;
 
     const row = (content: string = "") => {
-      const padded = padAnsi(truncateToWidth(content, innerWidth, ""), innerWidth);
+      const padded = truncate(content, innerWidth, "", true);
       return `${theme.fg("border", "│")}${padded}${theme.fg("border", "│")}`;
     };
 
     // Top border
     lines.push(theme.fg("border", `╭${"─".repeat(innerWidth)}╮`));
 
-    // Title
-    lines.push(row(` ${theme.fg("accent", theme.bold("SF LLM Gateway Setup"))}`));
-
-    // Delegate content to panel
-    this.panel.focused = this.focused;
     const contentRows = this.panel.renderContent(innerWidth);
-    for (const contentRow of contentRows) {
+    const activeRow = this.panel.getActiveRow();
+    const height = Math.max(1, Math.floor(this.ui.size().rows * 0.85) - 3);
+    const maxOffset = Math.max(0, contentRows.length - height);
+    if (this.activeRow !== activeRow || this.viewportHeight !== height) {
+      this.activeRow = activeRow;
+      this.viewportHeight = height;
+      const focusEnd = activeRow + Math.min(height, 3);
+      this.scrollOffset = Math.max(focusEnd - height, Math.min(this.scrollOffset, activeRow));
+    }
+    this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, maxOffset));
+    const scrollHint = maxOffset > 0 ? theme.fg("dim", "  PgUp/PgDn scroll") : "";
+    lines.push(row(` ${theme.fg("accent", theme.bold("SF LLM Gateway Setup"))}${scrollHint}`));
+    for (const contentRow of contentRows.slice(this.scrollOffset, this.scrollOffset + height)) {
       lines.push(row(contentRow));
     }
 
@@ -191,9 +202,5 @@ export class GatewaySetupOverlayComponent implements Focusable {
     lines.push(theme.fg("border", `╰${"─".repeat(innerWidth)}╯`));
 
     return lines;
-  }
-
-  invalidate(): void {
-    this.panel.invalidate();
   }
 }

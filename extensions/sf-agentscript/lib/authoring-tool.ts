@@ -8,6 +8,7 @@
 
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
 import { renderCompileCall, renderCompileResult } from "./render/compile.ts";
 import { renderInspectCall, renderInspectResult } from "./render/inspect.ts";
 import { renderMutateCall, renderMutateResult } from "./render/mutate.ts";
@@ -187,12 +188,12 @@ const Params = Type.Object({
 });
 
 export function registerAuthoringTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool<typeof Params, unknown>(pi, {
     name: AUTHORING_TOOL_NAME,
     label: "Agent Script authoring",
     description:
       "Family tool for local Agent Script authoring: create bundles, compile/check or format, inspect structure/references/targets/review, and mutate `.agent` files. Quick fixes use source-bound identities from compile/check. Uses verb + mode; live preview/eval/lifecycle are separate tools.",
-    renderCall: (args, theme) => {
+    renderCall: (args, _opts, theme) => {
       const p = args as AuthoringParams;
       if (p.verb === "compile")
         return renderCompileCall({ action: compileMode(p), path: p.agent_file }, theme);
@@ -216,8 +217,8 @@ export function registerAuthoringTool(pi: ExtensionAPI): void {
         );
       return renderInspectCall({ action: "create", path: p.bundle_name }, theme);
     },
-    renderResult: (result, opts, theme, context) => {
-      const args = (context?.args ?? {}) as AuthoringParams;
+    renderResult: (result, opts, theme, rawArgs) => {
+      const args = (rawArgs ?? {}) as AuthoringParams;
       const details = ((result as { details?: Record<string, unknown> }).details ?? {}) as Record<
         string,
         unknown

@@ -2,7 +2,8 @@
 /** Structured Salesforce route/path resolver tool for SF Browser. */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { renderBrowserToolCall, renderBrowserToolResult } from "./browser-render.ts";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
+import { browserToolRenderers } from "./browser-render.ts";
 import { isResolvedSalesforcePath, resolveSalesforcePath } from "./salesforce-path-resolver.ts";
 import { SalesforceNavigationTargetSchema } from "./salesforce-path-schema.ts";
 import { getSetupDestination } from "./setup-destinations.ts";
@@ -12,7 +13,7 @@ import { okText } from "./tool-support.ts";
 export const SF_BROWSER_RESOLVE_PATH_TOOL_NAME = "sf_browser_resolve_path";
 
 export function registerSfBrowserResolvePathTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool(pi, {
     name: SF_BROWSER_RESOLVE_PATH_TOOL_NAME,
     label: "SF Browser Resolve Path",
     description:
@@ -22,10 +23,7 @@ export function registerSfBrowserResolvePathTool(pi: ExtensionAPI): void {
       "Use sf_browser_resolve_path when you want to preview or disambiguate Salesforce navigation before opening the browser.",
       "For fuzzy Setup Destination matches, ask the user to choose when the tool returns candidates instead of guessing.",
     ],
-    renderCall: (args, theme) =>
-      renderBrowserToolCall(SF_BROWSER_RESOLVE_PATH_TOOL_NAME, args, theme),
-    renderResult: (result, options, theme, context) =>
-      renderBrowserToolResult(SF_BROWSER_RESOLVE_PATH_TOOL_NAME, result, options, theme, context),
+    ...browserToolRenderers(SF_BROWSER_RESOLVE_PATH_TOOL_NAME),
     parameters: Type.Object({
       target: SalesforceNavigationTargetSchema,
     }),

@@ -4,16 +4,20 @@
  *
  * Hand-maintained. The generated registry.ts re-exports these types.
  */
-import type { Focusable, TUI } from "@earendil-works/pi-tui";
-import type { ExtensionCommandContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionTheme,
+  ExtensionUiHost,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import type { RowsPanel } from "../lib/common/ui-rows.ts";
 
 // -------------------------------------------------------------------------------------------------
 // Config panel protocol
 // -------------------------------------------------------------------------------------------------
 
 /**
- * A config panel is a Focusable component that an extension provides for
- * drill-down configuration inside the sf-pi Extension Manager overlay.
+ * A config panel is a row view that an extension provides for drill-down
+ * configuration inside the sf-pi Extension Manager overlay.
  *
  * The panel renders its own content rows (no border box — the host draws that).
  * It receives input when focused and calls `done()` when the user is finished.
@@ -26,17 +30,19 @@ export type ConfigPanelResult = {
   needsReload?: boolean;
 };
 
-export type ConfigPanelFocusable = Focusable & {
+export type ConfigPanelFocusable = RowsPanel & {
   /** Zero-based rendered row the Manager should keep visible during panel navigation. */
   getActiveRow?: () => number | undefined;
+  /** Whether a focused input should receive the Manager's navigation keys. */
+  capturesNavigation?(): boolean;
 };
 
 export type ConfigPanelFactory = (
-  theme: Theme,
+  theme: ExtensionTheme,
   cwd: string,
   scope: "global" | "project",
   done: (result: ConfigPanelResult | undefined) => void,
-  tui?: TUI,
+  ui?: ExtensionUiHost,
   ctx?: ExtensionCommandContext,
 ) => ConfigPanelFocusable;
 

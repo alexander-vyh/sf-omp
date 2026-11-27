@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, readdir, readlink, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Subprocess } from "bun";
-import { ROOT, localOmpCommand, runtimeEnvironment } from "./omp-runtime.ts";
+import { ROOT, localBunExecutable, proofOmpCommand, runtimeEnvironment } from "./omp-runtime.ts";
 import { connectGlobalAuth, type GlobalAuthConnection } from "./omp-auth.ts";
 import {
   accountPolicy,
@@ -45,6 +45,7 @@ function fixtureEnvironment(stateRoot: string): NodeJS.ProcessEnv {
     "PI_NATIVES_DIR",
     "BUN_INSTALL_CACHE_DIR",
     "npm_config_cache",
+    "SF_OMP_PROOF_NPM",
   ];
   const result: NodeJS.ProcessEnv = {};
   for (const name of names) if (source[name] !== undefined) result[name] = source[name];
@@ -97,8 +98,7 @@ const globalEnvironment = fixtureEnvironment(fixtureRoot);
 // Bun caches os.homedir() at process startup. Start the native fixture with its
 // isolated HOME already installed, rather than changing only process.env later.
 if (!inheritedRunRoot) {
-  const [bun] = localOmpCommand();
-  const fixture = Bun.spawn([bun, import.meta.filename], {
+  const fixture = Bun.spawn([localBunExecutable(), import.meta.filename], {
     cwd: ROOT,
     env: { ...globalEnvironment, SF_OMP_AUTH_SMOKE_RUN_ROOT: runRoot },
     stdin: "ignore",
@@ -132,6 +132,13 @@ const checks: Record<string, boolean> = {
   nativeClientOAuth: false,
   liveApiKeyChangeObserved: false,
   liveOAuthChangeObserved: false,
+  hostRpcResponse: false,
+  hostExitedCleanly: false,
+  hostSessionStarted: false,
+  hostSessionShutdown: false,
+  hostCredentialsResolved: false,
+  hostNoExternalRequests: false,
+  hostObserverPassed: false,
   nativeHost: false,
   salesforceRegistrations: false,
   localDatabaseAndSessions: false,
@@ -160,7 +167,7 @@ try {
   // Test the native module-loading boundary: static imports freeze real-user directories before fixture HOME is installed.
   const { SqliteAuthCredentialStore, AuthStorage, REMOTE_REFRESH_SENTINEL } =
     await import("@oh-my-pi/pi-ai");
-  const { AuthBrokerClient, RemoteAuthCredentialStore } =
+  const { AuthBrokerClient, HybridAuthCredentialStore } =
     await import("@oh-my-pi/pi-ai/auth-broker");
   const { resolveAuthBrokerConfig, openAuthCredentialStore } =
     await import("@oh-my-pi/pi-ai/auth-broker/discover");
@@ -247,12 +254,12 @@ try {
     agentDir: getAgentDir(),
     cachePath: path.join(clientRoot, "broker-snapshot.cache"),
   });
-  requireTrue(
-    opened.store instanceof RemoteAuthCredentialStore,
-    "Native auth discovery opened a local credential store instead of the broker.",
-  );
-  const remote = opened.store;
-  const auth = new AuthStorage(remote);
+  const credentials = opened.store;
+  if (!(credentials instanceof HybridAuthCredentialStore)) {
+    credentials.close();
+    throw new Error("Native auth discovery did not open the broker-backed hybrid store.");
+  }
+  const auth = new AuthStorage(credentials);
   clientAuth = auth;
   await auth.credentials.reload();
   const { ModelRegistry } = await import("@oh-my-pi/pi-coding-agent/config/model-registry");
@@ -279,7 +286,7 @@ try {
   await store.saveOAuth("anthropic", { ...oauth, access: updatedAccess });
   const changeDeadline = Date.now() + 15_000;
   while (Date.now() < changeDeadline) {
-    await remote.refreshSnapshot();
+    await credentials.refreshSnapshot();
     await auth.credentials.reload();
     checks.liveApiKeyChangeObserved =
       (await registry.getApiKeyForProvider("openai")) === updatedApiKey;
@@ -295,11 +302,21 @@ try {
   auth.close();
   clientAuth = undefined;
 
+  // Like the other native imports, this must follow the disposable HOME bootstrap.
+  const { readRpcInputFrames } = await import("@oh-my-pi/pi-coding-agent/modes/rpc/rpc-input");
   const workspace = path.join(runRoot, "workspace");
   await cp(path.join(ROOT, "scripts", "fixtures", "omp-smoke"), workspace, { recursive: true });
+  const hostFixtureEnvironment = fixtureEnvironment(hostRoot);
   const hostReportPath = path.join(runRoot, "host-report.json");
+
+  const offlineConfig = path.join(runRoot, "offline.yml");
+  await writeFile(
+    offlineConfig,
+    "models:\n  offline: true\nstartup:\n  checkUpdate: false\nupdate:\n  auto: false\nmarketplace:\n  autoUpdate: 'off'\n",
+    { mode: 0o600 },
+  );
   const hostEnvironment = {
-    ...fixtureEnvironment(hostRoot),
+    ...hostFixtureEnvironment,
     ...connection.environment,
     SF_OMP_AUTH_HOST_REPORT: hostReportPath,
     SF_OMP_AUTH_HOST_STATE: hostRoot,
@@ -308,8 +325,10 @@ try {
     SF_OMP_AUTH_PARENT_PID: String(process.pid),
   };
   const command = [
-    ...localOmpCommand(),
+    ...proofOmpCommand(hostFixtureEnvironment),
     ...connection.args,
+    "--config",
+    offlineConfig,
     "--mode",
     "rpc",
     "--no-ui",
@@ -327,44 +346,67 @@ try {
     "--model",
     "gpt-4o-mini",
   ];
-  child = Bun.spawn(command, {
+  const hostProcess = Bun.spawn(command, {
     cwd: workspace,
     env: hostEnvironment,
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
   });
-  child.stdin.write(`${JSON.stringify({ id: "auth-smoke-state-only", type: "get_state" })}\n`);
-  child.stdin.end();
+  child = hostProcess;
+  const stateRequestId = "auth-smoke-state-only";
+  // EOF shuts down RPC. Wait for the state response so startup and teardown
+  // are separate, observed phases; never persist raw auth diagnostics.
+  const output = readRpcInputFrames(
+    hostProcess.stdout,
+    (message) => {
+      const frame = record(message);
+      if (frame.type !== "response" || frame.id !== stateRequestId) return;
+      checks.hostRpcResponse = frame.command === "get_state" && frame.success === true;
+      hostProcess.stdin.end();
+    },
+    () => {},
+  );
+  const drained = Promise.all([
+    hostProcess.exited,
+    output,
+    hostProcess.stderr.pipeTo(new WritableStream()),
+  ]);
   let timedOut = false;
   const timeout = setTimeout(() => {
     timedOut = true;
-    child?.kill("SIGKILL");
+    hostProcess.kill("SIGKILL");
   }, 120_000);
   let exitCode: number;
   try {
-    const result = await Promise.all([
-      child.exited,
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
-    exitCode = result[0];
-    // Child output may include auth diagnostics; never persist or print it.
+    hostProcess.stdin.write(`${JSON.stringify({ id: stateRequestId, type: "get_state" })}\n`);
+    await hostProcess.stdin.flush();
+    [exitCode] = await drained;
   } finally {
     clearTimeout(timeout);
   }
   child = undefined;
+  checks.hostExitedCleanly = !timedOut && !interrupted && exitCode === 0;
   const host = record(JSON.parse(await readFile(hostReportPath, "utf8")));
+  if (Array.isArray(host.blockedHosts) && host.blockedHosts.length) {
+    const hosts = host.blockedHosts.filter(
+      (name): name is string => typeof name === "string" && /^[a-z0-9.-]+$/i.test(name),
+    );
+    console.error(`Blocked external fixture hosts: ${hosts.join(", ")}`);
+  }
+  checks.hostSessionStarted = host.sessionStarted === true;
+  checks.hostSessionShutdown = host.sessionShutdown === true;
+  checks.hostCredentialsResolved = host.apiKeyResolved === true && host.oauthResolved === true;
+  checks.hostNoExternalRequests = host.noExternalRequests === true;
+  checks.hostObserverPassed = host.passed === true;
   checks.nativeHost =
-    !timedOut &&
-    !interrupted &&
-    exitCode === 0 &&
-    host.passed === true &&
-    host.sessionStarted === true &&
-    host.sessionShutdown === true &&
-    host.apiKeyResolved === true &&
-    host.oauthResolved === true &&
-    host.noExternalRequests === true;
+    checks.hostRpcResponse &&
+    checks.hostExitedCleanly &&
+    checks.hostSessionStarted &&
+    checks.hostSessionShutdown &&
+    checks.hostCredentialsResolved &&
+    checks.hostNoExternalRequests &&
+    checks.hostObserverPassed;
   checks.salesforceRegistrations = host.salesforceRegistrations === true;
   checks.localDatabaseAndSessions =
     host.localDatabase === true &&
@@ -379,6 +421,14 @@ try {
   checks.noGlobalBrokerTokenFile = !(await Bun.file(
     path.join(globalConfigRoot, "auth-broker.token"),
   ).exists());
+  await connection.close();
+  connection = undefined;
+  try {
+    await fetch(new URL("/v1/healthz", brokerConfig.url), { signal: AbortSignal.timeout(1500) });
+  } catch {
+    checks.managedBrokerStopped = true;
+  }
+  requireTrue(checks.managedBrokerStopped, "Managed fixture broker remained alive after close.");
   requireTrue(
     checks.nativeHost &&
       checks.salesforceRegistrations &&
@@ -390,14 +440,6 @@ try {
       checks.noGlobalBrokerTokenFile,
     "Native auth host integration or extension/state isolation failed.",
   );
-  await connection.close();
-  connection = undefined;
-  try {
-    await fetch(new URL("/v1/healthz", brokerConfig.url), { signal: AbortSignal.timeout(1500) });
-  } catch {
-    checks.managedBrokerStopped = true;
-  }
-  requireTrue(checks.managedBrokerStopped, "Managed fixture broker remained alive after close.");
   checks.passed = true;
 } catch {
   failed = true;

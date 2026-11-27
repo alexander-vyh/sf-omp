@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
+import { currentTheme, setCurrentTheme, ThemeController } from "@oh-my-pi/pi-tui/theme/runtime";
 import { describe, expect, it } from "vitest";
 
 import { colorsEnabled, normalizeAnsiForTerminal, stripAnsiSgr } from "../color-policy.ts";
@@ -17,7 +17,7 @@ describe("shared terminal color policy", () => {
     expect(stripAnsiSgr(colored)).toBe("Hello");
   });
 
-  it("removes truecolor while preserving 256-color styling when Pi disables truecolor", () => {
+  it("removes truecolor while preserving 256-color styling when the terminal lacks truecolor", () => {
     const value = `\x1b[38;2;1;2;3mRGB\x1b[0m \x1b[38;5;75mIndexed\x1b[0m`;
 
     expect(normalizeAnsiForTerminal(value, { environment: {}, trueColor: false })).toBe(
@@ -43,13 +43,13 @@ describe("shared terminal color policy", () => {
     ).toBe("Hello");
   });
 
-  it("uses Pi's resolved terminal capability by default", () => {
-    const prior = getCapabilities();
-    setCapabilities({ ...prior, trueColor: false });
+  it("uses OMP's active theme color depth by default", () => {
+    const prior = currentTheme();
+    new ThemeController().initSync({ truecolor: false, colors: 256, dark: true });
     try {
       expect(normalizeAnsiForTerminal(colored, { environment: {} })).toBe("Hello\x1b[0m");
     } finally {
-      setCapabilities(prior);
+      setCurrentTheme(prior);
     }
   });
 });

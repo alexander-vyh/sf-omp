@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Read-only SF Pi Manager panel for the advisory Instruction Surface Report. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { type Focusable, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent";
+import { truncate } from "@oh-my-pi/pi-tui/text/width";
 import type { ConfigPanelResult } from "../../../catalog/registry.ts";
+import { decodeRowKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import type { InstructionSurfaceBaselineComparison } from "./instruction-surface-baseline.ts";
 import type { InstructionSurfaceReport } from "./instruction-surface-report.ts";
 
@@ -41,25 +42,24 @@ export function renderInstructionSurfaceReport(
     ...report.limitations.slice(0, 3).map((line) => `  • ${line}`),
   ];
 
-  return lines.map((line) => truncateToWidth(line, safeWidth, "…"));
+  return lines.map((line) => truncate(line, safeWidth));
 }
 
-export class InstructionSurfacePanel implements Focusable {
+export class InstructionSurfacePanel implements RowsPanel {
   focused = false;
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: ExtensionTheme,
     private readonly report: InstructionSurfaceReport,
     private readonly done: (result: ConfigPanelResult | undefined) => void,
     private readonly comparison?: InstructionSurfaceBaselineComparison,
   ) {}
 
   handleInput(data: string): void {
+    const key = decodeRowKey(data);
     if (
-      matchesKey(data, "escape") ||
-      matchesKey(data, "enter") ||
-      matchesKey(data, "return") ||
-      data === "q"
+      key?.kind !== "release" &&
+      (key?.id === "escape" || key?.id === "enter" || key?.text === "q")
     ) {
       this.done(undefined);
     }
@@ -74,8 +74,6 @@ export class InstructionSurfacePanel implements Focusable {
   render(width = 100): string[] {
     return this.renderContent(width);
   }
-
-  invalidate(): void {}
 }
 
 function comparisonLines(comparison: InstructionSurfaceBaselineComparison | undefined): string[] {

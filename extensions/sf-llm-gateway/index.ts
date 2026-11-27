@@ -244,6 +244,7 @@ import {
   maybeAutoRefreshStaleUsage,
 } from "./lib/stale-usage-refresh.ts";
 import { isOmpHost, requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { nativeUi } from "../../lib/common/ui-rows.ts";
 import { markBootStep } from "../../lib/common/boot-timing.ts";
 import { globalAgentPath } from "../../lib/common/pi-paths.ts";
 import { handlePriorityCommand } from "./lib/priority-command.ts";
@@ -1820,7 +1821,7 @@ async function runSetupWizard(
   ctx: ExtensionCommandContext,
   scope: "global" | "project",
 ): Promise<void> {
-  if (!ctx.hasUI) {
+  if (!ctx.hasUI || ctx.mode !== "tui") {
     await emitCommandOutput(
       pi,
       ctx,
@@ -1832,18 +1833,10 @@ async function runSetupWizard(
   }
 
   while (true) {
-    const result = await ctx.ui.custom<SetupOverlayResult | undefined>(
-      (_tui, theme, _keybindings, done) =>
-        new GatewaySetupOverlayComponent(theme, scope, ctx.cwd, done, ctx.isProjectTrusted()),
-      {
-        overlay: true,
-        // Use function form for responsive sizing on terminal resize
-        overlayOptions: () => ({
-          anchor: "center" as const,
-          width: "82%",
-          minWidth: 84,
-        }),
-      },
+    const result = await nativeUi(ctx.ui).custom<SetupOverlayResult | undefined>(
+      (ui, theme, _keybindings, done) =>
+        new GatewaySetupOverlayComponent(theme, scope, ctx.cwd, done, ui, ctx.isProjectTrusted()),
+      { overlay: true },
     );
 
     if (!result) {

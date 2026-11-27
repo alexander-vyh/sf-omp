@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Command orchestration for focused dedicated-compaction setup. */
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { nativeUi } from "../../../lib/common/ui-rows.ts";
 import {
   GatewayCompactionSetupComponent,
   type GatewayCompactionSetupResult,
@@ -32,7 +33,7 @@ export async function runGatewayCompactionSetup(
 
   const availableModels = ctx.modelRegistry.getAvailable();
   const options = buildGatewayCompactionModelOptions(availableModels);
-  if (!ctx.hasUI) {
+  if (!ctx.hasUI || ctx.mode !== "tui") {
     const status = resolveGatewayCompactionStatus(ctx.cwd, availableModels, ctx.isProjectTrusted());
     return {
       summary: "Dedicated compaction setup needs Pi UI.",
@@ -51,13 +52,10 @@ export async function runGatewayCompactionSetup(
     };
   }
 
-  const result = await ctx.ui.custom<GatewayCompactionSetupResult | undefined>(
-    (_tui, theme, _keybindings, done) =>
+  const result = await nativeUi(ctx.ui).custom<GatewayCompactionSetupResult | undefined>(
+    (_ui, theme, _keybindings, done) =>
       new GatewayCompactionSetupComponent(theme, scope, ctx.cwd, done, options),
-    {
-      overlay: true,
-      overlayOptions: () => ({ anchor: "center" as const, width: "70%", minWidth: 72 }),
-    },
+    { overlay: true },
   );
   if (!result) return undefined;
 

@@ -50,6 +50,11 @@ Common commands are:
 The Manager detail page is the primary no-args destination for bundled extension
 commands. Explicit subcommands remain direct and scriptable.
 
+In the OMP terminal, the Manager opens as an overlay. Use the arrow keys to
+move, Enter to open an extension or action, and Esc to go back. PageUp and
+PageDown scroll long settings pages without changing a field's value. While
+editing a field, Home and End move its caret.
+
 ## Configuration
 
 Manager-owned settings include package filters, shared display profile, privacy

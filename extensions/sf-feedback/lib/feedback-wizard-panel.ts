@@ -1,18 +1,13 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** In-Manager form overview + native field editor for SF Feedback issue drafts. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import {
-  Editor,
-  Input,
-  type Component,
-  type EditorTheme,
-  type Focusable,
-  type TUI,
-  matchesKey,
-  truncateToWidth,
-  visibleWidth,
-} from "@earendil-works/pi-tui";
+import type {
+  ExtensionTheme as Theme,
+  ExtensionUiHost,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import type { ConfigPanelResult } from "../../../catalog/registry.ts";
+import { RowsTextField } from "../../../lib/common/ui-field.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import { sanitizeText } from "./sanitize.ts";
 import type { FeedbackDraft, IssueKind } from "./types.ts";
 
@@ -68,15 +63,14 @@ const FORM_FIELDS: FormField[] = [
 ];
 
 type Mode = "form" | "edit" | "preparing" | "preview" | "submitting" | "result";
-type FieldEditor = Component &
-  Focusable & { getValue?: () => string; getExpandedText?: () => string };
 
-export class FeedbackWizardPanel implements Focusable {
+export class FeedbackWizardPanel implements RowsPanel {
+  private disposed = false;
   private _focused = false;
   private mode: Mode = "form";
   private cursor = 0;
   private editingField: FormField | undefined;
-  private editor: FieldEditor | undefined;
+  private editor: RowsTextField | undefined;
   private fields: Record<FormField["key"], string> = {
     title: "",
     summary: "",
@@ -97,7 +91,7 @@ export class FeedbackWizardPanel implements Focusable {
 
   constructor(
     private readonly theme: Theme,
-    private readonly tui: TUI,
+    private readonly ui: ExtensionUiHost,
     private readonly kind: IssueKind,
     private readonly prepare: (draft: FeedbackDraft) => Promise<PreparedFeedbackPreview>,
     private readonly submit: (preview: PreparedFeedbackPreview) => Promise<FeedbackSubmitResult>,
@@ -112,17 +106,17 @@ export class FeedbackWizardPanel implements Focusable {
       return;
     }
 
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.done(undefined);
       return;
     }
 
     if (this.mode === "preview") {
-      if (data === "y" || data === "Y" || matchesKey(data, "enter") || matchesKey(data, "return")) {
+      if (matchesKey(data, "y") || matchesKey(data, "shift+y") || matchesKey(data, "enter")) {
         void this.submitPreview();
         return;
       }
-      if (data === "e" || data === "E") this.mode = "form";
+      if (matchesKey(data, "e") || matchesKey(data, "shift+e")) this.mode = "form";
       return;
     }
 
@@ -143,7 +137,12 @@ export class FeedbackWizardPanel implements Focusable {
       this.openFieldEditor();
       return;
     }
-    if (data === "p" || data === "P" || data === "s" || data === "S") {
+    if (
+      matchesKey(data, "p") ||
+      matchesKey(data, "shift+p") ||
+      matchesKey(data, "s") ||
+      matchesKey(data, "shift+s")
+    ) {
       void this.preparePreview();
     }
   }
@@ -160,8 +159,14 @@ export class FeedbackWizardPanel implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {
-    this.editor?.invalidate?.();
+  capturesNavigation(): boolean {
+    return this.mode === "edit";
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.editor?.dispose();
+    this.editor = undefined;
   }
 
   private renderForm(width: number): string[] {
@@ -186,7 +191,7 @@ export class FeedbackWizardPanel implements Focusable {
       const cursor = selected ? t.fg("accent", "›") : " ";
       const label = selected ? t.fg("accent", field.label) : t.fg("text", field.label);
       const renderedValue = displayValue
-        ? truncateToWidth(displayValue, valueWidth, "…")
+        ? truncate(displayValue, valueWidth)
         : t.fg("muted", field.placeholder);
       lines.push(` ${cursor} ${status} ${pad(label, fieldWidth)} ${renderedValue}`);
       if (selected) lines.push(`     ${t.fg("dim", field.help)}`);
@@ -206,7 +211,7 @@ export class FeedbackWizardPanel implements Focusable {
     const field = this.editingField;
     if (!field || !this.editor) return this.renderForm(width);
     this.editor.focused = this.focused;
-    const editorRows = this.editor.render(Math.max(20, width - 4));
+    const editorRows = this.editor.render(Math.max(1, width - 2));
     return [
       ` ${t.fg("accent", t.bold(`${labelForKind(this.kind)} feedback`))}  ${t.fg("muted", field.label)}`,
       ` ${t.fg("dim", field.help)}`,
@@ -231,9 +236,7 @@ export class FeedbackWizardPanel implements Focusable {
       ` ${t.fg("accent", t.bold(`${labelForKind(this.kind)} feedback`))}  ${t.fg("muted", "Preview")}`,
       ` ${t.fg("dim", "Review the issue draft before submitting.")}`,
       "",
-      ...previewLines
-        .slice(0, 18)
-        .map((line) => ` ${truncateToWidth(line, Math.max(20, width - 4), "…")}`),
+      ...previewLines.slice(0, 18).map((line) => ` ${truncate(line, Math.max(20, width - 4))}`),
       previewLines.length > 18
         ? ` ${t.fg("muted", `… ${previewLines.length - 18} more line(s)`)}`
         : "",
@@ -263,7 +266,7 @@ export class FeedbackWizardPanel implements Focusable {
       ...result.body
         .split("\n")
         .slice(0, 10)
-        .map((line) => ` ${truncateToWidth(line, Math.max(20, width - 4), "…")}`),
+        .map((line) => ` ${truncate(line, Math.max(20, width - 4))}`),
       "",
       ` ${t.fg("dim", "Enter/Esc back to SF Feedback")}`,
     ];
@@ -283,7 +286,7 @@ export class FeedbackWizardPanel implements Focusable {
       this.closeEditor(true);
       return;
     }
-    this.editor?.handleInput?.(data);
+    this.editor?.handleInput(data);
   }
 
   private openFieldEditor(): void {
@@ -291,30 +294,20 @@ export class FeedbackWizardPanel implements Focusable {
     if (!field) return;
     this.editingField = field;
     this.error = undefined;
-    if (field.multiline) {
-      const editor = new Editor(this.tui, editorTheme(this.theme));
-      editor.disableSubmit = true;
-      editor.setText(this.fields[field.key]);
-      this.editor = editor;
-    } else {
-      const input = new Input();
-      input.setValue(this.fields[field.key]);
-      input.onSubmit = (value) => {
-        this.fields[field.key] = sanitizeText(value);
-        this.closeEditor(false);
-      };
-      input.onEscape = () => this.closeEditor(false);
-      this.editor = input;
-    }
+    this.editor = new RowsTextField({
+      multiline: field.multiline,
+      maxRows: Math.max(1, Math.min(8, Math.floor(this.ui.size().rows * 0.85) - 10)),
+    });
+    this.editor.setValue(this.fields[field.key]);
     this.mode = "edit";
     this.editor.focused = this.focused;
   }
 
   private closeEditor(save: boolean): void {
     if (save && this.editingField && this.editor) {
-      const value = this.editor.getExpandedText?.() ?? this.editor.getValue?.() ?? "";
-      this.fields[this.editingField.key] = sanitizeText(value);
+      this.fields[this.editingField.key] = sanitizeText(this.editor.getValue());
     }
+    this.editor?.dispose();
     this.editor = undefined;
     this.editingField = undefined;
     this.mode = "form";
@@ -340,6 +333,8 @@ export class FeedbackWizardPanel implements Focusable {
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
       this.mode = "form";
+    } finally {
+      if (!this.disposed) this.ui.requestRender();
     }
   }
 
@@ -352,6 +347,8 @@ export class FeedbackWizardPanel implements Focusable {
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
       this.mode = "preview";
+    } finally {
+      if (!this.disposed) this.ui.requestRender();
     }
   }
 
@@ -368,26 +365,13 @@ export class FeedbackWizardPanel implements Focusable {
 
 export function createFeedbackWizardPanel(
   theme: Theme,
-  tui: TUI,
+  ui: ExtensionUiHost,
   kind: IssueKind,
   prepare: (draft: FeedbackDraft) => Promise<PreparedFeedbackPreview>,
   submit: (preview: PreparedFeedbackPreview) => Promise<FeedbackSubmitResult>,
   done: (result: ConfigPanelResult | undefined) => void,
 ): FeedbackWizardPanel {
-  return new FeedbackWizardPanel(theme, tui, kind, prepare, submit, done);
-}
-
-function editorTheme(theme: Theme): EditorTheme {
-  return {
-    borderColor: (text) => theme.fg("accent", text),
-    selectList: {
-      selectedPrefix: (text) => theme.fg("accent", text),
-      selectedText: (text) => theme.fg("accent", text),
-      description: (text) => theme.fg("muted", text),
-      scrollInfo: (text) => theme.fg("dim", text),
-      noMatch: (text) => theme.fg("warning", text),
-    },
-  };
+  return new FeedbackWizardPanel(theme, ui, kind, prepare, submit, done);
 }
 
 function labelForKind(kind: IssueKind): string {

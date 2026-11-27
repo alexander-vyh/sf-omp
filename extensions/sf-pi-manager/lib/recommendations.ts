@@ -16,6 +16,7 @@
  */
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { RecommendationsManifest, RecommendedItem } from "../../../catalog/types.ts";
+import { nativeUi } from "../../../lib/common/ui-rows.ts";
 import {
   defaultFirstRunBundleIds,
   loadRecommendationsManifest,
@@ -202,25 +203,11 @@ async function handleOverlay(
   const configuredSources = collectSettingsPackageSources(ctx.cwd);
   const rows = buildRecommendationRows(manifest, state, configuredSources);
 
-  // OMP's UI context has no setWorkingVisible; Pi hides its loader row here.
-  ctx.ui.setWorkingVisible?.(false);
-  let result: RecommendationsOverlayResult | undefined;
-  try {
-    result = await ctx.ui.custom<RecommendationsOverlayResult | undefined>(
-      (_tui, theme, _keybindings, done) =>
-        new RecommendationsOverlayComponent(theme, packageVersion, manifest.revision, rows, done),
-      {
-        overlay: true,
-        overlayOptions: () => ({
-          anchor: "center" as const,
-          width: "78%",
-          minWidth: 70,
-        }),
-      },
-    );
-  } finally {
-    ctx.ui.setWorkingVisible?.(true);
-  }
+  const result = await nativeUi(ctx.ui).custom<RecommendationsOverlayResult | undefined>(
+    (_ui, theme, _keybindings, done) =>
+      new RecommendationsOverlayComponent(theme, packageVersion, manifest.revision, rows, done),
+    { overlay: true },
+  );
 
   // Always mark the revision as seen once the overlay opened, even on cancel.
   // The user has now been presented with the current list; don't nag them

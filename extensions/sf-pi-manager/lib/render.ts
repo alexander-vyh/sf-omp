@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Width-safe rendering helpers for sf-pi-manager's TUI overlay and config panel. */
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { truncate, visibleWidth, wrap } from "@oh-my-pi/pi-tui/text/width";
 
 export function padAnsi(text: string, width: number): string {
   return `${text}${" ".repeat(Math.max(0, width - visibleWidth(text)))}`;
@@ -9,20 +9,13 @@ export function padAnsi(text: string, width: number): string {
 export function safeTruncate(text: string, width: number, ellipsis = "…"): string {
   const safeWidth = Number.isFinite(width) ? Math.max(0, Math.floor(width)) : 0;
   if (safeWidth === 0) return "";
-  return truncateToWidth(text, safeWidth, ellipsis);
+  return truncate(text, safeWidth, ellipsis);
 }
 
 export function clampAnsiLine(text: string, width: number): string {
   const safeWidth = Number.isFinite(width) ? Math.max(0, Math.floor(width)) : 0;
   if (safeWidth === 0) return "";
-  if (visibleWidth(text) <= safeWidth) return text;
-
-  for (let candidateWidth = safeWidth; candidateWidth >= 0; candidateWidth -= 1) {
-    const candidate = truncateToWidth(text, candidateWidth, "");
-    if (visibleWidth(candidate) <= safeWidth) return candidate;
-  }
-
-  return "";
+  return truncate(text, safeWidth, "");
 }
 
 export function clampAnsiLines(lines: string[], width: number): string[] {
@@ -53,7 +46,7 @@ export function wrapPlainText(text: string, width: number): string[] {
 
 export function wrapAnsiText(text: string, width: number): string[] {
   const safeWidth = Math.max(1, Math.floor(width));
-  const wrapped = wrapTextWithAnsi(text, safeWidth);
+  const wrapped = wrap(text, safeWidth);
   return wrapped.length > 0 ? wrapped.map((line) => clampAnsiLine(line, safeWidth)) : [""];
 }
 

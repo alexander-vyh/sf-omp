@@ -1,19 +1,16 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
- * Unit tests for the small public surface of command-panel.ts.
- *
- * The TUI rendering itself is covered by manual smoke testing inside pi
- * (we can't easily mount Pi's KeybindingsManager + Theme in a vitest
- * env). What we *can* unit-test is:
- *
- *   1. The close-keyword contract — extensions rely on `exit` / `quit`
- *      always closing the panel.
- *   2. The lifecycle-action predicate exported from extension-toggle.ts —
- *      specialized panels that wire `performToggleExtension` pass this as
- *      `closeBeforeAction`. This test pins the predicate itself.
+ * Unit tests for command-panel close, selection and action lifecycle behavior.
  */
+import { KeybindingsManager } from "@oh-my-pi/pi-coding-agent/config/keybindings/keybindings";
+import type {
+  ExtensionCustomFactory,
+  ExtensionRows,
+  ExtensionTheme,
+  ExtensionUiHost,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import { describe, expect, it, vi } from "vitest";
-import { matchesCloseKeyword, openCommandPanel } from "../command-panel.ts";
+import { matchesCloseKeyword, openCommandPanel, type CommandPanelState } from "../command-panel.ts";
 import { isLifecycleToggleAction } from "../extension-toggle.ts";
 
 describe("matchesCloseKeyword", () => {
@@ -88,6 +85,64 @@ describe("openCommandPanel", () => {
     );
 
     expect(result).toBeNull();
+  });
+
+  it("honors native selection remaps and unmounts before a close-before action", async () => {
+    let panel: ExtensionRows | undefined;
+    let mounted = false;
+    const state: CommandPanelState = {};
+    const host: ExtensionUiHost = {
+      size: () => ({ columns: 80, rows: 24 }),
+      requestRender: vi.fn(),
+      suspend: (run) => run(),
+    };
+    const theme = {
+      fg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+    } as unknown as ExtensionTheme;
+    const keybindings = KeybindingsManager.inMemory({ "tui.select.down": "ctrl+n" });
+    const ctx = {
+      mode: "tui",
+      hasUI: true,
+      cwd: process.cwd(),
+      ui: {
+        custom: (factory: ExtensionCustomFactory<string | null>) => {
+          const { promise, resolve } = Promise.withResolvers<string | null>();
+          mounted = true;
+          panel = factory(host, theme, keybindings, (result) => {
+            mounted = false;
+            resolve(result);
+          }) as ExtensionRows;
+          return promise;
+        },
+      },
+    } as never;
+    const onAction = vi.fn(() => {
+      expect(mounted).toBe(false);
+    });
+    const result = openCommandPanel(ctx, {
+      title: "Test panel",
+      actions: [
+        { value: "status", label: "Show status", description: "Display status", group: "Status" },
+        { value: "reload", label: "Reload", description: "Reload extension", group: "Lifecycle" },
+        { value: "close", label: "Close", description: "Dismiss", group: "Lifecycle" },
+      ],
+      closeValue: "close",
+      state,
+      onAction,
+      closeBeforeAction: (action) => action === "reload",
+    });
+
+    expect(panel?.render(80).join("\n")).toContain("Show status");
+    expect(state.selectedValue).toBe("status");
+    panel?.handleInput?.("\x1b[B"); // A remapped Down no longer moves the selection.
+    expect(state.selectedValue).toBe("status");
+    panel?.handleInput?.("\x0e"); // Ctrl+N
+    expect(state.selectedValue).toBe("reload");
+    panel?.handleInput?.("\r");
+
+    await expect(result).resolves.toBe("close");
+    expect(onAction).toHaveBeenCalledExactlyOnceWith("reload");
   });
 });
 

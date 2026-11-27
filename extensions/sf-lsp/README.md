@@ -114,6 +114,9 @@ LWC bundle. Agent Script needs its server script and Node, and is delegated to
 SF Agent Script when that extension owns diagnostics. Missing servers are
 reported explicitly; none are downloaded by these smoke operations.
 
+The client uses the Node JSON-RPC transport directly. LSP payload types are
+checked at build time without loading the protocol package's runtime barrel in OMP.
+
 ## File Structure
 
 <!-- GENERATED:file-structure:start -->

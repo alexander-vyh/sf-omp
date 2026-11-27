@@ -8,9 +8,11 @@ import type {
   ExtensionCommandContext,
   ExtensionUIContext,
   ModelRegistry,
-  Theme,
 } from "@earendil-works/pi-coding-agent";
-import type { TUI } from "@earendil-works/pi-tui";
+import type {
+  ExtensionTheme as Theme,
+  ExtensionUiHost,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import { buildGatewayManagerActions, refreshGatewayProvider } from "../index.ts";
 import {
   PROVIDER_NAME,
@@ -166,7 +168,9 @@ describe("Manager Gateway setup", () => {
     const setup = buildGatewayManagerActions({} as never).find((action) => action.id === "setup");
     const panel = setup?.createPanel?.(theme, cwd, "project", vi.fn(), ctx, {
       requestRender: vi.fn(),
-    } as unknown as TUI);
+      size: () => ({ rows: 40, columns: 100 }),
+      suspend: (run) => run(),
+    } satisfies ExtensionUiHost);
     expect(panel).toBeDefined();
     if (!panel) return;
 
@@ -217,7 +221,9 @@ describe("Manager Gateway setup", () => {
     const setup = buildGatewayManagerActions({} as never).find((action) => action.id === "setup");
     const panel = setup?.createPanel?.(theme, cwd, "project", done, ctx, {
       requestRender,
-    } as unknown as TUI);
+      size: () => ({ rows: 40, columns: 100 }),
+      suspend: (run) => run(),
+    } satisfies ExtensionUiHost);
     expect(panel).toBeDefined();
     if (!panel) return;
 

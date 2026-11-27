@@ -14,7 +14,6 @@
  *   releases load with one process-wide forward-compatibility warning.
  */
 import * as PiRuntime from "@earendil-works/pi-coding-agent";
-import packageManifest from "../../package.json" with { type: "json" };
 import { isExtensionDisabledInOmpConfig } from "./sf-pi-extension-state.ts";
 
 /** Oldest Pi release whose public APIs satisfy every bundled extension. */
@@ -114,9 +113,8 @@ function claimForwardCompatibilityWarning(): boolean {
 /**
  * True when running inside the native OMP host rather than Pi. Both OMP-only
  * registration methods distinguish it from Pi regardless of which SDK module
- * graph the caller imported (the launcher pins the audited OMP version), so
- * extensions can branch on host API differences (provider registration shape,
- * events) while unit tests on the Pi SDK keep the Pi path.
+ * graph the caller imported, so extensions can branch on differences in
+ * provider registration and events while tests on the Pi SDK keep the Pi path.
  */
 export function isOmpHost(pi: unknown): boolean {
   return (
@@ -134,7 +132,10 @@ export function isOmpHost(pi: unknown): boolean {
  * status-only credential-store reads. Prefer `isOmpHost(pi)` when `pi` exists.
  */
 export function isOmpRuntime(): boolean {
-  return getInstalledPiVersion() === packageManifest.devDependencies["@oh-my-pi/pi-coding-agent"];
+  // OMP's Pi compatibility module re-exports the native settings service and
+  // canonical key parser. A release-number check misidentifies every OMP update.
+  const sdk = PiRuntime as { settings?: unknown; canonicalKeyId?: unknown };
+  return typeof sdk.settings === "object" && typeof sdk.canonicalKeyId === "function";
 }
 
 /**

@@ -4,7 +4,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { writeLatestBrowserSnapshotRefs } from "../../../lib/common/sf-browser-snapshot-state.ts";
 import { runAgentBrowser } from "./agent-browser.ts";
-import { renderBrowserToolCall, renderBrowserToolResult } from "./browser-render.ts";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
+import { browserToolRenderers } from "./browser-render.ts";
 import { captureVisualCheckpoint, openOrgInAgentBrowser } from "./operations.ts";
 import {
   findGlobalSetupButton,
@@ -30,7 +31,7 @@ type SetupNavigationStatus =
   "reached" | "already-in-state" | "not-found" | "ambiguous" | "postcondition-failed";
 
 export function registerSfBrowserNavigateSetupTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool(pi, {
     name: SF_BROWSER_NAVIGATE_SETUP_TOOL_NAME,
     label: "SF Browser Navigate Setup",
     description:
@@ -48,10 +49,7 @@ export function registerSfBrowserNavigateSetupTool(pi: ExtensionAPI): void {
       idempotentHint: true,
       openWorldHint: true,
     },
-    renderCall: (args, theme) =>
-      renderBrowserToolCall(SF_BROWSER_NAVIGATE_SETUP_TOOL_NAME, args, theme),
-    renderResult: (result, options, theme, context) =>
-      renderBrowserToolResult(SF_BROWSER_NAVIGATE_SETUP_TOOL_NAME, result, options, theme, context),
+    ...browserToolRenderers(SF_BROWSER_NAVIGATE_SETUP_TOOL_NAME),
     parameters: Type.Object({
       target_org: Type.Optional(
         Type.String({

@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Global-only SF Herdr settings panel. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { type Focusable, matchesKey } from "@earendil-works/pi-tui";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
 import { HERDR_PLAN_INTENTS, type HerdrPlanIntent } from "../../../lib/common/herdr.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import {
   readSfHerdrSettings,
   writeSfHerdrSettings,
@@ -16,7 +16,7 @@ const DIRECTIONS: readonly HerdrSplitDirection[] = ["auto", "right", "down"];
 const LIFECYCLES: readonly HerdrLifecycle[] = ["ephemeral", "sticky", "manual"];
 const ROW_COUNT = 3;
 
-class SfHerdrConfigPanel implements Focusable {
+class SfHerdrConfigPanel implements RowsPanel {
   focused = false;
   private settings: SfHerdrSettings;
   private savedSnapshot: string;
@@ -41,7 +41,7 @@ class SfHerdrConfigPanel implements Focusable {
     if (matchesKey(data, "down")) return this.moveCursor(1);
     if (matchesKey(data, "left")) return this.changeCurrent(-1);
     if (matchesKey(data, "right") || matchesKey(data, "space")) return this.changeCurrent(1);
-    if (data === "s" || data === "S" || matchesKey(data, "enter") || matchesKey(data, "return")) {
+    if (matchesKey(data, "s") || matchesKey(data, "shift+s") || matchesKey(data, "enter")) {
       this.save();
     }
   }
@@ -84,8 +84,6 @@ class SfHerdrConfigPanel implements Focusable {
   render(): string[] {
     return this.renderContent();
   }
-
-  invalidate(): void {}
 
   private moveCursor(delta: -1 | 1): void {
     this.cursor = cycleIndex(this.cursor, ROW_COUNT, delta);

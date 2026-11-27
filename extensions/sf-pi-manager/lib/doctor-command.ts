@@ -261,7 +261,7 @@ function renderDoctorReport(report: DoctorReport): string {
 /** On OMP the "Pi runtime" rows describe the Pi CLI on PATH, not the host. */
 function ompHostLines(): string[] {
   return isOmpRuntime()
-    ? [`Host runtime:     OMP ${getInstalledPiVersion() ?? "unknown"} (audited sf-omp host)`]
+    ? [`Host runtime:     OMP ${getInstalledPiVersion() ?? "unknown"} (sf-omp host)`]
     : [];
 }
 

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Shared terminal capability policy for SF Pi-owned ANSI rendering. */
-import { getCapabilities } from "@earendil-works/pi-tui";
+import { currentTheme } from "@oh-my-pi/pi-tui/theme/runtime";
 
 const ANSI_ESCAPE = String.fromCharCode(27);
 const ANSI_SGR_PATTERN = new RegExp(`${ANSI_ESCAPE}\\[([0-9;]*)m`, "g");
@@ -25,7 +25,7 @@ export function normalizeAnsiForTerminal(value: string, options: TerminalAnsiOpt
   const environment = options.environment ?? process.env;
   if (!colorsEnabled(environment)) return stripAnsiSgr(value);
 
-  const trueColor = options.trueColor ?? getCapabilities().trueColor;
+  const trueColor = options.trueColor ?? currentTheme().depth === "truecolor";
   return trueColor ? value : stripTrueColorSgr(value);
 }
 

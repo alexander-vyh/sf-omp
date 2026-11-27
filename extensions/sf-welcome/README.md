@@ -34,7 +34,8 @@ Wide terminals can show two columns; narrow terminals stack the same content.
 
 **SF Pi Manager → SF Welcome → Settings** controls `sfPi.welcome.mode`:
 
-- `header` — compact non-blocking Salesforce startup surface;
+- `header` — compact, non-blocking widget above the OMP editor. Esc, agent
+  activity, or a tool call dismisses it;
 - `off` — no automatic SF Welcome surface.
 
 Pi separately owns its native `quietStartup` setting. SF Pi Doctor uses

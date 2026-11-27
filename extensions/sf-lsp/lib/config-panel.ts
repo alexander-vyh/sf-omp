@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager Settings panel for sf-lsp UI preferences. */
-import { type Focusable, matchesKey } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { decodeRowKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
 import {
   readEffectiveSfLspSettings,
@@ -10,7 +10,7 @@ import {
   type SfLspSettingsScope,
 } from "./settings-io.ts";
 
-class SfLspConfigPanel implements Focusable {
+class SfLspConfigPanel implements RowsPanel {
   focused = false;
 
   private verbose: boolean;
@@ -19,7 +19,7 @@ class SfLspConfigPanel implements Focusable {
   private message = "";
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: ExtensionTheme,
     private readonly cwd: string,
     private readonly scope: SfLspSettingsScope,
     private readonly done: (result: ConfigPanelResult | undefined) => void,
@@ -32,16 +32,18 @@ class SfLspConfigPanel implements Focusable {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
+    const key = decodeRowKey(data);
+    if (!key || key.kind === "release") return;
+    if (key.id === "escape" || key.id === "q") {
       this.done(undefined);
       return;
     }
-    if (matchesKey(data, "left") || matchesKey(data, "right") || matchesKey(data, "space")) {
+    if (key.id === "left" || key.id === "right" || key.id === "space") {
       this.verbose = !this.verbose;
       this.message = "";
       return;
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "s") {
+    if (key.id === "enter" || key.id === "s") {
       this.save();
     }
   }
@@ -68,8 +70,6 @@ class SfLspConfigPanel implements Focusable {
   render(): string[] {
     return this.renderContent();
   }
-
-  invalidate(): void {}
 
   private save(): void {
     if (this.verbose === this.savedVerbose) {

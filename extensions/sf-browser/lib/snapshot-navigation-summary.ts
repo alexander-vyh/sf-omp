@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Bounded global-chrome and Setup-tree sections for compact browser snapshots. */
-import { truncateLine } from "@earendil-works/pi-coding-agent";
+import { truncate } from "@oh-my-pi/pi-tui/text/width";
 
-const MAX_LINE_BYTES = 260;
+const MAX_LINE_COLUMNS = 260;
 const MAX_NAV_LINES = 12;
 
 export function collectGlobalNavigationSummary(lines: string[]): string[] {
@@ -194,7 +194,9 @@ function normalizeNavLabel(value: string): string {
 }
 
 function formatLine(line: string): string {
-  return truncateLine(redactSnapshotText(line).replace(/\s+/gu, " "), MAX_LINE_BYTES).text;
+  const text = redactSnapshotText(line).replace(/\s+/gu, " ");
+  const clipped = truncate(text, MAX_LINE_COLUMNS, "");
+  return clipped === text ? text : `${clipped}... [truncated]`;
 }
 
 function redactSnapshotText(text: string): string {

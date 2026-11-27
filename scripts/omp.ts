@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { type ChildProcess, spawn } from "node:child_process";
+import path from "node:path";
+import { findNativeOmp } from "./native-omp.ts";
 import { connectGlobalAuth } from "./omp-auth.ts";
-import { localOmpCommand, ROOT, runtimeEnvironment } from "./omp-runtime.ts";
+import { ROOT, runtimeEnvironment } from "./omp-runtime.ts";
 
 let child: ChildProcess | undefined;
 let auth: Awaited<ReturnType<typeof connectGlobalAuth>> | undefined;
@@ -22,18 +24,29 @@ process.on("SIGTERM", terminate);
 process.on("SIGHUP", terminate);
 
 try {
-  const [executable, ...runtimeArgs] = localOmpCommand();
-  const environment = runtimeEnvironment();
-  auth = await connectGlobalAuth();
-  child = spawn(
-    executable,
-    [...runtimeArgs, "--no-extensions", "-e", ROOT, ...auth.args, ...process.argv.slice(2)],
-    {
-      cwd: process.cwd(),
-      env: { ...environment, ...auth.environment },
-      stdio: "inherit",
-    },
-  );
+  const native = findNativeOmp(ROOT);
+  if (!native)
+    throw new Error("Native omp is not on PATH. Install OMP from https://omp.sh/ first.");
+  const args = process.argv.slice(2);
+  let childArgs = args;
+  let environment: NodeJS.ProcessEnv;
+  if (args[0] === "update" || (args.length === 1 && args[0] === "--version")) {
+    environment = { ...process.env, PATH: native.searchPath };
+  } else {
+    const runtime = runtimeEnvironment();
+    auth = await connectGlobalAuth();
+    childArgs = ["--no-extensions", "-e", ROOT, ...auth.args, ...args];
+    environment = {
+      ...runtime,
+      ...auth.environment,
+      PATH: `${path.dirname(native.executable)}${path.delimiter}${runtime.PATH ?? ""}`,
+    };
+  }
+  child = spawn(native.executable, childArgs, {
+    cwd: process.cwd(),
+    env: environment,
+    stdio: "inherit",
+  });
   const finished = Promise.withResolvers<void>();
   child.once("error", finished.reject);
   child.once("close", (code, signal) => {

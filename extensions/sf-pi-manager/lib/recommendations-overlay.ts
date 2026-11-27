@@ -13,10 +13,14 @@
  * so the user can revisit and flip their mind without losing context. An item
  * the user installed previously is pre-checked on re-open.
  */
-import { type Focusable, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionRows,
+  ExtensionTheme as Theme,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import type { RecommendedItem } from "../../../catalog/types.ts";
 import type { RecommendationDecision } from "../../../lib/common/catalog-state/recommendations-state.ts";
+import { matchesKey } from "../../../lib/common/ui-rows.ts";
 
 export interface RecommendationRow {
   item: RecommendedItem;
@@ -31,9 +35,7 @@ function padAnsi(text: string, width: number): string {
   return `${text}${" ".repeat(Math.max(0, width - visibleWidth(text)))}`;
 }
 
-export class RecommendationsOverlayComponent implements Focusable {
-  focused = false;
-
+export class RecommendationsOverlayComponent implements ExtensionRows {
   private selectedIndex = 0;
 
   constructor(
@@ -56,7 +58,7 @@ export class RecommendationsOverlayComponent implements Focusable {
       this.done({ kind: "cancel" });
       return;
     }
-    if (matchesKey(data, "return") || matchesKey(data, "enter")) {
+    if (matchesKey(data, "enter")) {
       this.done({ kind: "apply", rows: this.rows });
       return;
     }
@@ -73,7 +75,7 @@ export class RecommendationsOverlayComponent implements Focusable {
       if (row) row.selected = !row.selected;
       return;
     }
-    if (data === "a" || data === "A") {
+    if (matchesKey(data, "a") || matchesKey(data, "shift+a")) {
       const allSelected = this.rows.every((r) => r.selected);
       for (const row of this.rows) row.selected = !allSelected;
       return;
@@ -81,11 +83,12 @@ export class RecommendationsOverlayComponent implements Focusable {
   }
 
   render(width: number): string[] {
-    const innerWidth = Math.max(50, width - 2);
+    if (width < 3) return [];
+    const innerWidth = width - 2;
     const theme = this.theme;
 
     const row = (content: string = "") => {
-      const padded = padAnsi(truncateToWidth(content, innerWidth, ""), innerWidth);
+      const padded = padAnsi(truncate(content, innerWidth, ""), innerWidth);
       return `${theme.fg("border", "│")}${padded}${theme.fg("border", "│")}`;
     };
 
@@ -141,8 +144,6 @@ export class RecommendationsOverlayComponent implements Focusable {
 
     return lines;
   }
-
-  invalidate(): void {}
 
   private renderPreviousDecisionBadge(decision: RecommendationDecision | undefined): string {
     if (decision === "installed") return this.theme.fg("success", "installed");

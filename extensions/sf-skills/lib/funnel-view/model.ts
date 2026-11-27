@@ -2,7 +2,7 @@
 /**
  * Pure model for the Skill Funnel view.
  *
- * The component is a thin Focusable wrapper; everything testable lives here:
+ * The view handles input and painting; the catalog folds live here:
  *   - funnelCounts: the narrowing strip numbers
  *   - per-tab row folds over the SkillCatalog (no logic, just filtering)
  *   - the staging reducer (stable keys + a human summary)

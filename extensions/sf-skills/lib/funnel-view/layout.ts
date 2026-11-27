@@ -10,7 +10,7 @@
  *
  * Pure math + a small render helper. Unit-tested in tests/funnel-layout.test.ts.
  */
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 
 export interface ColumnSpec {
   key: string;
@@ -118,7 +118,7 @@ export function renderColumns(cells: Cell[], widths: number[], opts: LayoutOptio
 
 /** Truncate (preserving trailing ellipsis) then pad to width, honoring align. */
 export function fitCell(text: string, width: number, align: "left" | "right"): string {
-  const truncated = truncateToWidth(text, width, "…");
+  const truncated = truncate(text, width);
   const pad = Math.max(0, width - visibleWidth(truncated));
   return align === "right" ? " ".repeat(pad) + truncated : truncated + " ".repeat(pad);
 }

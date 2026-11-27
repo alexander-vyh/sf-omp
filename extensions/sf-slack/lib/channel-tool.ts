@@ -5,8 +5,8 @@
  * When `channels:read` is missing, this tool falls back to search and history
  * so the agent can still do useful discovery work.
  */
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { callLabel, registerSlackUiTool, slackText } from "./render.ts";
 import {
   SlackChannelParams,
   DEFAULT_LIST_LIMIT,
@@ -53,16 +53,8 @@ interface ChannelToolRenderResult {
   };
 }
 
-function callLabel(label: string, summary: string, theme: Theme): Text {
-  return new Text(
-    theme.fg("toolTitle", theme.bold(label + " ")) + theme.fg("muted", summary),
-    0,
-    0,
-  );
-}
-
 export function registerChannelTool(pi: ExtensionAPI): void {
-  pi.registerTool<typeof SlackChannelParams>({
+  registerSlackUiTool<typeof SlackChannelParams>(pi, {
     name: "slack_channel",
     label: "Slack Channel",
     description:
@@ -71,7 +63,7 @@ export function registerChannelTool(pi: ExtensionAPI): void {
     promptSnippet: "Get Slack channel info, list channels by name, or list channel members",
     parameters: SlackChannelParams,
 
-    renderCall(args: ChannelToolCallArgs, theme: Theme) {
+    renderCall(args: ChannelToolCallArgs, _options, theme) {
       const action = args.action || "info";
       switch (action) {
         case "info":
@@ -92,28 +84,22 @@ export function registerChannelTool(pi: ExtensionAPI): void {
       }
     },
 
-    renderResult(
-      result: ChannelToolRenderResult,
-      opts: { expanded: boolean; isPartial: boolean },
-      theme: Theme,
-    ) {
+    renderResult(result: ChannelToolRenderResult, opts, theme) {
       if (opts.isPartial) {
-        return new Text(theme.fg("warning", "Slack channel lookup running…"), 0, 0);
+        return slackText(theme.fg("warning", "Slack channel lookup running…"));
       }
 
       const details = result.details || {};
       if (!details.ok) {
-        return new Text(
+        return slackText(
           theme.fg("error", "✗ " + (getFirstText(result.content) || "Channel call failed")),
-          0,
-          0,
         );
       }
       const action = details.action || "info";
 
       if (action === "info") {
         const channel = details.channelData;
-        if (!channel) return new Text(theme.fg("warning", "No channel data"), 0, 0);
+        if (!channel) return slackText(theme.fg("warning", "No channel data"));
 
         let text =
           theme.fg("success", "✓ ") +
@@ -135,12 +121,12 @@ export function registerChannelTool(pi: ExtensionAPI): void {
         if (channel.isArchived) flags.push(theme.fg("error", "archived"));
         if (flags.length) text += "\n  " + theme.fg("muted", "Flags:    ") + flags.join(", ");
         text += "\n" + theme.fg("borderMuted", "  ─────────────────────────────────────");
-        return new Text(text, 0, 0);
+        return slackText(text);
       }
 
       if (action === "list") {
         const channels = details.channels || [];
-        if (!channels.length) return new Text(theme.fg("warning", "No channels found"), 0, 0);
+        if (!channels.length) return slackText(theme.fg("warning", "No channels found"));
         let text = theme.fg(
           "success",
           `✓ ${channels.length} channel${channels.length !== 1 ? "s" : ""}`,
@@ -160,11 +146,11 @@ export function registerChannelTool(pi: ExtensionAPI): void {
             text += "\n    " + theme.fg("dim", shortTopic);
           }
         }
-        return new Text(text, 0, 0);
+        return slackText(text);
       }
 
       const members = details.members || [];
-      if (!members.length) return new Text(theme.fg("warning", "No members found"), 0, 0);
+      if (!members.length) return slackText(theme.fg("warning", "No members found"));
       let text = theme.fg(
         "success",
         `✓ ${members.length} member${members.length !== 1 ? "s" : ""}`,
@@ -174,7 +160,7 @@ export function registerChannelTool(pi: ExtensionAPI): void {
         text += "\n  " + theme.fg("warning", member.name || member.id);
         if (member.name && member.name !== member.id) text += theme.fg("dim", ` (${member.id})`);
       }
-      return new Text(text, 0, 0);
+      return slackText(text);
     },
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {

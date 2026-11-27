@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import type { Focusable } from "@earendil-works/pi-tui";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import type { RowsPanel } from "../../../lib/common/ui-rows.ts";
 import { createConfigPanel } from "../lib/config-panel.ts";
 import {
   readAutoUpdateEnabled,
@@ -23,7 +23,7 @@ const theme = {
   bold: (text: string) => text,
 } as Theme;
 
-type TestPanel = Focusable & {
+type TestPanel = RowsPanel & {
   handleInput(data: string): void;
   renderContent(width: number): string[];
 };

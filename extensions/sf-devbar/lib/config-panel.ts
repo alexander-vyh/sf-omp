@@ -1,9 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Config panel for SF DevBar color preferences. */
-import { type Focusable, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
 import { normalizeAnsiForTerminal } from "../../../lib/common/color-policy.ts";
+import { RowsTextField } from "../../../lib/common/ui-field.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import {
   DEVBAR_COLOR_DESCRIPTORS,
   DEFAULT_DEVBAR_COLORS,
@@ -66,12 +68,13 @@ export function parsePaletteInput(input: string): string[] | undefined {
   return Array.isArray(normalized) ? [...normalized] : undefined;
 }
 
-class SfDevbarConfigPanel implements Focusable {
+class SfDevbarConfigPanel implements RowsPanel {
   focused = false;
 
   private cursor = 0;
   private editingKey: DevbarColorKey | null = null;
-  private draftText = "";
+  private field: RowsTextField | undefined;
+  private activeRow = 0;
   private draftOverrides: DevbarColorOverrides;
   private savedOverrides: DevbarColorOverrides;
   private inheritedGlobalOverrides: DevbarColorOverrides;
@@ -97,34 +100,34 @@ class SfDevbarConfigPanel implements Focusable {
       return;
     }
 
-    if (isKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.done(undefined);
       return;
     }
-    if (isKey(data, "up")) {
+    if (matchesKey(data, "up")) {
       this.cursor =
         (this.cursor + DEVBAR_COLOR_DESCRIPTORS.length - 1) % DEVBAR_COLOR_DESCRIPTORS.length;
       return;
     }
-    if (isKey(data, "down")) {
+    if (matchesKey(data, "down")) {
       this.cursor = (this.cursor + 1) % DEVBAR_COLOR_DESCRIPTORS.length;
       return;
     }
-    if (isKey(data, "enter") || isKey(data, "return")) {
+    if (matchesKey(data, "enter")) {
       this.startEditing(this.currentDescriptor());
       return;
     }
-    if (isKey(data, "backspace") || isKey(data, "delete")) {
+    if (matchesKey(data, "backspace") || matchesKey(data, "delete")) {
       this.clearCurrentField();
       return;
     }
-    if (data === "r") {
+    if (matchesKey(data, "r")) {
       this.draftOverrides = {};
       this.lastError = "";
       this.lastMessage = "Reset this scope. Press s to save.";
       return;
     }
-    if (data === "s") {
+    if (matchesKey(data, "s")) {
       this.save();
     }
   }
@@ -136,7 +139,7 @@ class SfDevbarConfigPanel implements Focusable {
 
   private renderListContent(width: number): string[] {
     const t = this.theme;
-    const pad = (content = "") => padAnsi(truncateToWidth(content, width, ""), width);
+    const pad = (content = "") => padAnsi(truncate(content, width, ""), width);
     const effective = this.effectiveColors();
     const lines: string[] = [
       ` ${t.fg("accent", themeBold(t, "SF Pi › SF DevBar › Color Settings"))}`,
@@ -147,6 +150,7 @@ class SfDevbarConfigPanel implements Focusable {
       "",
     ];
 
+    this.activeRow = lines.length + this.cursor;
     for (const [i, descriptor] of DEVBAR_COLOR_DESCRIPTORS.entries()) {
       lines.push(this.renderRow(descriptor, effective, i === this.cursor, width));
     }
@@ -164,14 +168,14 @@ class SfDevbarConfigPanel implements Focusable {
 
   private renderEditContent(width: number): string[] {
     const t = this.theme;
-    const pad = (content = "") => padAnsi(truncateToWidth(content, width, ""), width);
+    const pad = (content = "") => padAnsi(truncate(content, width, ""), width);
     const descriptor = this.editingDescriptor();
     if (!descriptor) return this.renderListContent(width);
 
     const effective = this.effectiveColors();
     const current = effective.colors[descriptor.key];
     const currentText = Array.isArray(current) ? formatPalette(current) : String(current);
-    const draft = this.renderDraftText(width);
+    if (this.field) this.field.focused = this.focused;
     const lines: string[] = [
       ` ${t.fg("accent", themeBold(t, `SF Pi › SF DevBar › Color Settings › Edit ${descriptor.label}`))}`,
       "",
@@ -184,11 +188,20 @@ class SfDevbarConfigPanel implements Focusable {
       `   ${t.fg("dim", currentText)}`,
       "",
       ` ${t.fg("muted", "Draft:")}`,
-      `   ${t.fg("accent", draft)}`,
+    ];
+    this.activeRow = lines.length;
+    for (const row of this.field?.render(Math.max(1, Math.min(72, width - 4))) ?? []) {
+      lines.push(`   ${row}`);
+    }
+    if (this.lastError) {
+      this.activeRow = lines.length;
+      lines.push(` ${t.fg("warning", this.lastError)}`);
+    }
+    lines.push(
       "",
       ` ${t.fg("muted", "Accepted formats:")}`,
       `   ${t.fg("dim", "#RGB or #RRGGBB")}`,
-    ];
+    );
 
     if (descriptor.kind === "palette") {
       lines.push(`   ${t.fg("dim", "#b281d6, #5fafff, #82d8ff")}`);
@@ -196,11 +209,7 @@ class SfDevbarConfigPanel implements Focusable {
     }
 
     lines.push("");
-    if (this.lastError) lines.push(` ${t.fg("warning", this.lastError)}`);
-    lines.push(` ${t.fg("dim", "Enter accept · Esc cancel edit · Backspace delete")}`);
-    // Keep the edit panel height stable enough to overwrite old draft rows even
-    // when terminal input arrives faster than the host repaint cycle.
-    while (lines.length < 24) lines.push("");
+    lines.push(` ${t.fg("dim", "Enter accept · Esc cancel edit · Home/End move caret")}`);
     return lines.map(pad);
   }
 
@@ -208,25 +217,31 @@ class SfDevbarConfigPanel implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {}
+  capturesNavigation(): boolean {
+    return !!this.field;
+  }
+
+  getActiveRow(): number {
+    return this.activeRow;
+  }
+
+  dispose(): void {
+    this.field?.dispose();
+    this.field = undefined;
+  }
 
   private handleEditInput(data: string): void {
-    if (isKey(data, "escape")) {
+    if (matchesKey(data, "escape")) {
       this.editingKey = null;
-      this.draftText = "";
+      this.dispose();
       this.lastError = "";
       return;
     }
-    if (isKey(data, "backspace")) {
-      this.draftText = this.draftText.slice(0, -1);
-      return;
-    }
-    if (isKey(data, "enter") || isKey(data, "return")) {
+    if (matchesKey(data, "enter")) {
       this.commitEdit();
       return;
     }
-    const text = normalizeTextInput(data);
-    if (text) this.draftText += text;
+    this.field?.handleInput(data);
   }
 
   private startEditing(descriptor: DevbarColorDescriptor): void {
@@ -234,14 +249,9 @@ class SfDevbarConfigPanel implements Focusable {
     this.lastError = "";
     this.lastMessage = "";
     const scopedDraft = this.draftOverrides[descriptor.key];
-    this.draftText = scopedDraft === undefined ? "" : formatColorValue(scopedDraft);
-  }
-
-  private renderDraftText(width: number): string {
-    const cursor = this.theme.fg("accent", "█");
-    const maxDraftWidth = Math.max(8, Math.min(72, width - 8));
-    const visibleDraft = truncateToWidth(this.draftText, maxDraftWidth, "…");
-    return this.theme.fg("accent", `${visibleDraft}${cursor}`);
+    this.field = new RowsTextField();
+    this.field.focused = this.focused;
+    this.field.setValue(scopedDraft === undefined ? "" : formatColorValue(scopedDraft));
   }
 
   private commitEdit(): void {
@@ -250,7 +260,7 @@ class SfDevbarConfigPanel implements Focusable {
     const descriptor = DEVBAR_COLOR_DESCRIPTORS.find((item) => item.key === key);
     if (!descriptor) return;
 
-    const parsed = parseDevbarColorInput(descriptor, this.draftText);
+    const parsed = parseDevbarColorInput(descriptor, this.field?.getValue() ?? "");
     if (!parsed) {
       this.lastError =
         descriptor.kind === "palette"
@@ -261,7 +271,7 @@ class SfDevbarConfigPanel implements Focusable {
 
     this.draftOverrides = { ...this.draftOverrides, [key]: parsed };
     this.editingKey = null;
-    this.draftText = "";
+    this.dispose();
     this.lastError = "";
     this.lastMessage = "Buffered change. Press s to save.";
   }
@@ -342,83 +352,15 @@ class SfDevbarConfigPanel implements Focusable {
           .map((hex) => hexFg(hex, "██"))
           .join(" ")
       : hexFg(value as string, "██");
-    return truncateToWidth(
+    return truncate(
       ` ${cursor} ${label} ${swatch} ${t.fg("text", String(summary).padEnd(18))} ${t.fg(source === this.scope ? "accent" : "dim", source)}`,
       width,
-      "…",
     );
   }
 
   private isDirty(): boolean {
     return JSON.stringify(this.savedOverrides) !== JSON.stringify(this.draftOverrides);
   }
-}
-
-const ESC = "\u001b";
-const BRACKETED_PASTE_START = `${ESC}[200~`;
-const BRACKETED_PASTE_END = `${ESC}[201~`;
-
-export function normalizeTextInput(data: string): string {
-  if (!data) return "";
-  const withoutPasteMarkers = data
-    .split(BRACKETED_PASTE_START)
-    .join("")
-    .split(BRACKETED_PASTE_END)
-    .join("");
-  if (isTerminalEscapeSequence(withoutPasteMarkers)) return "";
-  return stripTerminalControls(withoutPasteMarkers).split("\r").join("").split("\n").join("");
-}
-
-function stripTerminalControls(value: string): string {
-  let out = "";
-  for (let i = 0; i < value.length; i++) {
-    const code = value.charCodeAt(i);
-    if (code === 27 && value[i + 1] === "[") {
-      i += 2;
-      while (i < value.length && !isCsiFinal(value.charCodeAt(i))) i++;
-      continue;
-    }
-    if (isControlCode(code)) continue;
-    out += value[i] ?? "";
-  }
-  return out;
-}
-
-function isControlCode(code: number): boolean {
-  return code === 127 || (code < 32 && code !== 9 && code !== 10 && code !== 13);
-}
-
-function isCsiFinal(code: number): boolean {
-  return (code >= 64 && code <= 90) || (code >= 97 && code <= 126);
-}
-
-function isTerminalEscapeSequence(value: string): boolean {
-  const csi = value.startsWith(`${ESC}[`)
-    ? value.slice(2)
-    : value.startsWith("[")
-      ? value.slice(1)
-      : null;
-  if (!csi) return false;
-  if (csi.length === 0) return false;
-  const finalChar = csi[csi.length - 1];
-  if (!finalChar) return false;
-  const finalCode = finalChar.charCodeAt(0);
-  if (!(
-    (finalCode >= 65 && finalCode <= 90) ||
-    (finalCode >= 97 && finalCode <= 122) ||
-    finalChar === "~"
-  ))
-    return false;
-  return [...csi.slice(0, -1)].every((char) => {
-    const code = char.charCodeAt(0);
-    return (code >= 48 && code <= 57) || char === ";";
-  });
-}
-
-type PanelKey = "escape" | "up" | "down" | "enter" | "return" | "backspace" | "delete";
-
-function isKey(data: string, key: PanelKey): boolean {
-  return data === key || matchesKey(data, key);
 }
 
 function formatColorValue(value: string | readonly string[]): string {

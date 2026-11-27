@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Behavior proofs for authenticated Pi-native SF Docs configuration. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,10 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSfDocsConnectPanel } from "../lib/manager-action-panels.ts";
 import { buildStatus } from "../lib/status.ts";
 
-const theme: Theme = {
+const theme = {
   fg: (_color: string, text: string) => text,
   bold: (text: string) => text,
-} as Theme;
+};
 
 let agentDir: string;
 
@@ -48,14 +47,16 @@ describe("SF Docs authenticated configuration", () => {
   it("prepares native login for endpoint plus masked token input", async () => {
     const done = vi.fn();
     const prepareLogin = vi.fn(() => "Prepared /login sf-docs.");
-    const panel = createSfDocsConnectPanel({ theme, done, prepareLogin });
+    const requestRender = vi.fn();
+    const panel = createSfDocsConnectPanel({ theme, done, prepareLogin, requestRender });
 
     const rendered = panel.renderContent(100).join("\n").replace(/\s+/g, " ");
     expect(rendered).toContain("docs endpoint URL");
     expect(rendered).toContain("masked prompt");
     expect(rendered).toContain("SF_DOCS_MCP_TOKEN");
     panel.handleInput("\r");
-    await vi.waitFor(() => expect(prepareLogin).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(requestRender).toHaveBeenCalledTimes(1));
+    expect(prepareLogin).toHaveBeenCalledTimes(1);
     expect(panel.renderContent(80).join("\n")).toContain("Prepared /login sf-docs.");
     expect(done).not.toHaveBeenCalled();
   });

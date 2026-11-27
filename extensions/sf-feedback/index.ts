@@ -135,10 +135,10 @@ function buildFeedbackManagerActions(pi: ExtensionAPI): ManagerDetailAction[] {
       run: (ctx) => handleCommand(pi, ctx, buildExecFn(pi, ctx.cwd), action.value),
       ...(issueKind
         ? {
-            createPanel: (theme, _cwd, _scope, done, ctx, tui) =>
+            createPanel: (theme, _cwd, _scope, done, ctx, ui) =>
               createFeedbackWizardPanel(
                 theme,
-                tui,
+                ui,
                 issueKind,
                 (draft) => prepareFeedbackPreview(pi, ctx, buildExecFn(pi, ctx.cwd), draft),
                 (preview) => submitPreparedFeedback(pi, ctx, buildExecFn(pi, ctx.cwd), preview),

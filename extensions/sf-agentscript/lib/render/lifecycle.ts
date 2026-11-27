@@ -7,8 +7,8 @@
  * activate / deactivate: single-line status flip.
  */
 
-import { Text, type Component } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionRows, ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
+import { textRows } from "../../../../lib/common/ui-rows.ts";
 import { createQualityCardComponent, qualityCardData } from "../quality/presentation.ts";
 import type { AgentScriptQualityResult } from "../quality/types.ts";
 import { padRightVisible, visibleWidth } from "./shared.ts";
@@ -97,7 +97,7 @@ interface LifecycleArgs {
 
 // ─── renderCall ───────────────────────────────────────────────────────────────
 
-export function renderLifecycleCall(args: LifecycleArgs, theme: Theme): Text {
+export function renderLifecycleCall(args: LifecycleArgs, theme: Theme): ExtensionRows {
   const label = theme.fg("toolTitle", theme.bold("🚀 Agent Script lifecycle "));
   const action = args.action ?? "?";
   let summary = action;
@@ -113,7 +113,7 @@ export function renderLifecycleCall(args: LifecycleArgs, theme: Theme): Text {
       summary = `list_versions · ${args.agent_api_name ?? "?"}`;
       break;
   }
-  return new Text(label + theme.fg("muted", summary), 0, 0);
+  return textRows(label + theme.fg("muted", summary));
 }
 
 // ─── renderResult dispatch ────────────────────────────────────────────────────
@@ -122,8 +122,8 @@ export function renderLifecycleResult(
   result: { details?: unknown; content?: unknown[] },
   opts: { isPartial?: boolean; expanded?: boolean },
   theme: Theme,
-): Component {
-  if (opts.isPartial) return new Text(theme.fg("warning", "🚀 lifecycle · running…"), 0, 0);
+): ExtensionRows {
+  if (opts.isPartial) return textRows(theme.fg("warning", "🚀 lifecycle · running…"));
   const details = (result.details ?? {}) as Record<string, unknown>;
   const qualityGate = details.quality_gate as
     | {
@@ -149,30 +149,24 @@ export function renderLifecycleResult(
     );
   }
   if (details.ok === false) {
-    return new Text(
+    return textRows(
       theme.fg("error", `✗ ${getFirstText(result.content) || "lifecycle call failed"}`),
-      0,
-      0,
     );
   }
   // publish: has bot_version_id + was_new_agent
   if (details.bot_version_id !== undefined && details.was_new_agent !== undefined) {
-    return new Text(formatPublishBody(details as PublishDetails, theme, /*ansi=*/ true), 0, 0);
+    return textRows(formatPublishBody(details as PublishDetails, theme, /*ansi=*/ true));
   }
   // list_versions: has versions[]
   if (Array.isArray(details.versions)) {
-    return new Text(
-      formatVersionsTable(details as ListVersionsDetails, theme, /*ansi=*/ true),
-      0,
-      0,
-    );
+    return textRows(formatVersionsTable(details as ListVersionsDetails, theme, /*ansi=*/ true));
   }
   // activate / deactivate: has bot_version_id + status
   if (details.bot_version_id !== undefined && details.status !== undefined) {
-    return new Text(formatActivateLine(details as ActivateDetails, theme, /*ansi=*/ true), 0, 0);
+    return textRows(formatActivateLine(details as ActivateDetails, theme, /*ansi=*/ true));
   }
   // Fallback to default text rendering.
-  return new Text(getFirstText(result.content), 0, 0);
+  return textRows(getFirstText(result.content));
 }
 
 // ─── Markdown emitters ────────────────────────────────────────────────────────

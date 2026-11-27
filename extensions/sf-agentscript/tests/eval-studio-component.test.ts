@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import { describe, expect, it, vi } from "vitest";
 import { EvalStudioComponent } from "../lib/eval-studio/component.ts";
 import type { StudioInventory } from "../lib/eval-studio/types.ts";
@@ -142,14 +142,14 @@ describe("Eval Studio component", () => {
     expect(rendered).toContain("+");
   });
 
-  it("drills Agent → Suite → Scenario and returns a Scenario Run intent", () => {
+  it("drills Agent → Suite → Scenario and handles a Kitty-encoded Run shortcut", () => {
     const done = vi.fn();
     const component = new EvalStudioComponent(theme, inventory(), glyphs, done);
     component.handleInput("\r");
     expect(component.render(100).join("\n")).toContain("Agents / Demo");
     component.handleInput("\r");
     expect(component.render(100).join("\n")).toContain("Agents / Demo / greeting");
-    component.handleInput("r");
+    component.handleInput("\x1b[114u");
     expect(done).toHaveBeenCalledWith({
       kind: "run_scenario",
       suite_path: "/project/tests/agentforce/Demo.eval.json",
@@ -255,20 +255,22 @@ describe("Eval Studio component", () => {
     expect(rendered).toContain("Final greeting");
   });
 
-  it("uses Pi Input for focused Unicode filtering", () => {
+  it("preserves Unicode editing while the filter has focus", () => {
     const component = new EvalStudioComponent(theme, inventory(), glyphs, vi.fn());
-    component.focused = true;
-    component.handleInput("/");
+    component.handleInput("\x1b[47u");
     component.handleInput("D");
     component.handleInput("é");
+    component.handleInput("\x1b[D");
+    component.handleInput("e");
+    component.handleInput("\x7f");
     component.handleInput("\r");
     expect(component.render(100).join("\n")).toContain("Dé");
   });
 
-  it("returns refresh and closes only from the Agent level", () => {
+  it("distinguishes Kitty-encoded Shift+R refresh from run and closes at the Agent level", () => {
     const done = vi.fn();
     const component = new EvalStudioComponent(theme, inventory(), glyphs, done);
-    component.handleInput("R");
+    component.handleInput("\x1b[114;2u");
     expect(done).toHaveBeenCalledWith({ kind: "refresh" });
     component.handleInput("q");
     expect(done).toHaveBeenCalledWith({ kind: "close" });

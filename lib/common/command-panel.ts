@@ -8,20 +8,15 @@
  * preserved selection/filter state, in-place action execution, and a full-width
  * selected-action detail pane so long help text does not clip.
  */
-import type { Component } from "@earendil-works/pi-tui";
-import type { ExtensionCommandContext, Theme } from "@earendil-works/pi-coding-agent";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import {
-  Container,
-  type KeybindingsManager,
-  matchesKey,
-  Spacer,
-  Text,
-  truncateToWidth,
-  visibleWidth,
-  wrapTextWithAnsi,
-} from "@earendil-works/pi-tui";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionRows,
+  ExtensionTheme,
+  KeybindingsManager,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate, visibleWidth, wrap } from "@oh-my-pi/pi-tui/text/width";
 import { iconForCommandGroup, resolveUiGlyphs, type UiGlyphs } from "./ui-glyphs.ts";
+import { decodeRowKey, nativeUi, stackRows, textRows } from "./ui-rows.ts";
 
 export interface CommandPanelAction<T extends string = string> {
   value: T;
@@ -61,14 +56,8 @@ export interface CommandPanelOptions<T extends string = string> {
    *    onAction work then runs OUTSIDE the panel context, after
    *    `ctx.ui.custom()` has already settled. Use this for actions that call
    *    `ctx.reload()`, `ctx.newSession()`, or anything else that invalidates
-   *    `ctx` — running them with the panel still mounted leaves the
-   *    `ctx.ui.custom()` promise dangling (pi's `resetExtensionUI()` unmounts
-   *    the panel during reload but never calls `done`), which strands the
-   *    surrounding slash-command handler on a Promise that will never
-   *    resolve. The user-visible symptom is a "silent hang" after toggle/
-   *    reload: editor input still works for plain text, but the captured
-   *    stale `ctx` keeps emitting "This extension ctx is stale..." errors
-   *    from any background async that resolves after reload.
+   *    `ctx`. Closing first keeps that work outside the mounted panel's
+   *    lifetime; the surrounding slash command can then settle normally.
    */
   onAction?: (action: T) => Promise<void> | void;
   /**
@@ -109,32 +98,23 @@ export async function openCommandPanel<T extends string>(
   // chosen action here, calls done(closeValue) to unmount the panel, and we
   // run `onAction` AFTER `ctx.ui.custom()` resolves below. This keeps any
   // ctx-invalidating side-effect (e.g. ctx.reload()) outside the panel's
-  // lifetime so pi's reload-time UI teardown doesn't strand a never-resolving
-  // ctx.ui.custom() promise. See the `closeBeforeAction` doc above.
+  // lifetime. See the `closeBeforeAction` doc above.
   let pendingPostCloseAction: T | null = null;
   const stagePostCloseAction = (action: T) => {
     pendingPostCloseAction = action;
   };
 
-  const result = await ctx.ui.custom<T | null>((tui, theme, keybindings, done) => {
-    const container = new Container();
-    container.addChild(new DynamicBorder((s: string) => theme.fg("borderAccent", s)));
-    container.addChild(new Text(theme.fg("accent", theme.bold(options.title)), 1, 0));
-    if (options.subtitle) {
-      container.addChild(new Text(theme.fg("muted", options.subtitle), 1, 0));
-    }
-
+  const result = await nativeUi(ctx.ui).custom<T | null>((ui, theme, keybindings, done) => {
+    const border: ExtensionRows = { render: (width) => [rule(theme, "borderAccent", width)] };
+    const content = [border, textRows(theme.fg("accent", theme.bold(options.title)), 1)];
+    if (options.subtitle) content.push(textRows(theme.fg("muted", options.subtitle), 1));
     if (options.statusLines) {
-      container.addChild(new Spacer(1));
-      container.addChild(
-        new StatusBlock(theme, glyphs, options.statusHeading ?? "Status", options.statusLines),
+      content.push(
+        blankRow,
+        statusBlock(theme, glyphs.status, options.statusHeading ?? "Status", options.statusLines),
       );
     }
 
-    container.addChild(new Spacer(1));
-    container.addChild(
-      new SectionHeading(theme, glyphs.actions, options.actionsHeading ?? "Actions"),
-    );
     const list = new GroupedActionList(
       theme,
       keybindings,
@@ -142,37 +122,33 @@ export async function openCommandPanel<T extends string>(
       options.actions,
       options.closeValue,
       done,
-      () => tui.requestRender(),
+      () => ui.requestRender(),
       state,
       options.onAction,
       options.closeBeforeAction,
       stagePostCloseAction,
     );
-    container.addChild(list);
-
-    container.addChild(new Spacer(1));
-    container.addChild(new Rule(theme));
-    container.addChild(
-      new Text(
+    content.push(
+      blankRow,
+      {
+        render: (width) => [
+          sectionHeading(theme, glyphs.actions, options.actionsHeading ?? "Actions", width),
+        ],
+      },
+      list,
+      blankRow,
+      { render: (width) => [rule(theme, "borderMuted", width)] },
+      textRows(
         theme.fg(
           "dim",
           options.helpText ??
             "↑↓ move · type filter · Backspace edit · Enter run · Esc / type 'exit' to close",
         ),
         1,
-        0,
       ),
+      border,
     );
-    container.addChild(new DynamicBorder((s: string) => theme.fg("borderAccent", s)));
-
-    return {
-      render: (w) => container.render(w),
-      invalidate: () => container.invalidate(),
-      handleInput: (data) => {
-        list.handleInput(data);
-        tui.requestRender();
-      },
-    };
+    return { ...stackRows(...content), handleInput: (data) => list.handleInput(data) };
   });
 
   // Run any close-before-action handler now that the panel is fully
@@ -213,7 +189,7 @@ async function openDialogCommandPanel<T extends string>(
   return value;
 }
 
-class GroupedActionList<T extends string> implements Component {
+class GroupedActionList<T extends string> implements ExtensionRows {
   private filter = "";
   private selectedIndex = 0;
   private actionInFlight = false;
@@ -224,7 +200,7 @@ class GroupedActionList<T extends string> implements Component {
   private closeKeywordBuffer = "";
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: ExtensionTheme,
     private readonly keybindings: KeybindingsManager,
     private readonly glyphs: UiGlyphs,
     private readonly actionSource: CommandPanelAction<T>[] | (() => CommandPanelAction<T>[]),
@@ -247,7 +223,7 @@ class GroupedActionList<T extends string> implements Component {
 
     if (this.filter) {
       lines.push(
-        truncateToWidth(
+        truncate(
           `  ${this.theme.fg("muted", "Filter")} ${this.theme.fg("accent", this.filter)} ${this.theme.fg("dim", `(${filtered.length}/${this.items().length})`)}`,
           width,
           "",
@@ -285,13 +261,13 @@ class GroupedActionList<T extends string> implements Component {
         ? ` ${this.theme.fg("warning", `${this.glyphs.loading} running`)}`
         : "";
       lines.push(
-        truncateToWidth(
+        truncate(
           `  ${this.theme.fg("accent", this.theme.bold(selected.label))}${status}`,
           width,
           "",
         ),
       );
-      for (const wrapped of wrapTextWithAnsi(selected.description, Math.max(20, width - 4))) {
+      for (const wrapped of wrap(selected.description, Math.max(1, width - 4))) {
         lines.push(`  ${this.theme.fg("text", wrapped)}`);
       }
     }
@@ -299,30 +275,35 @@ class GroupedActionList<T extends string> implements Component {
     return lines;
   }
 
-  invalidate(): void {}
-
   handleInput(data: string): void {
+    const key = decodeRowKey(data);
+    if (key?.kind === "release") return;
+    const text = key?.text ?? "";
     if (this.actionInFlight) {
       // A slow command should never trap the user in the panel. Let Escape,
       // Ctrl+C, or typed close keywords dismiss the UI while the already-started
       // action finishes on its existing promise.
-      if (this.keybindings.matches(data, "tui.select.cancel") || this.consumeCloseKeyword(data)) {
+      if (
+        (key && this.keybindings.matches(key, "tui.select.cancel")) ||
+        this.consumeCloseKeyword(text)
+      ) {
         this.done(this.closeValue);
       }
       return;
     }
 
-    if (this.keybindings.matches(data, "tui.select.up")) {
+    if (!key) return;
+    if (this.keybindings.matches(key, "tui.select.up")) {
       this.closeKeywordBuffer = "";
       this.move(-1);
       return;
     }
-    if (this.keybindings.matches(data, "tui.select.down")) {
+    if (this.keybindings.matches(key, "tui.select.down")) {
       this.closeKeywordBuffer = "";
       this.move(1);
       return;
     }
-    if (this.keybindings.matches(data, "tui.select.confirm")) {
+    if (this.keybindings.matches(key, "tui.select.confirm")) {
       const selected = this.filteredItems()[this.selectedIndex];
       if (selected) {
         if (this.state) this.state.selectedValue = selected.value;
@@ -337,8 +318,7 @@ class GroupedActionList<T extends string> implements Component {
         }
         if (this.onAction) {
           // Actions that invalidate ctx (ctx.reload(), ctx.newSession(), …)
-          // must close the panel BEFORE running, otherwise the
-          // ctx.ui.custom() promise is left dangling. The opt-in is the
+          // must close the panel BEFORE running. The opt-in is the
           // closeBeforeAction predicate on CommandPanelOptions.
           if (this.closeBeforeAction?.(selected.value)) {
             this.stagePostCloseAction?.(selected.value);
@@ -352,29 +332,29 @@ class GroupedActionList<T extends string> implements Component {
       }
       return;
     }
-    if (this.keybindings.matches(data, "tui.select.cancel")) {
+    if (this.keybindings.matches(key, "tui.select.cancel")) {
       this.done(this.closeValue);
       return;
     }
-    if (matchesKey(data, "backspace")) {
+    if (key.id === "backspace") {
       this.filter = this.filter.slice(0, -1);
       this.selectedIndex = 0;
       this.closeKeywordBuffer = "";
       this.persistSelection();
       return;
     }
-    if (isPrintableFilterInput(data)) {
+    if (text.length === 1 && text >= " " && text !== "\x7f") {
       // Track typed lowercase letters in a small ring buffer and short-circuit
       // close as soon as the buffer exactly matches a registered close
       // keyword. We do NOT abort filtering when a partial match is in
       // progress, so users can still filter actions whose names start with
       // "e", "ex", etc. Only the final keystroke that completes the keyword
       // closes the panel.
-      if (this.consumeCloseKeyword(data)) {
+      if (this.consumeCloseKeyword(text)) {
         this.done(this.closeValue);
         return;
       }
-      this.filter += data;
+      this.filter += text;
       this.selectedIndex = 0;
       this.persistSelection();
     }
@@ -422,12 +402,8 @@ class GroupedActionList<T extends string> implements Component {
     // That keeps them readable but visibly subordinate to the toolTitle
     // section heading (STATUS / ACTIONS) directly above them.
     const label = `  ${this.theme.fg("muted", this.theme.bold(`${icon} ${group.toUpperCase()}`))}`;
-    const remaining = Math.max(0, width - visibleWidth(label) - 2);
-    return truncateToWidth(
-      `${label} ${this.theme.fg("borderMuted", "─".repeat(remaining))}`,
-      width,
-      "",
-    );
+    const remaining = width - visibleWidth(label) - 2;
+    return truncate(`${label} ${rule(this.theme, "borderMuted", remaining)}`, width, "");
   }
 
   private renderActionLine(item: CommandPanelAction<T>, selected: boolean, width: number): string {
@@ -437,7 +413,7 @@ class GroupedActionList<T extends string> implements Component {
     const label = selected
       ? this.theme.fg("accent", this.theme.bold(item.label))
       : this.theme.fg("text", item.label);
-    return truncateToWidth(`  ${marker} ${label}`, width, "");
+    return truncate(`  ${marker} ${label}`, width, "");
   }
 
   private renderDetailHeader(width: number): string {
@@ -445,12 +421,8 @@ class GroupedActionList<T extends string> implements Component {
     // the toolTitle role with STATUS / ACTIONS rather than the row’s
     // accent (which we reserve for the highlighted item itself).
     const label = `  ${this.theme.fg("toolTitle", this.theme.bold(`${this.glyphs.selected} SELECTED`))}`;
-    const remaining = Math.max(0, width - visibleWidth(label) - 2);
-    return truncateToWidth(
-      `${label} ${this.theme.fg("borderMuted", "─".repeat(remaining))}`,
-      width,
-      "",
-    );
+    const remaining = width - visibleWidth(label) - 2;
+    return truncate(`${label} ${rule(this.theme, "borderMuted", remaining)}`, width, "");
   }
 
   private move(delta: number): void {
@@ -513,69 +485,38 @@ class GroupedActionList<T extends string> implements Component {
   }
 }
 
-class StatusBlock implements Component {
-  constructor(
-    private readonly theme: Theme,
-    private readonly glyphs: UiGlyphs,
-    private readonly label: string,
-    private readonly statusLines: string[] | (() => string[]),
-  ) {}
+const blankRow: ExtensionRows = { render: () => [""] };
 
-  render(width: number): string[] {
-    const lines = [
-      new SectionHeading(this.theme, this.glyphs.status, this.label).render(width)[0] ?? "",
-    ];
-    let statusLines: string[];
-    try {
-      statusLines = typeof this.statusLines === "function" ? this.statusLines() : this.statusLines;
-    } catch (err) {
-      // A throwing statusLines() lambda used to abort the entire panel
-      // render and present as "the panel never opened". Surface the error
-      // inline instead so the panel still mounts, the user can scroll the
-      // action list, and the underlying bug is visible.
-      const message = err instanceof Error ? err.message : String(err);
-      statusLines = [`⚠ status failed to load: ${message}`];
-    }
-    for (const line of statusLines) {
-      lines.push(truncateToWidth(`  ${line}`, width, ""));
-    }
-    return lines;
-  }
-
-  invalidate(): void {}
+function statusBlock(
+  theme: ExtensionTheme,
+  icon: string,
+  label: string,
+  statusLines: string[] | (() => string[]),
+): ExtensionRows {
+  return {
+    render(width) {
+      const lines = [sectionHeading(theme, icon, label, width)];
+      let status: string[];
+      try {
+        status = typeof statusLines === "function" ? statusLines() : statusLines;
+      } catch (err) {
+        // Show the underlying error without aborting the whole panel render.
+        const message = err instanceof Error ? err.message : String(err);
+        status = [`⚠ status failed to load: ${message}`];
+      }
+      for (const line of status) lines.push(truncate(`  ${line}`, width, ""));
+      return lines;
+    },
+  };
 }
 
-class SectionHeading implements Component {
-  constructor(
-    private readonly theme: Theme,
-    private readonly icon: string,
-    private readonly label: string,
-  ) {}
-
-  render(width: number): string[] {
-    // Section heading (STATUS / ACTIONS). Uses the toolTitle theme token to
-    // sit visibly below the panel title (accent) but above the group labels
-    // (muted bold). See the file header for the full hierarchy contract.
-    const text = ` ${this.theme.fg("toolTitle", this.theme.bold(`${this.icon} ${this.label.toUpperCase()}`))}`;
-    const remaining = Math.max(0, width - visibleWidth(text) - 1);
-    return [
-      truncateToWidth(`${text} ${this.theme.fg("borderMuted", "─".repeat(remaining))}`, width, ""),
-    ];
-  }
-
-  invalidate(): void {}
+function sectionHeading(theme: ExtensionTheme, icon: string, label: string, width: number): string {
+  // STATUS / ACTIONS sit below the panel title but above group labels.
+  const text = ` ${theme.fg("toolTitle", theme.bold(`${icon} ${label.toUpperCase()}`))}`;
+  const remaining = width - visibleWidth(text) - 1;
+  return truncate(`${text} ${rule(theme, "borderMuted", remaining)}`, width, "");
 }
 
-class Rule implements Component {
-  constructor(private readonly theme: Theme) {}
-
-  render(width: number): string[] {
-    return [this.theme.fg("borderMuted", "─".repeat(Math.max(0, width)))];
-  }
-
-  invalidate(): void {}
-}
-
-function isPrintableFilterInput(data: string): boolean {
-  return data.length === 1 && data >= " " && data !== "\x7f";
+function rule(theme: ExtensionTheme, color: "borderAccent" | "borderMuted", width: number): string {
+  return theme.fg(color, "─".repeat(Math.max(0, width)));
 }

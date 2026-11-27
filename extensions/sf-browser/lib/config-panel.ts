@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager Settings panel for SF Browser defaults. */
-import { type Focusable, matchesKey } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import {
   EVIDENCE_IMAGE_MODES,
   readEffectiveSfBrowserSettings,
@@ -11,7 +11,7 @@ import {
   type SfBrowserSettingsScope,
 } from "./settings.ts";
 
-class SfBrowserConfigPanel implements Focusable {
+class SfBrowserConfigPanel implements RowsPanel {
   focused = false;
   private cursor = 0;
   private draft: SfBrowserSettings;
@@ -20,7 +20,7 @@ class SfBrowserConfigPanel implements Focusable {
   private message = "";
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: Pick<ExtensionTheme, "fg" | "bold">,
     private readonly cwd: string,
     private readonly scope: SfBrowserSettingsScope,
     private readonly done: (result: ConfigPanelResult | undefined) => void,
@@ -33,7 +33,7 @@ class SfBrowserConfigPanel implements Focusable {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.done(undefined);
       return;
     }
@@ -46,7 +46,7 @@ class SfBrowserConfigPanel implements Focusable {
       this.toggleCurrent(matchesKey(data, "left") ? -1 : 1);
       return;
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "s") this.save();
+    if (matchesKey(data, "enter") || matchesKey(data, "s")) this.save();
   }
 
   renderContent(): string[] {
@@ -91,7 +91,6 @@ class SfBrowserConfigPanel implements Focusable {
   render(): string[] {
     return this.renderContent();
   }
-  invalidate(): void {}
 
   private toggleCurrent(direction: -1 | 1): void {
     if (this.cursor === 0) {

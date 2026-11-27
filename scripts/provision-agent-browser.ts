@@ -80,6 +80,6 @@ console.log(
     "SF Browser runtime provisioned:",
     `  ${CLI} ${AGENT_BROWSER_VERSION}: ${path.join(binDir, CLI)}`,
     `  Chrome for Testing: ${chrome}`,
-    "OMP launched via bun scripts/omp.ts, npm run smoke:omp, or parity uses it automatically.",
+    "OMP launched via npm start, npm run smoke:omp, or npm run parity:omp uses it automatically.",
   ].join("\n"),
 );

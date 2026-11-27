@@ -12,7 +12,6 @@ import type {
   ExtensionContext,
   ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
-import { isEditToolResult, isWriteToolResult } from "@earendil-works/pi-coding-agent";
 import type { ExecFn } from "../../../lib/common/sf-environment/detect.ts";
 import { runApexGuru } from "./apexguru.ts";
 import { buildAutoScanFollowUp } from "./auto-scan-followup.ts";
@@ -351,8 +350,7 @@ function collectChangedFile(
   ctx: ExtensionContext,
   pendingFiles: Set<string>,
 ): void {
-  if (event.isError) return;
-  if (!isWriteToolResult(event) && !isEditToolResult(event)) return;
+  if (event.isError || (event.toolName !== "write" && event.toolName !== "edit")) return;
   const rawPath = event.input?.path;
   if (typeof rawPath !== "string" || !rawPath.trim()) return;
   const filePath = path.resolve(ctx.cwd, rawPath);

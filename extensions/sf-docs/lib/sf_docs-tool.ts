@@ -5,6 +5,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
 import { getDocsAuth } from "./auth.ts";
 import { DocsClient } from "./client.ts";
 import { runGroundWorkflow } from "./ground-workflow.ts";
@@ -101,7 +102,7 @@ type Params = {
 };
 
 export function registerSfDocsTool(pi: ExtensionAPI): void {
-  pi.registerTool<typeof Params>({
+  registerNativeUiTool<typeof Params, ToolResultShape["details"]>(pi, {
     name: TOOL_NAME,
     label: "SF Docs",
     description:
@@ -115,17 +116,8 @@ export function registerSfDocsTool(pi: ExtensionAPI): void {
       "Use the installed Salesforce Docs guide path declared in <sf_engineering_constitution> for collection, release-note, and query-distillation guidance.",
     ],
     parameters: Params,
-    renderCall: (args, theme) => renderToolCall(args as Params, theme),
-    renderResult: (result, opts, theme, context) =>
-      renderToolResult(
-        result as { details?: Record<string, unknown>; content?: unknown[] },
-        {
-          ...opts,
-          isError: context.isError,
-          args: context.args as Params,
-        },
-        theme,
-      ),
+    renderCall: (args, _options, theme) => renderToolCall(args as Params, theme),
+    renderResult: renderToolResult,
     async execute(_id, params, signal, _onUpdate, ctx) {
       const input = params as Params;
       const prefs = readEffectiveDocsPreferences(ctx.cwd);

@@ -5,8 +5,8 @@
  * Builds an operator-aware query plan, executes strict→relaxed searches, and
  * optionally fetches thread context for high-signal matches.
  */
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { callLabel, registerSlackUiTool, slackText } from "./render.ts";
 import {
   SlackResearchParams,
   DEFAULT_SEARCH_LIMIT,
@@ -64,16 +64,8 @@ interface ThreadBundle {
   messages: SlackMessage[];
 }
 
-function callLabel(label: string, summary: string, theme: Theme): Text {
-  return new Text(
-    theme.fg("toolTitle", theme.bold(label + " ")) + theme.fg("muted", summary),
-    0,
-    0,
-  );
-}
-
 export function registerResearchTool(pi: ExtensionAPI): void {
-  pi.registerTool<typeof SlackResearchParams>({
+  registerSlackUiTool<typeof SlackResearchParams>(pi, {
     name: "slack_research",
     label: "Slack Research",
     description:
@@ -91,7 +83,7 @@ export function registerResearchTool(pi: ExtensionAPI): void {
     ],
     parameters: SlackResearchParams,
 
-    renderCall(args: ResearchToolCallArgs, theme: Theme) {
+    renderCall(args: ResearchToolCallArgs, _options, theme) {
       const bits = [args.task || "search", args.query ? `"${args.query}"` : "?"];
       if (args.channel_ref) bits.push(`in ${args.channel_ref}`);
       if (args.from_ref) bits.push(`from ${args.from_ref}`);
@@ -100,13 +92,11 @@ export function registerResearchTool(pi: ExtensionAPI): void {
       return callLabel("Slack Research", bits.join(" · "), theme);
     },
 
-    renderResult(result: ResearchToolRenderResult, _opts, theme: Theme) {
+    renderResult(result: ResearchToolRenderResult, _opts, theme) {
       const details = result.details || {};
       if (!details.ok) {
-        return new Text(
+        return slackText(
           theme.fg("error", "✗ " + (getFirstText(result.content) || "Slack research failed")),
-          0,
-          0,
         );
       }
       const count = details.count || 0;
@@ -116,7 +106,7 @@ export function registerResearchTool(pi: ExtensionAPI): void {
       text += theme.fg("dim", ` via ${queryCount} quer${queryCount === 1 ? "y" : "ies"}`);
       if (threadCount > 0)
         text += theme.fg("accent", ` · ${threadCount} thread${threadCount === 1 ? "" : "s"}`);
-      return new Text(text, 0, 0);
+      return slackText(text);
     },
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {

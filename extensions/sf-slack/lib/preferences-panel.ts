@@ -14,10 +14,10 @@
  * so the extension can stay the single source of truth for `pi.appendEntry`.
  */
 
-import { DynamicBorder, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Container, type SettingItem, SettingsList, Text } from "@earendil-works/pi-tui";
+import { signal, UiNode, type KeyEvent, type PasteEvent } from "@oh-my-pi/pi-tui";
 import { resolveUiGlyphs, type UiGlyphs } from "../../../lib/common/ui-glyphs.ts";
+import { nativeUi } from "../../../lib/common/ui-rows.ts";
 import {
   SLACK_PREFERENCE_DESCRIPTORS,
   applyPreferenceValue,
@@ -31,13 +31,7 @@ export interface PreferencesPanelOptions {
   onChange: (prefs: SlackPreferences) => void;
 }
 
-/**
- * Backwards-compatible alias so older imports keep working while the
- * canonical name lands across the repo.
- */
-export type SettingsPanelOptions = PreferencesPanelOptions;
-
-/** Opens the SettingsList overlay. Returns when the user dismisses it. */
+/** Opens the native settings picker and returns when dismissed. */
 export async function openPreferencesPanel(
   ctx: ExtensionContext,
   current: SlackPreferences,
@@ -56,68 +50,98 @@ export async function openPreferencesPanel(
     return;
   }
 
-  await ctx.ui.custom<void>((tui, theme, _kb, done) => {
-    const items = buildSettingItems(working, glyphs);
+  await nativeUi(ctx.ui).custom<void>(
+    (_ui, _theme, keybindings, done) => {
+      const entries = SLACK_PREFERENCE_DESCRIPTORS.map((descriptor) => {
+        const section = sectionLabel(descriptor.section);
+        return {
+          descriptor,
+          label: `${sectionIcon(descriptor.section, glyphs)} ${section} · ${descriptor.label}`,
+          searchable: `${section} ${descriptor.label} ${descriptor.description}`.toLowerCase(),
+        };
+      });
+      const prefs = signal(working);
+      const query = signal("");
+      const initialOrder = entries.map(({ descriptor }) => descriptor.key);
+      const order = signal(initialOrder);
+      const selected = signal<string | undefined>(initialOrder[0]);
 
-    const container = new Container();
-    container.addChild(new DynamicBorder((s: string) => theme.fg("borderAccent", s)));
-    container.addChild(new Text(theme.fg("accent", theme.bold("💬 SF Slack Settings")), 1, 0));
-    container.addChild(
-      new Text(
-        theme.fg("dim", "Configure how Slack results are shown to the agent and in the UI."),
-        1,
-        0,
-      ),
-    );
-    container.addChild(
-      new Text(
-        theme.fg(
-          "muted",
-          `Sections: ${glyphs.status} Result detail · ${glyphs.controls} UI feedback · ${glyphs.links} Links`,
-        ),
-        1,
-        0,
-      ),
-    );
+      function search(value: string): void {
+        query.set(value);
+        const needle = value.trim().toLowerCase();
+        const matches = needle
+          ? entries
+              .filter((entry) => entry.searchable.includes(needle))
+              .map(({ descriptor }) => descriptor.key)
+          : initialOrder;
+        order.set(matches);
+        const id = selected.peek();
+        if (!matches.some((match) => match === id)) selected.set(matches[0]);
+      }
 
-    const settingsList = new SettingsList(
-      items,
-      Math.min(items.length + 2, 12),
-      getSettingsListTheme(),
-      (id, newValue) => {
-        const next = applyPreferenceValue(working, id as SlackPreferenceKey, newValue);
+      function cycle(id: string | undefined, step: -1 | 1): void {
+        const descriptor = entries.find((entry) => entry.descriptor.key === id)?.descriptor;
+        if (!descriptor) return;
+        const values: readonly SlackPreferences[SlackPreferenceKey][] = descriptor.values;
+        const index = values.indexOf(prefs.peek()[descriptor.key]);
+        const value = values[(index + step + values.length) % values.length];
+        if (value === undefined) return;
+        const next = applyPreferenceValue(prefs.peek(), descriptor.key, value);
         if (!next) return;
-        Object.assign(working, next);
-        options.onChange({ ...working });
-      },
-      () => done(),
-      { enableSearch: true },
-    );
-    container.addChild(settingsList);
-    container.addChild(
-      new Text(theme.fg("dim", "↑↓ move · ←→/Enter change · type search · Esc close"), 1, 0),
-    );
-    container.addChild(new DynamicBorder((s: string) => theme.fg("borderAccent", s)));
+        prefs.set(next);
+        options.onChange({ ...next });
+      }
 
-    return {
-      render: (w: number) => container.render(w),
-      invalidate: () => container.invalidate(),
-      handleInput: (data: string) => {
-        settingsList.handleInput?.(data);
-        tui.requestRender();
-      },
-    };
-  });
-}
-
-function buildSettingItems(working: SlackPreferences, glyphs: UiGlyphs): SettingItem[] {
-  return SLACK_PREFERENCE_DESCRIPTORS.map((descriptor) => ({
-    id: descriptor.key,
-    label: `${sectionIcon(descriptor.section, glyphs)} ${sectionLabel(descriptor.section)} · ${descriptor.label}`,
-    description: descriptor.description,
-    currentValue: String(working[descriptor.key]),
-    values: descriptor.values.map(String),
-  }));
+      return new UiNode("picker", {
+        title: "💬 SF Slack Settings",
+        query,
+        order,
+        selected,
+        items: () =>
+          entries.map(({ descriptor, label }) => ({
+            id: descriptor.key,
+            label,
+            detail: `${prefs()[descriptor.key]} · ${descriptor.description}`,
+          })),
+        actions: [{ id: "close", label: "Close", keys: ["esc"] }],
+        term: {
+          head: [
+            "Configure how Slack results are shown to the agent and in the UI.",
+            `Sections: ${glyphs.status} Result detail · ${glyphs.controls} UI feedback · ${glyphs.links} Links`,
+          ],
+          layout: "inline",
+          hint: "↑↓ move · ←→/Enter change · type search · Esc close",
+          hintWrap: true,
+          empty: "No matching settings",
+        },
+        onSelect: (id: string) => selected.set(id),
+        onActivate: (id: string) => cycle(id, 1),
+        onAction: (id: string) => {
+          if (id === "close") done();
+        },
+        onPaste: ({ text }: PasteEvent) => {
+          search(query.peek() + text.replace(/\s+/g, " "));
+          return true;
+        },
+        onKey: (key: KeyEvent) => {
+          if (key.kind === "release") return false;
+          if (keybindings.matches(key, "tui.select.cancel")) {
+            done();
+          } else if (key.id === "left" || key.id === "right") {
+            cycle(selected.peek(), key.id === "left" ? -1 : 1);
+          } else if (key.id === "backspace") {
+            search([...query.peek()].slice(0, -1).join(""));
+          } else if (key.text) {
+            search(query.peek() + key.text);
+          } else {
+            return false;
+          }
+          return true;
+        },
+      });
+    },
+    { overlay: true },
+  );
 }
 
 async function openPreferencesDialog(

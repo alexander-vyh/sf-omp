@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import { describe, expect, it } from "vitest";
 import { buildData360Digest, compactDigestText } from "../lib/digest.ts";
 import { presentSfData360Result } from "../lib/result.ts";
 import {
   namespaceIcon,
   renderData360DigestMarkdown,
+  renderSfData360Call,
   renderSfData360Result,
 } from "../lib/render.ts";
 import { formatData360Sql } from "../lib/sql-format.ts";
@@ -15,7 +15,7 @@ import type { Data360RunDigest } from "../lib/types.ts";
 const theme = {
   fg: (_color: string, text: string) => text,
   bold: (text: string) => text,
-} as Theme;
+};
 
 const queryResult = {
   ok: true,
@@ -61,6 +61,10 @@ const queryResult = {
 };
 
 describe("Data 360 Run Card presentation", () => {
+  it("shows the Data 360 label before a streamed call has an action", () => {
+    expect(renderSfData360Call({}, theme).render(80).join("\n")).toContain("SF Data 360");
+  });
+
   it("keeps complete DMO results payload-free in both card states", async () => {
     const dataModelObject = Array.from({ length: 200 }, (_value, index) => ({
       name: `Example_${index + 1}__dlm`,

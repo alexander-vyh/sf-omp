@@ -1,14 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Read-only responsive Eval Studio overlay. It returns intent; callers own effects. */
 
-import {
-  Input,
-  type Focusable,
-  matchesKey,
-  truncateToWidth,
-  visibleWidth,
-} from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionRows, ExtensionTheme } from "@oh-my-pi/pi-coding-agent";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
+import { RowsTextField } from "../../../../lib/common/ui-field.ts";
+import { decodeRowKey } from "../../../../lib/common/ui-rows.ts";
 import type { UiGlyphs } from "../../../../lib/common/ui-glyphs.ts";
 import { renderStudioTable, type StudioTableColumn } from "./layout.ts";
 import { redactStudioValue } from "./redaction.ts";
@@ -48,8 +44,7 @@ const AGENT_TABS: AgentTab[] = ["suites", "recent", "release"];
 const SUITE_TABS: SuiteTab[] = ["scenarios", "evaluators", "runs", "source"];
 const SCENARIO_TABS: ScenarioTab[] = ["conversation", "evaluators", "evidence"];
 
-export class EvalStudioComponent implements Focusable {
-  focused = false;
+export class EvalStudioComponent implements ExtensionRows {
   private depth: Depth = "agent";
   private agentTab: AgentTab = "suites";
   private suiteTab: SuiteTab = "scenarios";
@@ -62,28 +57,19 @@ export class EvalStudioComponent implements Focusable {
   private rowIndex = 0;
   private filter = "";
   private filterFocused = false;
-  private readonly filterInput = new Input();
+  private readonly filterInput = new RowsTextField();
   private failuresOnly = false;
   private showHelp = false;
   private terminalRows = 30;
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: ExtensionTheme,
     private inventory: StudioInventory,
     private readonly glyphs: UiGlyphs,
     private readonly done: (result: EvalStudioIntent) => void,
     private readonly terminalRowsProvider?: () => number | undefined,
     private readonly activeRunId?: string,
-  ) {
-    this.filterInput.onSubmit = (value) => {
-      this.filter = value;
-      this.filterFocused = false;
-      this.rowIndex = 0;
-    };
-    this.filterInput.onEscape = () => {
-      this.filterFocused = false;
-    };
-  }
+  ) {}
 
   setTerminalRows(rows: number): void {
     this.terminalRows = Math.max(16, rows);
@@ -96,92 +82,101 @@ export class EvalStudioComponent implements Focusable {
   }
 
   handleInput(data: string): void {
+    const key = decodeRowKey(data);
+    if (key?.kind === "release") return;
+    const id = key?.id;
     if (this.filterFocused) {
-      this.filterInput.focused = this.focused;
-      this.filterInput.handleInput(data);
-      this.filter = this.filterInput.getValue();
+      if (id === "enter" || id === "escape") {
+        this.filterFocused = false;
+        this.filterInput.focused = false;
+        if (id === "enter") this.rowIndex = 0;
+      } else {
+        this.filterInput.handleInput(data);
+        this.filter = this.filterInput.getValue();
+      }
       return;
     }
     if (this.showHelp) {
       this.showHelp = false;
       return;
     }
-    if (data === "?") return void (this.showHelp = true);
-    if (data === "/") {
+    const text = key?.text;
+    if (text === "?") return void (this.showHelp = true);
+    if (text === "/") {
       this.filterInput.setValue(this.filter);
-      this.filterInput.focused = this.focused;
+      this.filterInput.focused = true;
       this.filterFocused = true;
       return;
     }
-    if (matchesKey(data, "escape") || data === "q") {
+    if (id === "escape" || text === "q") {
       if (this.depth === "scenario") this.depth = "suite";
       else if (this.depth === "suite") this.depth = "agent";
       else this.done({ kind: "close" });
       this.rowIndex = 0;
       return;
     }
-    if (matchesKey(data, "left") || matchesKey(data, "backspace") || data === "h") {
+    if (id === "left" || id === "backspace" || text === "h") {
       if (this.depth === "scenario") this.depth = "suite";
       else if (this.depth === "suite") this.depth = "agent";
       this.rowIndex = 0;
       return;
     }
-    if (matchesKey(data, "tab")) return this.switchTab(1);
-    if (matchesKey(data, "right") || data === "l") return this.drill();
-    if (data === "[" || data === "]") {
+    if (id === "tab") return this.switchTab(1);
+    if (id === "right" || text === "l") return this.drill();
+    if (text === "[" || text === "]") {
       const agents = this.agents();
       if (agents.length > 0) {
-        const delta = data === "]" ? 1 : -1;
+        const delta = text === "]" ? 1 : -1;
         this.agentIndex = (this.agentIndex + delta + agents.length) % agents.length;
         this.suiteIndex = 0;
         this.rowIndex = 0;
       }
       return;
     }
-    if (data >= "1" && data <= "4") return this.selectTab(Number(data) - 1);
-    if (matchesKey(data, "up") || data === "k") return this.move(-1);
-    if (matchesKey(data, "down") || data === "j") return this.move(1);
-    if (data === "R") return this.done({ kind: "refresh" });
-    if (data === "s" && this.depth === "suite" && this.suiteTab === "source") {
+    if (text?.length === 1 && text >= "1" && text <= "4") return this.selectTab(Number(text) - 1);
+    if (id === "up" || text === "k") return this.move(-1);
+    if (id === "down" || text === "j") return this.move(1);
+    if (text === "R") return this.done({ kind: "refresh" });
+    if (text === "s" && this.depth === "suite" && this.suiteTab === "source") {
       this.sourceViewIndex = (this.sourceViewIndex + 1) % 3;
       return;
     }
-    if (data === "f") {
+    if (text === "f") {
       this.failuresOnly = !this.failuresOnly;
       this.rowIndex = 0;
       return;
     }
-    if (data === "n") return this.author(this.depth === "agent" ? "new_suite" : "new_scenario");
-    if (data === "e") return this.author("edit");
-    if (data === "d") return this.author("diagnose");
-    if (data === "r") return this.runSelected();
-    if (data === "g" && this.depth === "agent" && this.agentTab === "release") {
+    if (text === "n") return this.author(this.depth === "agent" ? "new_suite" : "new_scenario");
+    if (text === "e") return this.author("edit");
+    if (text === "d") return this.author("diagnose");
+    if (text === "r") return this.runSelected();
+    if (text === "g" && this.depth === "agent" && this.agentTab === "release") {
       const agent = this.selectedSuite()?.agent_api_name;
       if (agent) this.done({ kind: "release_contract", agent_api_name: agent });
       return;
     }
-    if (data === "c") {
+    if (text === "c") {
       const run = this.selectedRun();
       if (run?.execution_state === "running") this.done({ kind: "cancel_run", run_id: run.run_id });
       else if (this.activeRunId) this.done({ kind: "cancel_run", run_id: this.activeRunId });
       return;
     }
-    if (data === "m") {
+    if (text === "m") {
       const run = this.selectedRun();
       if (run) this.done({ kind: "report", run_id: run.run_id });
       return;
     }
-    if (data === "y") {
+    if (text === "y") {
       const run = this.selectedRun();
       if (run) this.done({ kind: "copy_summary", run_id: run.run_id });
       return;
     }
-    if (data === "o") {
+    if (text === "o") {
       const run = this.selectedRun();
       if (run) this.done({ kind: "open_artifacts", run_dir: run.run_dir });
       return;
     }
-    if (matchesKey(data, "return") || matchesKey(data, "enter")) this.drill();
+    if (id === "enter") this.drill();
   }
 
   private tabs(): string[] {
@@ -391,7 +386,7 @@ export class EvalStudioComponent implements Focusable {
     const inner = Math.max(1, width - 2);
     const contentWidth = Math.max(1, inner - 2);
     const row = (content = "") => {
-      const clipped = truncateToWidth(` ${content}`, inner, "");
+      const clipped = truncate(` ${content}`, inner, "");
       const padding = " ".repeat(Math.max(0, inner - visibleWidth(clipped)));
       return `${this.theme.fg("border", "│")}${clipped}${padding}${this.theme.fg("border", "│")}`;
     };
@@ -443,7 +438,6 @@ export class EvalStudioComponent implements Focusable {
     for (let index = 0; index < maxBody; index++) lines.push(row(visibleBody[index] ?? ""));
 
     lines.push(border("├", "─", "┤"));
-    this.filterInput.focused = this.focused && this.filterFocused;
     lines.push(
       row(
         this.filterFocused
@@ -456,8 +450,8 @@ export class EvalStudioComponent implements Focusable {
     return lines;
   }
 
-  invalidate(): void {
-    this.filterInput.invalidate();
+  dispose(): void {
+    this.filterInput.dispose();
   }
 
   private viewportBody(body: string[], size: number): string[] {

@@ -1,6 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { defineConfig } from "vitest/config";
 
+if (!process.versions.bun) {
+  throw new Error(
+    "OMP's native modules require Bun. Run Vitest via npm test or npm run test:watch.",
+  );
+}
+
 // Force a stable timezone for tests that snapshot human-readable timestamps
 // (e.g. render-snapshot.test.ts via lib/render.ts::friendlyTime).
 process.env.TZ = "UTC";
@@ -14,8 +20,11 @@ export default defineConfig({
     ],
     environment: "node",
     setupFiles: ["./scripts/vitest-setup.ts"],
+    // Leave published OMP packages to Bun, which handles their `type: "text"` imports.
+    server: { deps: { external: [/\/node_modules\/@oh-my-pi\//] } },
     coverage: {
-      provider: "v8",
+      // Bun uses JavaScriptCore, not V8. Instrument source for coverage.
+      provider: "istanbul",
       reporter: ["text", "lcov", "html"],
       // Focus on real source files; skip generated, tests, and fixtures.
       include: ["extensions/**/*.ts", "lib/**/*.ts"],

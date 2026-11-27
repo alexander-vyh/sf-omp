@@ -10,6 +10,7 @@
 
 import { AGENTFORCE_DOCUMENT_URI, processAgentforceDocument } from "./agentforce-document.ts";
 import type { DocumentState } from "@sf-agentscript/lsp";
+import { loadAgentforceLsp } from "./agentforce-lsp.ts";
 import type { AgentScriptRange } from "./types.ts";
 
 export interface AgentforceSymbol {
@@ -188,7 +189,7 @@ export async function renameAgentforceSymbol(
   const definitionRange = definition?.definitionRange;
   if (!definitionRange) return [];
 
-  const { provideRename } = await import("@sf-agentscript/lsp");
+  const { provideRename } = await loadAgentforceLsp();
   const workspaceEdit = provideRename(
     state,
     definitionRange.start.line,
@@ -335,7 +336,7 @@ export async function convertTopicToSubagent(
       character: lines.at(-1)?.length ?? 0,
     },
   };
-  const { provideCodeActions } = await import("@sf-agentscript/lsp");
+  const { provideCodeActions } = await loadAgentforceLsp();
   const action = provideCodeActions(state, fullRange, diagnostics).find(
     (candidate) => candidate.title === "Convert to subagent",
   );

@@ -1,27 +1,56 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import packageManifest from "../package.json" with { type: "json" };
+import { findNativeOmp } from "./native-omp.ts";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const OMP_VERSION = packageManifest.devDependencies["@oh-my-pi/pi-coding-agent"];
-export const BUN_VERSION = "1.4.4";
 
-/** Never use PATH's omp or bun: both executable versions belong to this checkout. */
-export function localOmpCommand(): string[] {
+/** Keep the Bun-only auth helper and npm proofs independent of PATH. */
+export function localBunExecutable(): string {
   const bun = path.join(ROOT, "node_modules", "bun", "bin", "bun.exe");
-  const ompRoot = path.join(ROOT, "node_modules", "@oh-my-pi", "pi-coding-agent");
-  if (!existsSync(bun))
+  if (!existsSync(bun)) {
     throw new Error("Repository-local Bun is missing. Run npm install, then npm rebuild bun.");
+  }
+  return bun;
+}
+
+/** Exactly the fixture version in this checkout, used by CI and offline proofs. */
+export function localOmpCommand(): string[] {
+  const bun = localBunExecutable();
+  const ompRoot = path.join(ROOT, "node_modules", "@oh-my-pi", "pi-coding-agent");
   const manifest = JSON.parse(readFileSync(path.join(ompRoot, "package.json"), "utf8")) as {
     version?: unknown;
   };
   if (manifest.version !== OMP_VERSION)
     throw new Error(`Expected local OMP ${OMP_VERSION}; run npm ci.`);
   return [bun, path.join(ompRoot, "dist", "cli.js")];
+}
+
+/** Prefer the native release without comparing parity against a different version. */
+export function proofOmpCommand(environment: NodeJS.ProcessEnv): string[] {
+  if (environment.SF_OMP_PROOF_NPM === "1") return localOmpCommand();
+  const native = environment.PATH ? findNativeOmp(ROOT, environment.PATH) : undefined;
+  if (!native) return localOmpCommand();
+  const expected = `omp/${OMP_VERSION}`;
+  const result = spawnSync(native.executable, ["--version"], {
+    cwd: ROOT,
+    env: environment,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 10_000,
+  });
+  if (result.status !== 0 || result.stdout?.trim() !== expected) {
+    throw new Error(
+      `Expected ${expected} at ${native.executable}. Install the matching native release or set SF_OMP_PROOF_NPM=1 to use the pinned npm host.`,
+    );
+  }
+  return [native.executable];
 }
 
 /** Pinned agent-browser release installed by scripts/provision-agent-browser.ts. */

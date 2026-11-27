@@ -1,17 +1,26 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Human-facing SF Integrate Result Card rendering. */
 
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { Text, type Component } from "@earendil-works/pi-tui";
+import type {
+  ExtensionRows,
+  ExtensionTheme,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import {
   renderSfPiResultCardPanel,
   renderSfPiToolCallLine,
   type SfPiResultCard,
 } from "../../../lib/common/display/result-card.ts";
+import { textRows } from "../../../lib/common/ui-rows.ts";
 import type { SfIntegrateParams, ToolResult } from "./types.ts";
 
-export function renderIntegrationCall(args: SfIntegrateParams, theme: Theme): Text {
-  return new Text(
+type Theme = Pick<ExtensionTheme, "fg" | "bg" | "bold">;
+type RenderResult = {
+  content: readonly { type: string; text?: string }[];
+  details?: ToolResult["details"];
+};
+
+export function renderIntegrationCall(args: SfIntegrateParams, theme: Theme): ExtensionRows {
+  return textRows(
     renderSfPiToolCallLine(
       {
         icon: "🔗",
@@ -22,21 +31,19 @@ export function renderIntegrationCall(args: SfIntegrateParams, theme: Theme): Te
       },
       theme,
     ),
-    0,
-    0,
   );
 }
 
 export function renderIntegrationResult(
-  result: ToolResult,
+  result: RenderResult,
   options: { expanded?: boolean; isPartial?: boolean },
   theme: Theme,
-): Component {
+): ExtensionRows {
   if (options.isPartial) {
-    return new Text(theme.fg("warning", "🔗 SF Integrate running…"), 0, 0);
+    return textRows(theme.fg("warning", "🔗 SF Integrate running…"));
   }
   const card = asCard(result.details?.card);
-  if (!card) return new Text(result.content[0]?.text ?? "", 0, 0);
+  if (!card) return textRows(result.content.find((part) => part.type === "text")?.text ?? "");
   return renderSfPiResultCardPanel(card, { expanded: options.expanded }, theme);
 }
 

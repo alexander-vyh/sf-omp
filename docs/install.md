@@ -1,20 +1,20 @@
 ---
 title: Install sf-omp
-description: Install Node.js, the repository-local OMP runtime, Salesforce CLI, and the managed Salesforce skill library on macOS.
+description: Install native OMP, Node.js, Salesforce CLI, and the managed Salesforce skill library on macOS.
 ---
 
 # Install sf-omp
 
-sf-omp runs every SF Pi extension inside a repository-local
-[OMP](https://github.com/can1357/oh-my-pi) runtime. OMP and Bun are pinned
-dependencies of this checkout; nothing is installed globally. Follow this
-one-time setup in order.
+sf-omp runs every SF Pi extension inside the same native
+[OMP](https://github.com/can1357/oh-my-pi) installation you use outside the
+checkout, with separate Salesforce settings, extensions, and session storage.
 
 ## Requirements
 
 - macOS (Apple Silicon or Intel)
 - Node.js `>=22.19` and the npm bundled with it; sf-omp declares
   no separate npm floor
+- native [OMP](https://omp.sh/) `>=19.2.1` on PATH; verify with `omp --version`
 - a Salesforce CLI installation
 
 ## 1. Install Node.js and npm
@@ -35,8 +35,8 @@ cd sf-omp
 npm ci
 ```
 
-`npm ci` installs the pinned OMP and Bun into `node_modules` and applies one
-version-checked compatibility patch to that local copy only.
+`npm ci` installs the local dependencies for the global-auth bridge, extensions,
+and reproducible compatibility tests. It does not install the launcher’s OMP binary.
 
 ## 3. Install or update Salesforce CLI
 
@@ -58,15 +58,15 @@ npm start
 ```
 
 With the direnv shell hook enabled, `direnv allow .` once at the checkout root
-puts `tools/bin` first on PATH. Here and in subdirectories, `omp` then runs this
-checkout's pinned Bun and OMP with the current working directory and arguments;
-leaving the checkout restores the global `omp`.
+puts `tools/bin` first on PATH. Here and in subdirectories, `omp` invokes native
+OMP with Salesforce extensions and settings, keeping the current working
+directory and arguments. Leaving the checkout restores plain native invocation.
 
 From an existing Salesforce project, keep that project as the working directory:
 
 ```bash
 cd /path/to/your/salesforce-project
-/path/to/sf-omp/node_modules/bun/bin/bun.exe /path/to/sf-omp/scripts/omp.ts
+/path/to/sf-omp/tools/bin/omp
 ```
 
 Then enter:
@@ -82,16 +82,13 @@ Because sf-omp has its own session directory, use the original session file's
 absolute path rather than `--continue` to resume a session from global OMP:
 
 ```bash
-/path/to/sf-omp/node_modules/bun/bin/bun.exe \
-  /path/to/sf-omp/scripts/omp.ts --resume /absolute/path/to/session.jsonl
+/path/to/sf-omp/tools/bin/omp --resume /absolute/path/to/session.jsonl
 ```
 
-This checkout pins OMP 18.22.0 and matching native packages. Session-rendering
-archives are not guaranteed to be backward compatible: an older reader can fail
-with `unsupported native syntax archive version` during history replay even
-when all extensions load. Align the runtime with the session writer using the
-checkout's reviewed upgrade and `npm ci`; do not edit or delete session history
-to bypass that error.
+An older OMP reader can fail with `unsupported native syntax archive version`
+during history replay even when all extensions load. Use `omp update` to align
+the installed binary with the session writer. Do not edit or delete session
+history to bypass that error.
 
 ## 5. Install Salesforce skills and language servers
 
@@ -127,6 +124,11 @@ Then select **MesloLGM Nerd Font Mono** in your terminal and reopen it.
 
 ### Manual updates
 
+Run `omp update` (or `omp update --check` for a read-only check) inside or
+outside sf-omp. It manages the same native binary either way and does not
+read or modify the Git working tree. Update the extension checkout and
+Salesforce CLI separately:
+
 ```bash
 git pull
 npm ci
@@ -145,12 +147,12 @@ extension parity on every push and pull request.
 
 ## Maintained support evidence
 
-| Claim             | Maintained proof                                                                     |
-| ----------------- | ------------------------------------------------------------------------------------ |
-| Node.js `>=22.19` | `package.json` engines, preinstall check, and doctor diagnostics                     |
-| OMP runtime       | exact pinned dependency, `scripts/omp-runtime.ts` version check, and the parity gate |
-| npm client        | no independent engine/package-manager floor; CI uses the npm bundled by Node 24      |
-| Operating system  | macOS only; the required `validate` job runs on Apple Silicon (`macos-15`)           |
+| Claim             | Maintained proof                                                                |
+| ----------------- | ------------------------------------------------------------------------------- |
+| Node.js `>=22.19` | `package.json` engines, preinstall check, and doctor diagnostics                |
+| OMP runtime       | native launcher; exact 19.2.1 compatibility checks in smoke and parity          |
+| npm client        | no independent engine/package-manager floor; CI uses the npm bundled by Node 24 |
+| Operating system  | macOS only; the required `validate` job runs on Apple Silicon (`macos-15`)      |
 
 ## Next step
 

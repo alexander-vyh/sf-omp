@@ -8,6 +8,11 @@ describe("normalizePastedTextFieldInput", () => {
     expect(normalizePastedTextFieldInput("sk-test_123")).toBe("sk-test_123");
   });
 
+  it("inserts printable Kitty key events but ignores key releases", () => {
+    expect(normalizePastedTextFieldInput("\x1b[97u")).toBe("a");
+    expect(normalizePastedTextFieldInput("\x1b[97;1:3u")).toBe("");
+  });
+
   it("accepts bracketed terminal paste chunks", () => {
     expect(normalizePastedTextFieldInput("\x1b[200~sk-pasted-key\x1b[201~")).toBe("sk-pasted-key");
   });

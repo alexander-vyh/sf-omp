@@ -4,6 +4,7 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
 import { connectSalesforce } from "../../../lib/common/sf-conn/index.ts";
 import { integrationErrorResult } from "./errors.ts";
 import { applyInboundSetup, designInboundPlan, verifyInboundSetup } from "./inbound-operations.ts";
@@ -187,7 +188,7 @@ export function registerSfIntegrateTool(
     inboundPlans: new Map(),
     outboundPlans: new Map(),
   };
-  pi.registerTool<typeof Params>({
+  registerNativeUiTool<typeof Params, ToolResult["details"]>(pi, {
     name: SF_INTEGRATE_TOOL_NAME,
     label: "SF Integrate",
     description:
@@ -205,9 +206,8 @@ export function registerSfIntegrateTool(
       "Use OAuth browser consent only after principal access and identity-provider credentials are configured. Salesforce stores the resulting tokens.",
     ],
     parameters: Params,
-    renderCall: (args, theme) => renderIntegrationCall(args as SfIntegrateParams, theme),
-    renderResult: (result, options, theme) =>
-      renderIntegrationResult(result as ToolResult, options, theme),
+    renderCall: (args, _options, theme) => renderIntegrationCall(args as SfIntegrateParams, theme),
+    renderResult: renderIntegrationResult,
     async execute(_id, rawParams, signal, _onUpdate, ctx) {
       const params = rawParams as SfIntegrateParams;
       try {

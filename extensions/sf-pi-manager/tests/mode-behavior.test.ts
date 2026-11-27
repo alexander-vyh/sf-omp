@@ -37,7 +37,6 @@ function makeRpcContext(cwd: string) {
       custom: vi.fn(async () => undefined),
       notify: vi.fn(),
       setStatus: vi.fn(),
-      setWorkingVisible: vi.fn(),
     },
     reload: vi.fn(),
   };

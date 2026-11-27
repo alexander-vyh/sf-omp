@@ -13,7 +13,7 @@ type CheckOutput = {
 
 function runCheck(script: string): CheckOutput {
   return JSON.parse(
-    execFileSync(process.execPath, [script, "--json"], {
+    execFileSync("node", [script, "--json"], {
       cwd: ROOT,
       encoding: "utf8",
     }),

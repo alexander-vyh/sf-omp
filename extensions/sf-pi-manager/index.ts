@@ -67,6 +67,7 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { SF_PI_REGISTRY } from "../../catalog/registry.ts";
+import { nativeUi } from "../../lib/common/ui-rows.ts";
 import {
   SfPiOverlayComponent,
   type ExtensionState,
@@ -694,50 +695,25 @@ async function handleOverlay(
 
   const extensions = buildExtensionStates(target.disabledFiles);
 
-  // Hide pi's built-in working loader row while the overlay is modal so the
-  // row doesn't reserve space behind our centered dialog. Restored in the
-  // finally block regardless of how the overlay closes. OMP has no such row
-  // (and no setWorkingVisible), so the call is feature-detected.
-  ctx.ui.setWorkingVisible?.(false);
-  let result: OverlayResult | undefined;
-  try {
-    result = await ctx.ui.custom<OverlayResult | undefined>(
-      (tui, theme, _keybindings, done) =>
-        new SfPiOverlayComponent(
-          theme,
-          PACKAGE_VERSION,
-          PACKAGE_ROOT,
-          ctx.cwd,
-          extensions,
-          SF_PI_REGISTRY,
-          scope,
-          () => tui.terminal.rows,
-          done,
-          ctx,
-          tui,
-          (extensionId) => collectOverlayActions(pi, extensionId, initialRoute),
-          (action, scope) => action.run(ctx, scope),
-          initialRoute,
-        ),
-      {
-        overlay: true,
-        // Use function form for responsive sizing on terminal resize
-        overlayOptions: () => ({
-          // Top-center keeps the overlay origin stable when detail/settings
-          // content switches between short and scrollable states. Centering a
-          // shorter re-render can leave stale rows above the new frame on some
-          // terminals until a full redraw.
-          anchor: "top-center" as const,
-          width: "78%",
-          minWidth: 70,
-          maxHeight: "85%" as const,
-          margin: { top: 1 },
-        }),
-      },
-    );
-  } finally {
-    ctx.ui.setWorkingVisible?.(true);
-  }
+  const result = await nativeUi(ctx.ui).custom<OverlayResult | undefined>(
+    (ui, theme, _keybindings, done) =>
+      new SfPiOverlayComponent(
+        theme,
+        PACKAGE_VERSION,
+        PACKAGE_ROOT,
+        ctx.cwd,
+        extensions,
+        SF_PI_REGISTRY,
+        scope,
+        done,
+        ctx,
+        ui,
+        (extensionId) => collectOverlayActions(pi, extensionId, initialRoute),
+        (action, scope) => action.run(ctx, scope),
+        initialRoute,
+      ),
+    { overlay: true },
+  );
 
   if (!result) {
     return;

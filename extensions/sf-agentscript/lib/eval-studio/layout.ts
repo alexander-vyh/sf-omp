@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** ANSI-safe responsive table layout for Eval Studio. */
 
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 
 export interface StudioTableColumn<Row> {
   header: string;
@@ -15,7 +15,7 @@ export interface StudioTableColumn<Row> {
 }
 
 function padCell(value: string, width: number, align: "left" | "right"): string {
-  const clipped = truncateToWidth(value, width, "…");
+  const clipped = truncate(value, width);
   const padding = " ".repeat(Math.max(0, width - visibleWidth(clipped)));
   return align === "right" ? padding + clipped : clipped + padding;
 }

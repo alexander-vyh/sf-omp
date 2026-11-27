@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Behavior proofs for the compact SF LSP readiness row in SF Welcome. */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import {
   __resetSfLspHealthRegistryForTests,
   setSfLspHealthFromDoctor,

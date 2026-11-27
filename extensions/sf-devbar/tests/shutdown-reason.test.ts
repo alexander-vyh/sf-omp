@@ -38,8 +38,8 @@ describe("sf-devbar session_shutdown reason", () => {
     expect(source).not.toContain('event.reason === "reload"');
   });
 
-  it("cleans up footer and widget on shutdown", () => {
-    expect(source).toContain("setFooter(undefined)");
+  it("cleans up both widgets on shutdown", () => {
+    expect(source).toContain("setWidget(FOOTER_WIDGET_KEY, undefined)");
     expect(source).toContain("setWidget(WIDGET_KEY, undefined)");
   });
 });

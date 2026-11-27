@@ -4,8 +4,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import type { Component } from "@earendil-works/pi-tui";
+import type { ExtensionRows, ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
 import {
   renderSfPiResultCardPanel,
   renderSfPiResultCardText,
@@ -108,9 +107,8 @@ export function renderCodeAnalyzerReportPanel(
   summary: CodeAnalyzerReportSummary,
   opts: { expanded?: boolean } = {},
   theme: Theme,
-  outputPad = 1,
-): Component {
-  return renderSfPiResultCardPanel(codeAnalyzerReportCard(summary), opts, theme, outputPad);
+): ExtensionRows {
+  return renderSfPiResultCardPanel(codeAnalyzerReportCard(summary), opts, theme);
 }
 
 export interface CodeAnalyzerRecipeCardItem {
@@ -132,9 +130,8 @@ export function renderCodeAnalyzerDoctorCard(
 export function renderCodeAnalyzerDoctorPanel(
   report: CodeAnalyzerDoctorReport,
   theme: Theme,
-  outputPad = 1,
-): Component {
-  return renderSfPiResultCardPanel(codeAnalyzerDoctorCard(report), {}, theme, outputPad);
+): ExtensionRows {
+  return renderSfPiResultCardPanel(codeAnalyzerDoctorCard(report), {}, theme);
 }
 
 export function renderCodeAnalyzerRecipesCard(
@@ -155,9 +152,8 @@ export function renderCodeAnalyzerRecipesPanel(
   },
   opts: { expanded?: boolean } = {},
   theme: Theme,
-  outputPad = 1,
-): Component {
-  return renderSfPiResultCardPanel(codeAnalyzerRecipesCard(input), opts, theme, outputPad);
+): ExtensionRows {
+  return renderSfPiResultCardPanel(codeAnalyzerRecipesCard(input), opts, theme);
 }
 
 export function renderCodeAnalyzerPlainCard(title: string, body: string, theme: Theme): string {
@@ -168,14 +164,8 @@ export function renderCodeAnalyzerPlainPanel(
   title: string,
   body: string,
   theme: Theme,
-  outputPad = 1,
-): Component {
-  return renderSfPiResultCardPanel(
-    codeAnalyzerPlainCard(title, body),
-    { expanded: true },
-    theme,
-    outputPad,
-  );
+): ExtensionRows {
+  return renderSfPiResultCardPanel(codeAnalyzerPlainCard(title, body), { expanded: true }, theme);
 }
 
 function codeAnalyzerPlainCard(title: string, body: string): SfPiResultCard {

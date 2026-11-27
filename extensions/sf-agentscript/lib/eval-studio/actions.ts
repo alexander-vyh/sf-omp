@@ -3,11 +3,11 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import {
-  copyToClipboard,
-  type ExtensionAPI,
-  type ExtensionCommandContext,
-  type ExtensionContext,
+import { copyToClipboard } from "@oh-my-pi/pi-coding-agent/utils/clipboard";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { connFromAlias } from "../../../../lib/common/sf-conn/index.ts";
 import { latestEvalSpec } from "../branch-state.ts";

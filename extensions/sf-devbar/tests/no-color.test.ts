@@ -2,8 +2,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { currentTheme, setCurrentTheme, ThemeController } from "@oh-my-pi/pi-tui/theme/runtime";
 import { describe, expect, it } from "vitest";
 
 import { renderBottomBarParts } from "../lib/bottom-bar.ts";
@@ -128,11 +128,11 @@ function withNoColor(work: () => void): void {
 }
 
 function withTrueColor(enabled: boolean, work: () => void): void {
-  const prior = getCapabilities();
-  setCapabilities({ ...prior, trueColor: enabled });
+  const prior = currentTheme();
+  new ThemeController().initSync({ truecolor: enabled, colors: 256, dark: true });
   try {
     work();
   } finally {
-    setCapabilities(prior);
+    setCurrentTheme(prior);
   }
 }
