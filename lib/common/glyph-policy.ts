@@ -165,7 +165,6 @@ export const GLYPH_TABLE = {
   codeAnalyzer: { emoji: "🧪", ascii: "ca" },
   nodeCert: { emoji: "🔐", ascii: "#" },
   nodeRuntime: { emoji: "🟩", ascii: "n" },
-  herdr: { emoji: "🪟", ascii: "mx" },
   fonts: { emoji: "🔤", ascii: "Aa" },
   hunk: { emoji: "📝", ascii: "+-" },
   plannotator: { emoji: "📋", ascii: "pl" },

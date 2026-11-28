@@ -239,7 +239,7 @@ describe("real extension factories match manifest runtime surfaces", { concurren
         if (missingAfterFactory.length > 0) {
           const adapter = await loadScenarioAdapter(manifest.id);
           const scenarios = adapter?.scenarios ?? [defaultStartupScenario()];
-          if (!adapter && ["sf-herdr", "sf-slack"].includes(manifest.id)) {
+          if (!adapter && manifest.id === "sf-slack") {
             throw new Error(`${manifest.id} requires a local runtime-surface scenario adapter`);
           }
           for (const scenario of scenarios) {

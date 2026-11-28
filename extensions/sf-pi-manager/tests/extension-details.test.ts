@@ -64,8 +64,8 @@ describe("extension detail helpers", () => {
 
   it("renders extension details as a user control page without developer metadata sections", () => {
     const states = buildExtensionStates(new Set());
-    const herdr = states.find((state) => state.id === "sf-herdr");
-    expect(herdr).toBeDefined();
+    const analyzer = states.find((state) => state.id === "sf-code-analyzer");
+    expect(analyzer).toBeDefined();
 
     const overlay = new SfPiOverlayComponent(
       stubTheme,
@@ -80,18 +80,17 @@ describe("extension detail helpers", () => {
       uiAtHeight(40),
       () => [],
       () => undefined,
-      { extensionId: "sf-herdr", view: "detail" },
+      { extensionId: "sf-code-analyzer", view: "detail" },
     );
 
     const rendered = overlay.render(120).join("\n");
     expect(rendered).toContain(
-      `${iconForExtension("sf-herdr", resolveUiGlyphs("/tmp/project"))} SF Herdr`,
+      `${iconForExtension("sf-code-analyzer", resolveUiGlyphs("/tmp/project"))} SF Code Analyzer`,
     );
     expect(rendered).toContain("Actions");
     expect(rendered).not.toContain("Bundle");
     expect(rendered).not.toContain("Capabilities");
-    expect(rendered).not.toContain("extensions/sf-herdr/index.ts");
-    expect(rendered).not.toContain("sf_herdr_plan");
+    expect(rendered).not.toContain("extensions/sf-code-analyzer/index.ts");
   });
 
   it("renders Manager detail actions under group headings", () => {

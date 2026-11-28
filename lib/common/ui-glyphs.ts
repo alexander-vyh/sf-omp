@@ -146,7 +146,6 @@ export function iconForCommandGroup(group: string, glyphs: UiGlyphs): string {
 const EXTENSION_RICH_ICONS: Record<string, string> = {
   "sf-devbar": "📊",
   "sf-feedback": "✎",
-  "sf-herdr": "🐑",
   "sf-data-explorer": "🔎",
   "sf-guardrail": "🛡",
   "sf-code-analyzer": "🧪",
@@ -167,7 +166,6 @@ const EXTENSION_RICH_ICONS: Record<string, string> = {
 const EXTENSION_ASCII_ICONS: Record<string, string> = {
   "sf-devbar": "db",
   "sf-feedback": "fb",
-  "sf-herdr": "hd",
   "sf-data-explorer": "dx",
   "sf-guardrail": "gr",
   "sf-code-analyzer": "ca",

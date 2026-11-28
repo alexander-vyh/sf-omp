@@ -117,7 +117,6 @@ export interface CodeAnalyzerRecipeCardItem {
   label?: string;
   when?: string;
   ruleSelector?: string[];
-  herdrRecommended?: boolean;
 }
 
 export function renderCodeAnalyzerDoctorCard(
@@ -234,7 +233,6 @@ function codeAnalyzerRecipesCard(input: {
   const suggestions = input.suggestions ?? [];
   const automatic = recipes.filter((recipe) => recipe.kind === "automatic");
   const explicit = recipes.filter((recipe) => recipe.kind !== "automatic");
-  const herdr = recipes.filter((recipe) => recipe.herdrRecommended);
   const sections: SfPiSection[] = [];
   if (automatic.length) {
     sections.push({
@@ -254,7 +252,7 @@ function codeAnalyzerRecipesCard(input: {
       ? suggestions.map((recipe) => ({
           label: recipe.id ?? "scan",
           value: recipeDetail(recipe),
-          tone: recipe.herdrRecommended ? "warning" : "muted",
+          tone: "muted",
         }))
       : [{ label: "current", value: "no broader suggestion for current target/selector" }],
     collapsedLimit: 3,
@@ -266,7 +264,7 @@ function codeAnalyzerRecipesCard(input: {
       rows: explicit.map((recipe) => ({
         label: recipe.id ?? "recipe",
         value: recipeDetail(recipe),
-        tone: recipe.herdrRecommended ? "warning" : "muted",
+        tone: "muted",
       })),
       collapsedLimit: 4,
     });
@@ -275,17 +273,16 @@ function codeAnalyzerRecipesCard(input: {
     tool: codeAnalyzerToolChrome(),
     title: "Scan Recipes",
     status: "info",
-    summary: "Choose the narrowest scan that answers the question; use Herdr for broad scans.",
+    summary: "Choose the narrowest scan that answers the question.",
     chips: [
       { label: `${recipes.length} recipes`, tone: "info" },
       { label: `${automatic.length} automatic`, tone: "muted" },
-      { label: `${herdr.length} Herdr-friendly`, tone: herdr.length ? "warning" : "muted" },
     ],
     scope: [
       { label: "profiles", value: `${automatic.length} automatic · ${explicit.length} explicit` },
     ],
     sections,
-    next: ["choose recipe → run scan; use Herdr for broad scans"],
+    next: ["choose recipe → run scan"],
   };
 }
 
@@ -536,7 +533,6 @@ function recipeDetail(recipe: CodeAnalyzerRecipeCardItem): string {
   return [
     recipe.label,
     recipe.ruleSelector?.length ? `selector ${recipe.ruleSelector.join(", ")}` : undefined,
-    recipe.herdrRecommended ? "Herdr recommended" : undefined,
   ]
     .filter(Boolean)
     .join(" · ");

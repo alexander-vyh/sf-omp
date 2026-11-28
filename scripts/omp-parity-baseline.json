@@ -93,13 +93,6 @@
       "missingProviders": [],
       "unsupportedEvents": []
     },
-    "sf-herdr": {
-      "status": "pass",
-      "missingCommands": [],
-      "missingTools": [],
-      "missingProviders": [],
-      "unsupportedEvents": []
-    },
     "sf-integrate": {
       "status": "pass",
       "missingCommands": [],

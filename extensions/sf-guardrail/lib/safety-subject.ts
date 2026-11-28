@@ -3,8 +3,8 @@
  * Normalize Pi tool calls into SF Guardrail Safety Subjects.
  *
  * This keeps tool-shape knowledge out of the Safety Kernel and lower-level risk
- * gates. It is intentionally narrow: only file-path tools, bash commands, and
- * current `herdr_pane` run commands are safety subjects today.
+ * gates. It is intentionally narrow: only file-path tools and bash commands are
+ * safety subjects today.
  */
 import { resolveMcpTargetType, type McpTargetType } from "./mcp-target-context.ts";
 import { parseMcpToolIdentity } from "./mcp-tool-identity.ts";
@@ -30,10 +30,6 @@ export function normalizeSafetySubject(
   }
 
   if (toolName === "bash" && typeof input.command === "string") {
-    return { kind: "shellCommand", toolName, command: input.command };
-  }
-
-  if (toolName === "herdr_pane" && input.action === "run" && typeof input.command === "string") {
     return { kind: "shellCommand", toolName, command: input.command };
   }
 

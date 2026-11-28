@@ -212,7 +212,6 @@ export function registerCodeAnalyzerTool(pi: ExtensionAPI): void {
               action: input.action,
               recipes: guidance.recipes,
               suggestions: guidance.suggestions,
-              herdrHandoff: guidance.herdrHandoffs,
             },
           },
         };
@@ -308,7 +307,6 @@ function asRecipeItems(value: unknown): Array<{
   label?: string;
   when?: string;
   ruleSelector?: string[];
-  herdrRecommended?: boolean;
 }> {
   if (!Array.isArray(value)) return [];
   return value
@@ -324,8 +322,6 @@ function asRecipeItems(value: unknown): Array<{
       ruleSelector: Array.isArray(item.ruleSelector)
         ? item.ruleSelector.filter((selector): selector is string => typeof selector === "string")
         : undefined,
-      herdrRecommended:
-        typeof item.herdrRecommended === "boolean" ? item.herdrRecommended : undefined,
     }));
 }
 

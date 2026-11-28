@@ -21,7 +21,6 @@ const CAPABILITY_LABELS: Record<string, string> = {
   "sf-devbar": "Salesforce environment and org status",
   "sf-docs": "official Salesforce documentation retrieval",
   "sf-guardrail": "Salesforce-aware safety mediation",
-  "sf-herdr": "Salesforce Herdr workflow lane planning",
   "sf-integrate": "hosted MCP OAuth integration setup",
   "sf-lsp": "Salesforce language diagnostics",
   "sf-lwc": "Lightning Web Component inspection, diagnostics, and Jest tests",

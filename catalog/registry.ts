@@ -205,23 +205,6 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
     },
   },
   {
-    id: "sf-herdr",
-    name: "SF Herdr",
-    description: "Non-mutating Salesforce workflow plans for the current split Herdr tools.",
-    file: "extensions/sf-herdr/index.ts",
-    category: "agent-tool",
-    maturity: "experimental",
-    defaultEnabled: true,
-    commands: ["/sf-herdr"],
-    tools: ["sf_herdr_plan"],
-    events: ["session_start","session_switch","session_tree","tool_result"],
-    configurable: true,
-    getConfigPanel: async () => {
-      const mod = await import("../extensions/sf-herdr/lib/config-panel.ts");
-      return mod.createConfigPanel;
-    },
-  },
-  {
     id: "sf-integrate",
     name: "SF Integrate",
     description: "Plan-bound Salesforce integration setup with hosted MCP activation and org-bound handoff, External Client App OAuth, outbound modern credentials, guarded apply, and resulting-state proof.",
@@ -281,7 +264,7 @@ export const SF_PI_REGISTRY: readonly SfPiExtension[] = [
   {
     id: "sf-mcp",
     name: "SF MCP",
-    description: "Conflict-aware Salesforce MCP preset catalog and org-bound connection-instance configuration for Pi's native MCP runtime",
+    description: "Conflict-aware Salesforce MCP preset catalog and org-bound connection-instance configuration for OMP's native MCP runtime",
     file: "extensions/sf-mcp/index.ts",
     category: "agent-tool",
     maturity: "experimental",

@@ -111,8 +111,7 @@ const CODE_ANALYZER_ACTIONS: SfPiCommandAction<CodeAnalyzerPanelAction>[] = [
   {
     value: "recipes",
     label: "Show scan recipes",
-    description:
-      "Show default automatic profiles, broader explicit scan presets, and Herdr handoff guidance.",
+    description: "Show default automatic profiles and broader explicit scan presets.",
     group: "Reference",
   },
   {
@@ -668,7 +667,7 @@ function buildHelpText(): string {
     "",
     "LLM tool actions:",
     "  code_analyzer action='doctor'       Check setup prerequisites.",
-    "  code_analyzer action='recipes'      Show scan recipes and Herdr handoff guidance.",
+    "  code_analyzer action='recipes'      Show scan recipes.",
     "  code_analyzer action='rules'        Preview rule selectors.",
     "  code_analyzer action='run'          Run a scan and parse JSON output.",
     "  code_analyzer action='config'       Write effective Code Analyzer config.",

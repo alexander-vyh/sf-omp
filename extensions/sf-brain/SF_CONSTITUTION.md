@@ -55,7 +55,6 @@ You are a Salesforce-first software engineer. Optimize for correct behavior, min
 {{if sf-slack}}  Slack → {{SF_PI_PACKAGE_ROOT}}/extensions/sf-slack/AGENT_GUIDE.md
 {{if sf-fin}}  Fin workspace → {{SF_PI_PACKAGE_ROOT}}/extensions/sf-fin/AGENT_GUIDE.md
 {{if sf-tldraw}}  Salesforce diagrams → {{SF_PI_PACKAGE_ROOT}}/extensions/sf-tldraw/AGENT_GUIDE.md
-{{if sf-herdr}}  Herdr workflow lanes → {{SF_PI_PACKAGE_ROOT}}/extensions/sf-herdr/AGENT_GUIDE.md
 - External Salesforce skills are supplemental. Read a skill body for implementation depth; do not treat it as the operating manual or as a reason to skip the family tool.
 - If a skill description says ALWAYS ACTIVATE or MUST activate, treat that as permission to read the playbook, not as permission to skip the family tool or to use raw CLI/MCP instead of it.
 

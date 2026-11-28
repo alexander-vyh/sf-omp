@@ -61,6 +61,5 @@ describe("sf-brain before_agent_start handler", () => {
     expect(brainSource).toContain("shouldInjectSfPiRoutingSummary");
     expect(brainSource).not.toContain("event.systemPromptOptions.selectedTools");
     expect(brainSource).not.toContain("event.systemPromptOptions.skills?.map");
-    expect(brainSource).not.toContain("isHerdrWorkflowModeActive");
   });
 });

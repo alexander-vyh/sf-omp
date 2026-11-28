@@ -26,14 +26,6 @@ const data = {
     requiredVersion: "22.19.0",
     loading: false,
   },
-  herdrRuntime: {
-    kind: "ready",
-    extensionEnabled: true,
-    toolActive: true,
-    activeControlEnv: true,
-    passiveStatusBridge: true,
-    loading: false,
-  },
   fontRuntime: {
     kind: "installed",
     fontFamily: "MesloLGM Nerd Font Mono",

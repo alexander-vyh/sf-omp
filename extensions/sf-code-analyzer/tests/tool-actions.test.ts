@@ -92,7 +92,7 @@ describe("code_analyzer tool actions", () => {
     expect(panel.render(80).join("\n")).toContain("Finished");
   });
 
-  it("returns scan recipes with structured suggestions and Herdr handoff details", async () => {
+  it("returns scan recipes with structured suggestions", async () => {
     const tool = captureTool();
     const result = await tool.execute(
       "call-1",
@@ -109,13 +109,9 @@ describe("code_analyzer tool actions", () => {
     const text = result.content[0]?.type === "text" ? result.content[0].text : "";
     const envelope = (result.details as Record<string, unknown>)[CODE_ANALYZER_DETAILS_KEY] as {
       suggestions: Array<{ id: string }>;
-      herdrHandoff: Array<{ recipeId: string }>;
     };
     expect(text).toContain("SF Code Analyzer scan recipes");
     expect(envelope.suggestions.map((recipe: { id: string }) => recipe.id)).toEqual(["security"]);
-    expect(envelope.herdrHandoff.map((handoff: { recipeId: string }) => handoff.recipeId)).toEqual([
-      "security",
-    ]);
   });
 
   it("summarizes an explicit report artifact with last_report filters", async () => {

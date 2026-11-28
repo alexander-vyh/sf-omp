@@ -202,7 +202,6 @@ describe("deferred Code Analyzer auto-scan orchestration", () => {
         buildScanRecipeGuidance: () => ({
           recipes: [],
           suggestions: [],
-          herdrHandoffs: [],
           text: "",
         }),
       }),
@@ -371,7 +370,6 @@ describe("deferred Code Analyzer auto-scan orchestration", () => {
         buildScanRecipeGuidance: () => ({
           recipes: [],
           suggestions: ["security"],
-          herdrHandoffs: [],
           text: guidance,
         }),
       }),
@@ -418,7 +416,7 @@ function scanSummary(reportFile: string, rule: string) {
 }
 
 function emptyGuidance() {
-  return { recipes: [], suggestions: [], herdrHandoffs: [], text: "" };
+  return { recipes: [], suggestions: [], text: "" };
 }
 
 function continuationContext(result: unknown): string {
