@@ -64,4 +64,14 @@ describe("sf-skills reload safety", () => {
       { placement: "aboveEditor" },
     );
   });
+
+  it.each(["reload", "quit"])("removes the HUD widget on %s shutdown", async (reason) => {
+    const { handlers, pi } = buildExtension();
+    (await import("../index.ts")).default(pi as never);
+    const ctx = fakeUiCtx();
+    await fire(handlers, "session_start", { reason: "startup" }, ctx);
+    ctx.ui.setWidget.mockClear();
+    await fire(handlers, "session_shutdown", { reason }, ctx);
+    expect(ctx.ui.setWidget).toHaveBeenCalledExactlyOnceWith("sf-skills-hud", undefined);
+  });
 });

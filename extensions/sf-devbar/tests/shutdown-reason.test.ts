@@ -79,11 +79,6 @@ describe("sf-skills session_shutdown reason", () => {
   it("preserves HUD state on reload", () => {
     expect(source).toContain('event.reason !== "reload"');
   });
-
-  it("still dismisses overlay on all shutdown paths", () => {
-    // dismissOverlay should be called unconditionally
-    expect(source).toContain("dismissOverlay()");
-  });
 });
 
 // -------------------------------------------------------------------------------------------------
