@@ -31,6 +31,19 @@ If real-time message search is unavailable, the legacy fallback searches the
 same query in the app's approved workspaces. `SLACK_TEAM_ID` pins that fallback
 to one workspace. A failed fallback does not hide a real-time rate limit.
 
+Channel directory listing also resolves Enterprise Grid identities to the app's
+approved workspace IDs. `SLACK_TEAM_ID` pins listing to one `T…` workspace and is
+never silently broadened when that workspace denies access. Pass `next_cursor`
+back unchanged: an org-wide continuation carries its workspace and Slack cursor.
+Name filtering scans up to five directory pages per call; an empty page with a
+continuation does not mean there are no matching channels.
+
+If a named directory lookup is denied, message search can discover matching
+channel names using the requested channel types. These results are explicitly
+partial, never a complete inventory, and do not invent private/public or
+membership metadata. No scopes, workspace approvals, or Slack settings are
+changed automatically.
+
 For an exact message link supplied by the user, call `slack` with
 `action: "thread"` and `message_url`. SF Slack strictly parses canonical
 workspace message permalinks and sends the resulting conversation ID and
@@ -117,6 +130,12 @@ Automation controls:
 
 **Status says connected but limited:** The token is valid but lacks one or more
 requested scopes. Use `/sf-slack` to see exact available and gated capabilities.
+
+**Directory listing returns `team_access_not_granted`, but direct reads work:**
+SF Slack is still connected. Listing uses approved workspace IDs for org-wide
+tokens and may return partial search discovery for a name filter. If an explicit
+workspace remains denied, verify its ID and app approval with the owner before
+changing Slack settings; this error alone does not establish a missing scope.
 
 **Status reports a bot or unsupported token:** Reads may work, but delivery and
 some canvas operations require a user token.

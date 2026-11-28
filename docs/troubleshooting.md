@@ -179,6 +179,7 @@ Jump to an extension's Troubleshooting section to see the full fix. This index i
 
 - No Slack status or tools appear
 - Status says connected but limited
+- Directory listing returns `team_access_not_granted`, but direct reads work
 - Status reports a bot or unsupported token
 - Opening a DM says `im:write` is missing
 - A fuzzy person/channel resolves incorrectly

@@ -409,6 +409,31 @@ export async function searchSlackMessages(
   return realtime.error === "rate_limited" ? realtime : legacy;
 }
 
+/** Org-wide tokens need real workspace IDs, never the enterprise identity. */
+export async function listApprovedTeamIds(
+  token: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<string[]>> {
+  const teams = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const page = await slackApiForm<AuthTeamsListResponse>(
+      "auth.teams.list",
+      token,
+      { limit: 100, cursor },
+      signal,
+    );
+    if (page.ok === false) return page;
+    for (const entry of page.data.teams ?? []) {
+      if (entry.id?.startsWith("T")) teams.add(entry.id);
+    }
+    cursor = page.data.response_metadata?.next_cursor;
+  } while (cursor);
+  return teams.size
+    ? { ok: true, data: Array.from(teams) }
+    : { ok: false, error: "team_access_not_granted" };
+}
+
 async function searchLegacyMessages(
   token: string,
   query: string,
@@ -434,25 +459,11 @@ async function searchLegacyMessages(
     if (team || result.ok === true || result.error !== "missing_argument") return result;
   }
 
-  const teams = new Set<string>();
-  let cursor: string | undefined;
-  do {
-    const page = await slackApiForm<AuthTeamsListResponse>(
-      "auth.teams.list",
-      token,
-      { limit: 100, cursor },
-      signal,
-    );
-    if (page.ok === false) return page;
-    for (const entry of page.data.teams ?? []) {
-      if (entry.id?.startsWith("T")) teams.add(entry.id);
-    }
-    cursor = page.data.response_metadata?.next_cursor;
-  } while (cursor);
-  if (!teams.size) return { ok: false, error: "team_access_not_granted" };
+  const approved = await listApprovedTeamIds(token, signal);
+  if (approved.ok === false) return approved;
 
   const rows: SlackSearchMatch[][] = [];
-  for (const result of await Promise.all(Array.from(teams, search))) {
+  for (const result of await Promise.all(approved.data.map(search))) {
     if (result.ok === false) return result;
     rows.push(result.data);
   }
@@ -1090,9 +1101,10 @@ export function summarizeSlackError(
       return `Slack is rate-limiting this request.${detailSuffix || " Retry later."}`;
     case "team_access_not_granted":
       return (
-        "Slack granted the required scope, but blocked this broad directory call with team_access_not_granted — typical on Enterprise Grid when the target lives in another workspace. " +
-        "For user/channel lookups, slack_resolve falls back to assistant.search.context automatically. " +
-        "For direct reads, ask for a specific Slack ID or search messages first (slack action:'search' / slack_research) and pick the author/channel from a hit."
+        "Slack denied access to the requested workspace (team_access_not_granted). " +
+        "This does not mean SF Slack is disconnected or establish a missing scope. " +
+        "Verify the workspace ID and the app's approved workspaces before requesting permission changes. " +
+        "Name-filtered channel discovery can use message search, but those results are only partial."
       );
     case "request_timeout":
       return (

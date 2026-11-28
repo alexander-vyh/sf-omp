@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Fixed automatic Auto Update never running in OMP: OMP's `session_start` carries no reason, so a missing reason now counts as startup while an explicit reload still does not.
 - Removed SF Herdr (`/sf-herdr`, `sf_herdr_plan`): its planner required the upstream `pi-herdr` package tools (`herdr_layout`/`herdr_pane`/`herdr_agent`), which the explicit-only sf-omp launcher never loads. Also removed the `pi-herdr` recommendation, the SF Welcome Herdr row and Pi-bridge status, SF Code Analyzer's Herdr handoff guidance, and SF Guardrail's `herdr_pane.run` mediation. SF Plan Review's Herdr Annotate route is unchanged.
 - `/sf-pi doctor` skill checks now read OMP's `skills.customDirectories` config (the same file `/sf-pi doctor fix skills` edits) and OMP's native skill roots (`<agentDir>/skills`, `<project>/.omp/skills`) instead of the Pi `settings.json` `skills[]` array and `.pi/skills`. SF Docs, SF Fin, SF Slack and SF LLM Gateway report saved credentials as "OMP saved credential", and their setup hints refer to OMP instead of Pi.
+- Fixed Enterprise Grid channel listing to use approved workspace IDs and workspace-aware pagination; denied named directory lookups now return clearly partial search discovery without inventing channel privacy metadata or changing Slack settings.
 
 ### Full SF Pi parity in OMP
 
