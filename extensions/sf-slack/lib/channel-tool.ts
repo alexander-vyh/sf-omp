@@ -14,8 +14,8 @@ import {
   type AssistantSearchContextResponse,
   type ConversationsHistoryResponse,
   type ConversationsInfoResponse,
-  type ConversationsListResponse,
   type ConversationsMembersResponse,
+  type SlackConversation,
   type StructuredChannel,
   type StructuredMember,
 } from "./types.ts";
@@ -33,6 +33,7 @@ import {
 import { formatChannelInfo, extractStructuredChannel } from "./format.ts";
 import { buildSlackTextResult } from "./truncation.ts";
 import { requireConfirmedChannel } from "./recipient-confirm.ts";
+import { listChannelDirectory } from "./channel-directory.ts";
 
 interface ChannelToolCallArgs {
   action?: string;
@@ -47,6 +48,7 @@ interface ChannelToolRenderResult {
     ok?: boolean;
     action?: string;
     next_cursor?: string;
+    partial?: boolean;
     channelData?: StructuredChannel;
     channels?: StructuredChannel[];
     members?: StructuredMember[];
@@ -59,7 +61,7 @@ export function registerChannelTool(pi: ExtensionAPI): void {
     label: "Slack Channel",
     description:
       "Look up Slack channels (info, list, members). " +
-      "Actions: info — get channel metadata by ID. list — find channels by name. members — list channel members.",
+      "Actions: info — get channel metadata by ID. list — page accessible channels in approved workspaces; denied directories may yield partial search discovery. members — list channel members.",
     promptSnippet: "Get Slack channel info, list channels by name, or list channel members",
     parameters: SlackChannelParams,
 
@@ -126,12 +128,22 @@ export function registerChannelTool(pi: ExtensionAPI): void {
 
       if (action === "list") {
         const channels = details.channels || [];
-        if (!channels.length) return slackText(theme.fg("warning", "No channels found"));
+        if (!channels.length) {
+          return slackText(
+            theme.fg(
+              "warning",
+              details.next_cursor ? "No matches on this page [more pages]" : "No channels found",
+            ),
+          );
+        }
         let text = theme.fg(
           "success",
           `✓ ${channels.length} channel${channels.length !== 1 ? "s" : ""}`,
         );
         if (details.next_cursor) text += theme.fg("warning", " [more pages]");
+        if (details.partial) {
+          text += "\n" + theme.fg("warning", "Partial search discovery — not a complete directory");
+        }
         for (const channel of channels) {
           text +=
             "\n  " +
@@ -231,64 +243,63 @@ export function registerChannelTool(pi: ExtensionAPI): void {
       }
 
       if (action === "list") {
-        const result = await slackApi<ConversationsListResponse>(
-          "conversations.list",
-          auth.token,
-          {
-            types: params.types || "public_channel,private_channel",
-            limit: clampLimit(params.limit, DEFAULT_LIST_LIMIT, 200),
-            cursor: params.cursor,
-            exclude_archived: true,
-          },
-          signal,
-        );
-        if (!result.ok) {
-          const error = result as ApiErr;
-          if (isRecoverableChannelListError(error.error) && params.name_filter) {
-            const fallback = await buildChannelSearchFallback(
-              auth.token,
-              params.name_filter,
-              action,
-              signal,
-            );
-            if (fallback) return fallback;
-          }
-          return errorResult(error.error, error.needed, error.provided, error.messages);
-        }
-
-        let channels = Array.isArray(result.data.channels) ? result.data.channels : [];
-        const nextCursor = result.data.response_metadata?.next_cursor || undefined;
-        if (params.name_filter) {
-          const filterValue = params.name_filter.toLowerCase();
-          channels = channels.filter((channel) => {
-            const name = (channel.name || "").toLowerCase();
-            const normalizedName = (channel.name_normalized || "").toLowerCase();
-            return name.includes(filterValue) || normalizedName.includes(filterValue);
-          });
-        }
-
-        if (channels.length === 0 && params.name_filter) {
-          const fallback = await buildChannelSearchFallback(
+        const types = params.types || "public_channel,private_channel";
+        const limit = clampLimit(params.limit, DEFAULT_LIST_LIMIT, 200);
+        let channels: SlackConversation[] = [];
+        let nextCursor = params.cursor;
+        // Skip sparse filtered pages without an unbounded directory scan.
+        for (let page = 0; page < 5; page++) {
+          const result = await listChannelDirectory(
             auth.token,
-            params.name_filter,
-            action,
+            { types, limit, cursor: nextCursor },
             signal,
           );
-          if (fallback) return fallback;
+          if (result.ok === false) {
+            if (isRecoverableChannelListError(result.error) && params.name_filter) {
+              const fallback = await buildChannelSearchFallback(
+                auth.token,
+                params.name_filter,
+                action,
+                types,
+                limit,
+                result.error,
+                signal,
+              );
+              if (fallback) return fallback;
+            }
+            return errorResult(result.error, result.needed, result.provided, result.messages);
+          }
+
+          channels = Array.isArray(result.data.channels) ? result.data.channels : [];
+          nextCursor = result.data.response_metadata?.next_cursor || undefined;
+          if (params.name_filter) {
+            const filterValue = params.name_filter.toLowerCase();
+            channels = channels.filter(
+              (channel) =>
+                (channel.name || "").toLowerCase().includes(filterValue) ||
+                (channel.name_normalized || "").toLowerCase().includes(filterValue),
+            );
+          }
+          if (channels.length || !params.name_filter || !nextCursor) break;
         }
 
         const structured = channels.map((channel) => extractStructuredChannel(channel));
         const text =
-          channels
-            .map((channel, index) => {
-              const topic = channel.topic?.value
-                ? ` — ${channel.topic.value.substring(0, 80)}`
-                : "";
-              const isPrivate = channel.is_private ? " [private]" : "";
-              const members = channel.num_members ? ` (${channel.num_members} members)` : "";
-              return `${index + 1}. #${channel.name || "unknown"} (${channel.id})${isPrivate}${members}${topic}`;
-            })
-            .join("\n") + (nextCursor ? `\n\n--- More available. cursor: "${nextCursor}" ---` : "");
+          (channels.length
+            ? channels
+                .map((channel, index) => {
+                  const topic = channel.topic?.value
+                    ? ` — ${channel.topic.value.substring(0, 80)}`
+                    : "";
+                  const isPrivate = channel.is_private ? " [private]" : "";
+                  const members = channel.num_members ? ` (${channel.num_members} members)` : "";
+                  return `${index + 1}. #${channel.name || "unknown"} (${channel.id})${isPrivate}${members}${topic}`;
+                })
+                .join("\n")
+            : nextCursor
+              ? "No matching channels on these pages; continue with the cursor."
+              : "No matching channels found.") +
+          (nextCursor ? `\n\n--- More available. cursor: "${nextCursor}" ---` : "");
 
         return buildSlackTextResult(
           text,
@@ -450,28 +461,46 @@ async function resolveChannelParam(
 }
 
 function isRecoverableChannelListError(error: string): boolean {
-  return error === "missing_scope" || error === "missing_argument" || error === "channel_not_found";
+  return (
+    error === "missing_scope" ||
+    error === "missing_argument" ||
+    error === "channel_not_found" ||
+    error === "team_access_not_granted"
+  );
 }
 
 async function buildChannelSearchFallback(
   token: string,
   nameFilter: string,
   action: string,
+  types: string,
+  limit: number,
+  directoryError: string,
   signal?: AbortSignal,
 ) {
-  const matches = await searchChannelsByName(token, nameFilter, signal);
+  const matches = await searchChannelsByName(token, nameFilter, types, limit, signal);
   if (matches.length === 0) return undefined;
 
   const channels = matches.map((match) =>
     buildFallbackChannel(match.channel_id || "unknown", match.channel_name || "unknown"),
   );
   const text =
-    "Fallback channel discovery via Slack search context:\n" +
+    `Directory listing unavailable (${directoryError}).\n` +
+    "Partial channel discovery via message search — not a complete directory. " +
+    "Privacy and membership metadata are unavailable.\n" +
     channels.map((channel, index) => `${index + 1}. #${channel.name} (${channel.id})`).join("\n");
 
   return buildSlackTextResult(
     text,
-    { ok: true, action, count: channels.length, channels, fallback: true },
+    {
+      ok: true,
+      action,
+      count: channels.length,
+      channels,
+      fallback: true,
+      partial: true,
+      directory_error: directoryError,
+    },
     { prefix: "pi-slack-channel-list" },
   );
 }
@@ -483,8 +512,8 @@ function buildFallbackChannel(id: string, name: string): StructuredChannel {
     topic: "(unavailable)",
     purpose: "(unavailable)",
     numMembers: undefined,
-    isPrivate: false,
-    isArchived: false,
+    isPrivate: undefined,
+    isArchived: undefined,
     created: "unknown",
     creator: "unknown",
   };
@@ -508,14 +537,20 @@ async function searchChannelById(token: string, channelId: string, signal?: Abor
   return result.ok ? result.data.results?.messages?.[0] : undefined;
 }
 
-async function searchChannelsByName(token: string, nameFilter: string, signal?: AbortSignal) {
+async function searchChannelsByName(
+  token: string,
+  nameFilter: string,
+  types: string | undefined,
+  limit: number,
+  signal?: AbortSignal,
+) {
   const unique = new Map<string, { channel_id?: string; channel_name?: string; score: number }>();
 
   for (const query of buildChannelDiscoveryQueries(nameFilter)) {
     const params: Record<string, string | number> = {
       query,
-      count: 20,
-      channel_types: DEFAULT_ASSISTANT_CHANNEL_TYPES,
+      limit,
+      channel_types: types || DEFAULT_ASSISTANT_CHANNEL_TYPES,
     };
     const teamId = getTeamId();
     if (teamId) params.team_id = teamId;
@@ -535,6 +570,7 @@ async function searchChannelsByName(token: string, nameFilter: string, signal?: 
       const id = match.channel_id || match.channel?.id;
       const name = match.channel_name || match.channel?.name;
       if (!id || !name) continue;
+      if (!name.toLowerCase().includes(nameFilter.trim().replace(/^#/, "").toLowerCase())) continue;
 
       const score = scoreChannelName(nameFilter, name);
       const previous = unique.get(id);
@@ -546,7 +582,7 @@ async function searchChannelsByName(token: string, nameFilter: string, signal?: 
 
   return Array.from(unique.values())
     .sort((left, right) => right.score - left.score)
-    .slice(0, 10);
+    .slice(0, limit);
 }
 
 function buildChannelDiscoveryQueries(nameFilter: string): string[] {

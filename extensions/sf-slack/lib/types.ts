@@ -351,8 +351,8 @@ export interface StructuredChannel {
   topic: string;
   purpose: string;
   numMembers?: number;
-  isPrivate: boolean;
-  isArchived: boolean;
+  isPrivate?: boolean;
+  isArchived?: boolean;
   created: string;
   creator: string;
   /** Human-readable label when it differs from `#name` (DMs, group DMs). */
