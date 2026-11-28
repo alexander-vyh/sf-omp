@@ -215,5 +215,7 @@ store.close();`,
       ]);
       expect(existsSync(invocation.args[4])).toBe(false);
     }
-  });
+    // Six child processes (git, Bun SQLite, three launches) exceed Vitest's 5s
+    // default on loaded CI runners; each launch keeps its own 5s bound.
+  }, 30_000);
 });
