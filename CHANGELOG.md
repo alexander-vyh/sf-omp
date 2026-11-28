@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - SF Brain now drops constitution guidance and routing for extensions the user disabled, read from the running host's own configuration (OMP `disabledExtensions`), and labels disabled tool owners with their `/sf-pi enable` path separately from owners whose tools did not register.
 - Slack message search honors rate-limit cooldowns and falls back across Slack-approved workspaces for organization-wide installs.
 - Agent Script eval suites can designate exact single-turn safety test IDs whose platform interception counts as a safe refusal; unlisted functional tests remain fail-closed.
+- sf-omp now supports native OMP only; upstream Pi is no longer a supported host. Removed the upstream Pi `peerDependencies`, Pi package keywords, and `pi install` guidance, and moved the human-only command output, Gateway thinking-ownership, and Auto Update runtime proofs from upstream Pi to the pinned OMP 19.2.1 devDependency. The `pi` manifest key stays because OMP reads it.
+- Fixed automatic Auto Update never running in OMP: OMP's `session_start` carries no reason, so a missing reason now counts as startup while an explicit reload still does not.
 
 ### Full SF Pi parity in OMP
 

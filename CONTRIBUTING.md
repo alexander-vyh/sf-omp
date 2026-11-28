@@ -70,15 +70,15 @@ npm install
 - `pre-push` blocks force-pushes and deletion of `main`; CI remains the source
   of truth for full lint/typecheck/test validation.
 - `post-merge` runs `npm install` when a pull or merge changes
-  `package-lock.json`. Pi never installs dependencies for a local-path package,
-  so this keeps a checkout loaded with `pi install .` startable after a pull
+  `package-lock.json`. The OMP launcher loads this checkout in place and never
+  installs dependencies, so this keeps `tools/bin/omp` startable after a pull
   that adds a runtime dependency. A rebase pull that replays local commits skips
   this hook; run `npm install` after it.
 
-Optional local install for manual testing:
+Run the checkout in native OMP for manual testing:
 
 ```bash
-pi install .
+tools/bin/omp
 ```
 
 ## Scripts reference

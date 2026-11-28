@@ -1,68 +1,56 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Exact Pi 0.99.2 runtime proof that Gateway metadata never owns thinking selection. */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+/** Native OMP runtime proof that Gateway metadata never owns thinking selection. */
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { RpcClient } from "@oh-my-pi/pi-coding-agent/modes/rpc/rpc-client";
+import { ptree } from "@oh-my-pi/pi-utils";
 import { afterEach, describe, expect, it } from "vitest";
-import { RpcClient } from "@earendil-works/pi-coding-agent";
+import { parse, stringify } from "yaml";
 
+import {
+  OMP_ISOLATION_ARGS,
+  REPO_ROOT,
+  ompTestHost,
+  type OmpTestHost,
+} from "../../../lib/common/tests/omp-host.ts";
 import { API_KEY_ENV, PROVIDER_NAME } from "../lib/config.ts";
-import { toProviderModelConfig } from "../lib/models.ts";
 
 const tempDirs: string[] = [];
-const repoRoot = path.resolve(import.meta.dirname, "../../..");
-const cliPath = path.join(
-  repoRoot,
-  "node_modules",
-  "@earendil-works",
-  "pi-coding-agent",
-  "dist",
-  "cli.js",
-);
-const extensionPath = path.join(repoRoot, "extensions", "sf-llm-gateway", "index.ts");
+const servers: Server[] = [];
+const extensionPath = path.join(REPO_ROOT, "extensions", "sf-llm-gateway", "index.ts");
 
 const DISCOVERED_PRIMARY_MODEL = "gpt-4";
 const DISCOVERED_SECONDARY_MODEL = "gpt-4o";
 
-interface RuntimeHarness {
-  client: RpcClient;
-  settingsPath: string;
+interface GatewayFixture {
+  host: OmpTestHost;
+  cwd: string;
+  /** OMP's global config.yml: the user's `defaultThinkingLevel` and `modelRoles.default`. */
+  configPath: string;
   gatewayConfigPath: string;
-  stop(): Promise<void>;
 }
 
-function tempDir(prefix: string): string {
-  const dir = mkdtempSync(path.join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
+function readConfig(configPath: string): Record<string, unknown> {
+  return parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
 }
 
-function readSettings(settingsPath: string): Record<string, unknown> {
-  return JSON.parse(readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
-}
-
-async function closeServer(server: Server): Promise<void> {
-  await new Promise<void>((resolve, reject) =>
-    server.close((error) => (error ? reject(error) : resolve())),
-  );
-}
-
-async function startRuntime(
-  thinkingLevel: "low" | "max",
-  extraEnv: Record<string, string> = {},
-): Promise<RuntimeHarness> {
-  const cwd = tempDir("sf-pi-thinking-runtime-cwd-");
-  const agentDir = tempDir("sf-pi-thinking-runtime-agent-");
-  const settingsPath = path.join(agentDir, "settings.json");
+async function createFixture(thinkingLevel: "low" | "max"): Promise<GatewayFixture> {
+  const root = mkdtempSync(path.join(tmpdir(), "sf-omp-thinking-runtime-"));
+  tempDirs.push(root);
+  const cwd = path.join(root, "workspace");
+  mkdirSync(cwd);
+  const host = ompTestHost(root, {
+    [API_KEY_ENV]: "active-automation-test-key",
+    OPENAI_API_KEY: "test-openai-key",
+  });
+  // The user's own OMP selection; launches pass no model or thinking flags.
+  const configPath = path.join(host.agentDir, "config.yml");
   writeFileSync(
-    settingsPath,
-    `${JSON.stringify({
-      defaultProvider: "openai",
-      defaultModel: "gpt-5",
-      defaultThinkingLevel: thinkingLevel,
-    })}\n`,
+    configPath,
+    stringify({ defaultThinkingLevel: thinkingLevel, modelRoles: { default: "openai/gpt-5" } }),
     "utf8",
   );
 
@@ -103,9 +91,11 @@ async function startRuntime(
     }
     response.end("{}");
   });
+  servers.push(server);
+  // tsconfig's ES2022 lib has no Promise.withResolvers.
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const gatewayPort = (server.address() as AddressInfo).port;
-  const gatewayConfigPath = path.join(agentDir, "sf-llm-gateway.json");
+  const gatewayConfigPath = path.join(host.agentDir, "sf-llm-gateway.json");
   writeFileSync(
     gatewayConfigPath,
     `${JSON.stringify({
@@ -114,71 +104,42 @@ async function startRuntime(
     })}\n`,
     "utf8",
   );
-  const cachedModels = [DISCOVERED_PRIMARY_MODEL, DISCOVERED_SECONDARY_MODEL].map((id) => {
-    const model = toProviderModelConfig(id);
-    return {
-      ...model,
-      provider: PROVIDER_NAME,
-      baseUrl:
-        model.api === "openai-completions"
-          ? "https://gateway.invalid/v1"
-          : "https://gateway.invalid",
-    };
-  });
-  writeFileSync(
-    path.join(agentDir, "models-store.json"),
-    `${JSON.stringify({
-      [PROVIDER_NAME]: { models: cachedModels, checkedAt: 1 },
-    })}\n`,
-    "utf8",
-  );
 
-  const client = new RpcClient({
-    cliPath,
-    cwd,
-    env: {
-      PI_CODING_AGENT_DIR: agentDir,
-      [API_KEY_ENV]: "active-automation-test-key",
-      OPENAI_API_KEY: "test-openai-key",
-      ...extraEnv,
-    },
-    provider: "openai",
-    model: "gpt-5",
-    args: [
-      "--offline",
-      "--no-extensions",
-      "--no-skills",
-      "--no-prompt-templates",
-      "--no-themes",
-      "--no-context-files",
-      "--no-session",
-      "--thinking",
-      thinkingLevel,
-      "-e",
-      extensionPath,
-    ],
-  });
-  await client.start();
-
-  return {
-    client,
-    settingsPath,
-    gatewayConfigPath,
-    async stop() {
-      await client.stop();
-      await closeServer(server);
-    },
-  };
+  return { host, cwd, configPath, gatewayConfigPath };
 }
 
-afterEach(() => {
+/** Start an RPC session on the fixture's agent dir. */
+async function launch({ host, cwd }: GatewayFixture): Promise<RpcClient> {
+  const client = new RpcClient({
+    cwd,
+    args: [...OMP_ISOLATION_ARGS, "-e", extensionPath],
+    // The default spawn merges the parent environment; keep the host hermetic.
+    spawn: (agentArgs) =>
+      ptree.spawn([...host.command, ...agentArgs], { cwd, env: host.env, stdin: "pipe" }),
+  });
+  await client.start();
+  return client;
+}
+
+afterEach(async () => {
+  await Promise.all(
+    servers
+      .splice(0)
+      .map(
+        (server) =>
+          new Promise<void>((resolve, reject) =>
+            server.close((error) => (error ? reject(error) : resolve())),
+          ),
+      ),
+  );
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-describe("Gateway thinking ownership through real Pi", () => {
+describe("Gateway thinking ownership through native OMP", () => {
   it("preserves low across startup, commands, and Gateway model switches", async () => {
-    const runtime = await startRuntime("low");
-    const { client, settingsPath } = runtime;
+    const fixture = await createFixture("low");
+    const { configPath } = fixture;
+    const client = await launch(fixture);
     try {
       expect((await client.getState()).thinkingLevel).toBe("low");
 
@@ -188,73 +149,97 @@ describe("Gateway thinking ownership through real Pi", () => {
         "/sf-llm-gateway off global",
         "/sf-llm-gateway on global",
       ]) {
-        await client.prompt(command);
-        expect(readSettings(settingsPath).defaultThinkingLevel, command).toBe("low");
+        await client.promptAndWait(command);
+        expect(readConfig(configPath).defaultThinkingLevel, command).toBe("low");
       }
 
-      expect((await client.getState()).thinkingLevel).toBe("off");
+      // OMP reports no effort for a model without reasoning (Pi reported "off").
+      const gatewayState = await client.getState();
+      expect(gatewayState.model).toMatchObject({
+        provider: PROVIDER_NAME,
+        id: DISCOVERED_PRIMARY_MODEL,
+      });
+      expect(gatewayState.thinkingLevel).toBeUndefined();
       expect(await client.getAvailableThinkingLevels()).toEqual(["off"]);
 
       await client.setModel(PROVIDER_NAME, DISCOVERED_SECONDARY_MODEL);
-      expect((await client.getState()).thinkingLevel).toBe("off");
+      expect((await client.getState()).thinkingLevel).toBeUndefined();
 
       await client.setModel(PROVIDER_NAME, DISCOVERED_PRIMARY_MODEL);
-      expect((await client.getState()).thinkingLevel).toBe("off");
+      expect((await client.getState()).thinkingLevel).toBeUndefined();
       expect(await client.getAvailableThinkingLevels()).toEqual(["off"]);
     } finally {
-      await runtime.stop();
+      await client.stop();
     }
 
-    expect(readSettings(settingsPath).defaultThinkingLevel).toBe("low");
+    expect(readConfig(configPath).defaultThinkingLevel).toBe("low");
   }, 30_000);
 
   it("chooses a configured non-gateway fallback when no previous default was saved", async () => {
-    const runtime = await startRuntime("low");
-    const { client, settingsPath, gatewayConfigPath } = runtime;
+    const fixture = await createFixture("low");
+    const { configPath, gatewayConfigPath } = fixture;
+    const client = await launch(fixture);
     try {
-      await client.prompt("/sf-llm-gateway on global");
-      expect((await client.getState()).model.provider).toBe(PROVIDER_NAME);
+      await client.promptAndWait("/sf-llm-gateway on global");
+      expect((await client.getState()).model?.provider).toBe(PROVIDER_NAME);
 
       const saved = JSON.parse(readFileSync(gatewayConfigPath, "utf8")) as Record<string, unknown>;
       delete saved.previousDefaultProvider;
       delete saved.previousDefaultModel;
       writeFileSync(gatewayConfigPath, `${JSON.stringify(saved)}\n`, "utf8");
 
-      await client.prompt("/sf-llm-gateway off global");
-      const offState = await client.getState();
-      expect(offState.model.provider).not.toBe(PROVIDER_NAME);
-      expect(readSettings(settingsPath)).toMatchObject({
-        defaultProvider: offState.model.provider,
-        defaultModel: offState.model.id,
+      await client.promptAndWait("/sf-llm-gateway off global");
+      const restored = (await client.getState()).model;
+      expect(restored?.provider).toBeDefined();
+      expect(restored?.provider).not.toBe(PROVIDER_NAME);
+      // OMP persists the default model as config.yml `modelRoles.default`.
+      expect(readConfig(configPath).modelRoles).toMatchObject({
+        default: `${restored?.provider}/${restored?.id}`,
       });
     } finally {
-      await runtime.stop();
+      await client.stop();
     }
   }, 30_000);
 
-  it("restores the previous non-gateway default while leaving Pi's thinking setting user-owned", async () => {
-    const runtime = await startRuntime("max");
-    const { client, settingsPath } = runtime;
+  it("restores the previous non-gateway default while leaving OMP's thinking setting user-owned", async () => {
+    const fixture = await createFixture("max");
+    const { configPath } = fixture;
+    const client = await launch(fixture);
     try {
       expect((await client.getState()).thinkingLevel).toBe("high");
 
-      await client.prompt("/sf-llm-gateway on global");
+      await client.promptAndWait("/sf-llm-gateway on global");
       const onState = await client.getState();
       expect(onState.model).toMatchObject({
         provider: PROVIDER_NAME,
         id: DISCOVERED_PRIMARY_MODEL,
       });
-      expect(onState.thinkingLevel).toBe("off");
+      expect(onState.thinkingLevel).toBeUndefined();
 
-      await client.prompt("/sf-llm-gateway off global");
+      await client.promptAndWait("/sf-llm-gateway off global");
       const offState = await client.getState();
       expect(offState.model).toMatchObject({ provider: "openai", id: "gpt-5" });
-      expect(offState.thinkingLevel).toBe("high");
-      // Pi 0.84.3 keeps thinking session-scoped unless saved; the user-owned
-      // settings value stays `max` even when gpt-5 resolves the session to `high`.
-      expect(readSettings(settingsPath).defaultThinkingLevel).toBe("max");
+      // OMP carries only the live effort across model switches and the Gateway
+      // model had none, so gpt-5 returns without one (Pi re-resolved "high"
+      // in-session). The Gateway set no level itself: the user's `max` stays.
+      expect(offState.thinkingLevel).toBeUndefined();
+      expect(readConfig(configPath)).toMatchObject({
+        defaultThinkingLevel: "max",
+        modelRoles: { default: "openai/gpt-5" },
+      });
     } finally {
-      await runtime.stop();
+      await client.stop();
+    }
+
+    // The user's setting governs the next session: gpt-5 resolves `max` to `high`.
+    const restarted = await launch(fixture);
+    try {
+      expect(await restarted.getState()).toMatchObject({
+        model: { provider: "openai", id: "gpt-5" },
+        thinkingLevel: "high",
+      });
+    } finally {
+      await restarted.stop();
     }
   }, 30_000);
 });

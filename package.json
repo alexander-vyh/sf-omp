@@ -5,8 +5,6 @@
   "type": "module",
   "description": "Repository-local OMP integration for Salesforce Agentforce and developer tooling.",
   "keywords": [
-    "pi-package",
-    "pi-coding-agent",
     "salesforce",
     "salesforce-dev",
     "developer-tools"
@@ -150,10 +148,6 @@
     "check:runtime-imports": "node scripts/check-runtime-imports.mjs",
     "check:git-install-load": "bun scripts/check-git-install-load.mjs",
     "parity:omp": "bun scripts/omp-parity.ts"
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": ">=1.5.1 <2.0.0"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",

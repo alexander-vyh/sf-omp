@@ -3,8 +3,8 @@ layout: home
 title: SF Pi documentation
 hero:
   name: SF Pi
-  text: Salesforce extensions for pi, ready when you are
-  tagline: Install one bundle and get safer Salesforce workflows, helpful agent tools, and friendly setup surfaces inside the pi coding agent.
+  text: Salesforce extensions for native OMP, ready when you are
+  tagline: Install one bundle and get safer Salesforce workflows, helpful agent tools, and friendly setup surfaces inside native OMP.
   actions:
     - theme: brand
       text: Start in 5 minutes
@@ -26,11 +26,11 @@ features:
 
 # Welcome to SF Pi
 
-SF Pi is a bundle of Salesforce-focused extensions for the
-[pi coding agent](https://pi.dev). It gives developers and agents a safer,
+SF Pi is a bundle of Salesforce-focused extensions that sf-omp runs in
+[native OMP](https://omp.sh/). It gives developers and agents a safer,
 more discoverable way to work with Salesforce projects from one terminal UI.
 
-<div class="sfpi-callout"><strong>TL;DR</strong> Install pi, run <code>pi install git:github.com/salesforce/sf-pi</code>, reload pi, then open <code>/sf-pi</code>.</div>
+<div class="sfpi-callout"><strong>TL;DR</strong> Install native OMP, clone sf-omp, run <code>npm ci</code> and <code>npm start</code>, then open <code>/sf-pi</code>.</div>
 
 ## Your first five minutes
 
@@ -38,8 +38,8 @@ more discoverable way to work with Salesforce projects from one terminal UI.
 <a class="sfpi-extension-card" href="./install.html">
   <span class="sfpi-card-kicker">Step 1</span>
   <strong>Install the bundle</strong>
-  <span>Add SF Pi as a pi package and reload your session.</span>
-  <span class="sfpi-card-meta"><code class="sfpi-code-chip">pi install git:github.com/salesforce/sf-pi</code></span>
+  <span>Clone sf-omp, install its locked dependencies, and start native OMP.</span>
+  <span class="sfpi-card-meta"><code class="sfpi-code-chip">npm ci &amp;&amp; npm start</code></span>
 </a>
 <a class="sfpi-extension-card" href="./quickstart.html">
   <span class="sfpi-card-kicker">Step 2</span>
