@@ -55,7 +55,7 @@ export interface StateStoreOptions<T> {
   /**
    * sf-pi-local namespace. The canonical layout is
    * `<globalAgentDir>/sf-pi/<namespace>/<filename>`. Use the extension id
-   * (`sf-welcome`, `sf-pi-recommendations`, etc.) to keep state grouped.
+   * (`sf-welcome`, `sf-pi-announcements`, etc.) to keep state grouped.
    */
   namespace: string;
   /** Bare filename, e.g. `state.json`. Joined under the namespace folder. */

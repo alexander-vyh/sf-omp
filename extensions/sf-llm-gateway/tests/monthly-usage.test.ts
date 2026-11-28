@@ -85,7 +85,7 @@ describe("gateway monthly usage refresh", () => {
     vi.spyOn(gatewayProviderRuntime.authController, "resolveRuntimeAuth").mockResolvedValue({
       apiKey: "pi-saved-test-key",
       baseUrl: "https://gateway.example.test",
-      source: "Pi saved credential",
+      source: "OMP saved credential",
     });
     mockGatewayFetch({ userStatus: 200, keyStatus: 200, healthStatus: 200 });
     const unregister = registerGatewayMonthlyUsageRefresher();

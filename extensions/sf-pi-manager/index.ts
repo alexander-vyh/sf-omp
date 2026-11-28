@@ -7,13 +7,9 @@
  * - Interactive TUI overlay for browsing, toggling, and inspecting extensions
  * - Footer status showing active extension count
  *
- * How enable/disable works:
- * - Pi: package filtering in Pi settings.json. Disabling adds a
- *   "!extensions/<file>" exclusion pattern; enabling removes it; ctx.reload()
- *   applies it.
- * - OMP: native `disabledExtensions` ("extension-module:<id>") in OMP YAML
- *   config; applied by the requirePiVersion gate on the next OMP start
- *   (lib/extension-enablement.ts).
+ * How enable/disable works: OMP-native `disabledExtensions`
+ * ("extension-module:<id>") in OMP YAML config, applied by the
+ * requirePiVersion gate on the next OMP start (lib/extension-enablement.ts).
  *
  * Commands:
  * - /sf-pi                    open interactive TUI overlay
@@ -25,7 +21,7 @@
  * - /sf-pi disable-all        disable all (except the manager)
  * - /sf-pi status             show summary
  * - /sf-pi display [profile]  show or set compact/balanced/verbose display profile
- * - /sf-pi recommended [...]  manage recommended external extensions
+ * - /sf-pi recommended        list recommended packages and their OMP coverage
  * - /sf-pi announcements [...] list/dismiss/reset sf-pi announcements
  * - /sf-pi skills [...]       read-only skill-source summary (manage in /sf-skills)
  * - /sf-pi doctor [fix ...]   diagnose and repair startup/skill setup
@@ -39,18 +35,17 @@
  *   /sf-pi (no args)             | has UI                      | Open TUI overlay
  *   /sf-pi (no args)             | no UI                       | Fall back to list
  *   /sf-pi open <id> [settings]  | has UI                      | Open extension detail/settings page
- *   /sf-pi list                  | package in settings         | Show extension states
- *   /sf-pi list                  | package NOT in settings     | Show states (all enabled assumed)
- *   /sf-pi enable <id>           | valid, currently disabled   | Remove exclusion, reload
+ *   /sf-pi list                  | —                           | Show extension states
+ *   /sf-pi enable <id>           | valid, currently disabled   | Remove disabled entry, ask for restart
  *   /sf-pi enable <id>           | valid, already enabled      | Notify "already enabled"
  *   /sf-pi enable <id>           | alwaysActive                | Notify "cannot toggle"
- *   /sf-pi disable <id>          | valid, currently enabled    | Add exclusion, reload
- *   /sf-pi disable-all           | —                           | Exclude all non-alwaysActive, reload
- *   /sf-pi enable-all            | —                           | Remove all exclusions, reload
+ *   /sf-pi disable <id>          | valid, currently enabled    | Add disabled entry, ask for restart
+ *   /sf-pi disable-all           | —                           | Disable all non-alwaysActive, ask for restart
+ *   /sf-pi enable-all            | —                           | Clear disabled entries, ask for restart
  *   /sf-pi display               | no profile                  | Show effective display profile
  *   /sf-pi display <profile>     | compact/balanced/verbose    | Save shared display profile
  *   TUI overlay → Enter          | list view                   | Open extension detail/config view
- *   TUI overlay → Esc            | list view, changes pending  | Apply exclusions, reload if needed
+ *   TUI overlay → Esc            | list view, changes pending  | Write disabled entries, ask for restart
  *   TUI overlay → Esc            | detail view                 | Return to extension list
  *   session_start                | cadence due + interactive   | Record Auto Update as pending
  *   agent_start                  | update running              | Abort and defer remaining work
@@ -74,15 +69,14 @@ import {
   type OverlayInitialRoute,
   type OverlayResult,
 } from "./lib/overlay.ts";
-import { findPackageInSettings } from "../../lib/common/sf-pi-package-state.ts";
 import {
   finishEnablementChange,
   resolveEnablementTarget,
-  resolveManagerScope,
   type EnablementTarget,
 } from "./lib/extension-enablement.ts";
 import { glyph, resolveGlyphMode } from "../../lib/common/glyph-policy.ts";
-import { isOmpHost, requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { resolveOmpConfigScope } from "../../lib/common/omp-extension-state.ts";
 import { withSafeCommandHandler } from "../../lib/common/safe-command-handler.ts";
 import {
   describeDisplaySettingsSource,
@@ -96,13 +90,7 @@ import {
   type SfPiArgumentCompletion,
   type SfPiCompletionOption,
 } from "../../lib/common/command-actions.ts";
-import {
-  computeRecommendationsNudge,
-  handleRecommended,
-  parseRecommendedArgs,
-} from "./lib/recommendations.ts";
-import { loadRecommendationsManifest } from "../../lib/common/catalog-state/recommendations-manifest.ts";
-import { readRecommendationsState } from "../../lib/common/catalog-state/recommendations-state.ts";
+import { handleRecommended, parseRecommendedArgs } from "./lib/recommendations.ts";
 import {
   computeAnnouncementsNudge,
   handleAnnouncements,
@@ -110,7 +98,6 @@ import {
 } from "./lib/announcements.ts";
 import { handleSkills, parseSkillsArgs } from "./lib/skill-sources-command.ts";
 import { handleDoctor, parseDoctorArgs } from "./lib/doctor-command.ts";
-import { handleTelemetry, parseTelemetryArgs } from "./lib/telemetry-command.ts";
 import {
   handleAutoUpdate,
   parseAutoUpdateArgs,
@@ -118,17 +105,13 @@ import {
 } from "./lib/auto-update-command.ts";
 import { createAgentSettledUpdateCoordinator } from "./lib/auto-update-coordinator.ts";
 import { registerAutoUpdateTranscript } from "./lib/auto-update-transcript.ts";
-import { assertTelemetryDefault } from "../../lib/common/privacy/assert-default.ts";
-import { getTelemetryState } from "../../lib/common/privacy/state.ts";
 import {
-  refreshRuntimeDiagnosticsCache,
   runDoctorDiagnostics,
   summarizeStartupDoctorNudge,
 } from "../../lib/common/doctor/diagnostics.ts";
 import { loadAnnouncementsManifest } from "../../lib/common/catalog-state/announcements-manifest.ts";
 import { buildAnnouncementsSync } from "../../lib/common/catalog-state/announcements-orchestrator.ts";
 import { readAnnouncementsState } from "../../lib/common/catalog-state/announcements-state.ts";
-import { migrateExtensionAliases } from "./lib/extension-aliases.ts";
 import {
   collectManagerDetailActions,
   type ManagerDetailAction,
@@ -138,20 +121,12 @@ import {
   type SfPiManagerOpenRequest,
 } from "../../lib/common/manager-deep-link.ts";
 
-export {
-  applyExtensionState,
-  findSfPiPackageEntry,
-  getDisabledExtensions,
-  matchesPackageSource,
-} from "../../lib/common/sf-pi-package-state.ts";
-
 // -------------------------------------------------------------------------------------------------
 // Constants
 // -------------------------------------------------------------------------------------------------
 
 const COMMAND_NAME = "sf-pi";
 const STATUS_KEY = "sf-pi";
-const RECOMMENDATIONS_STATUS_KEY = "sf-pi-recommend";
 const ANNOUNCEMENTS_STATUS_KEY = "sf-pi-announce";
 const DOCTOR_STATUS_KEY = "sf-pi-doctor";
 
@@ -163,12 +138,12 @@ const TOP_LEVEL_COMPLETIONS: readonly SfPiCompletionOption[] = [
   },
   {
     value: "enable",
-    description: "Enable a bundled extension (Pi reloads; OMP applies on restart)",
+    description: "Enable a bundled extension (applies on the next OMP start)",
     appendSpace: true,
   },
   {
     value: "disable",
-    description: "Disable a bundled extension (Pi reloads; OMP applies on restart)",
+    description: "Disable a bundled extension (applies on the next OMP start)",
     appendSpace: true,
   },
   {
@@ -183,7 +158,7 @@ const TOP_LEVEL_COMPLETIONS: readonly SfPiCompletionOption[] = [
   },
   {
     value: "status",
-    description: "Show sf-pi package, privacy, display, and extension status",
+    description: "Show sf-pi package, display, and extension status",
     appendSpace: true,
   },
   { value: "open", description: "Open an extension detail or settings page", appendSpace: true },
@@ -192,23 +167,12 @@ const TOP_LEVEL_COMPLETIONS: readonly SfPiCompletionOption[] = [
     description: "Show or set the shared sf-pi display profile",
     appendSpace: true,
   },
-  { value: "recommended", description: "Manage recommended external extensions" },
+  { value: "recommended", description: "List recommended packages and their OMP coverage" },
   { value: "announcements", description: "List or acknowledge sf-pi announcements" },
   { value: "skills", description: "Show skill-source wiring diagnostics" },
   { value: "doctor", description: "Diagnose and repair sf-pi startup or skill setup" },
-  {
-    value: "telemetry",
-    description: "Show or change pi anonymous-telemetry posture",
-    appendSpace: true,
-  },
   { value: "auto-update", description: "Manage opt-in Native Auto Update", appendSpace: true },
   { value: "help", description: "Show the sf-pi command reference" },
-];
-
-const TELEMETRY_COMPLETIONS: readonly SfPiCompletionOption[] = [
-  { value: "status", description: "Show pi anonymous-telemetry posture" },
-  { value: "on", description: "Opt back in to pi anonymous install/update telemetry" },
-  { value: "off", description: "Disable pi anonymous install/update telemetry" },
 ];
 
 const AUTO_UPDATE_COMPLETIONS: readonly SfPiCompletionOption[] = [
@@ -224,8 +188,8 @@ const OPEN_VIEW_COMPLETIONS: readonly SfPiCompletionOption[] = [
 ];
 
 const SCOPE_COMPLETIONS: readonly SfPiCompletionOption[] = [
-  { value: "global", description: "Use global Pi settings scope" },
-  { value: "project", description: "Use project Pi settings scope" },
+  { value: "global", description: "Use the global OMP config scope" },
+  { value: "project", description: "Use the project OMP config scope" },
 ];
 
 // -------------------------------------------------------------------------------------------------
@@ -263,14 +227,13 @@ type CommandArgs = {
     | "announcements"
     | "skills"
     | "doctor"
-    | "telemetry"
     | "auto-update"
     | "help";
   /**
    * Explicit scope from the command tokens, or `undefined` to mean
    * "auto-detect at dispatch time". Auto-detect prefers project over
-   * global, mirroring Pi's settings precedence so a project-scoped
-   * install of sf-pi works without typing `project` on every command.
+   * global when the project OMP config defines `disabledExtensions`,
+   * so a project-scoped list works without typing `project` on every command.
    */
   scope: "global" | "project" | undefined;
   target?: string;
@@ -285,19 +248,18 @@ type CommandArgs = {
 
 export default function sfPiManagerExtension(pi: ExtensionAPI) {
   if (!requirePiVersion(pi, "sf-pi-manager")) return;
-  const omp = isOmpHost(pi);
 
   const autoUpdateCoordinator = createAgentSettledUpdateCoordinator(pi);
   registerAutoUpdateTranscript(pi);
 
   pi.events.on(SF_PI_MANAGER_OPEN_EVENT, (request: SfPiManagerOpenRequest) => {
     request.accept?.();
-    const scope = resolveManagerScope(omp, request.ctx.cwd);
+    const scope = resolveOmpConfigScope(request.ctx.cwd);
     void handleOverlay(pi, request.ctx, scope, request.route).then(request.resolve, request.reject);
   });
 
   pi.registerCommand(COMMAND_NAME, {
-    description: "Salesforce pi extension manager — browse, enable, and disable extensions",
+    description: "SF Pi extension manager — browse, enable, and disable extensions",
     getArgumentCompletions: getSfPiArgumentCompletions,
     handler: async (args, ctx) => {
       await withSafeCommandHandler(ctx, COMMAND_NAME, () =>
@@ -306,66 +268,11 @@ export default function sfPiManagerExtension(pi: ExtensionAPI) {
     },
   });
 
-  // A deferred timer captures `ctx`, whose `signal` getter throws once the ctx
-  // is stale (after ctx.reload()). Track it so session_shutdown can cancel it
-  // before the runtime is torn down — otherwise a reload within the timer
-  // window fires it against a stale ctx and crashes pi.
-  let doctorRefreshTimer: ReturnType<typeof setTimeout> | undefined;
-  const isAbortedSafe = (ctx: ExtensionContext): boolean => {
-    try {
-      return ctx.signal?.aborted ?? false;
-    } catch {
-      return true; // stale ctx ⇒ bail out
-    }
-  };
-
-  pi.on("session_start", async (event, ctx) => {
-    // Idempotent: writes pi setting + audit record only when the key is
-    // currently undefined. Respects an explicit `true` user opt-in.
-    // Emits a one-time pi.appendEntry notice on the session that flips it.
-    try {
-      const result = assertTelemetryDefault({ sfPiVersion: PACKAGE_VERSION });
-      if (result.shouldNotify && ctx.hasUI) {
-        // Surface the one-time notice as a passive notification. We use
-        // notify rather than appendEntry-driven output so the user sees
-        // it immediately on the session that flipped the default; the
-        // setting itself is now persisted, so subsequent sessions stay
-        // silent.
-        ctx.ui.notify(
-          "\u{1F512} sf-pi disabled pi's anonymous install/update telemetry by default. " +
-            "Version-update checks remain enabled. Run /sf-pi telemetry on to opt back in, " +
-            "or /sf-pi telemetry status for details.",
-          "info",
-        );
-      }
-    } catch {
-      // Privacy default is best-effort — must never break session_start.
-    }
-    try {
-      // Best-effort: rewrite stale `!extensions/<old>/index.ts` filter
-      // entries so users who explicitly disabled a renamed extension keep
-      // that preference under the new name. Idempotent and silent.
-      migrateExtensionAliases(ctx.cwd);
-    } catch {
-      // Alias migration is best-effort — must never break session_start.
-    }
-    updateFooterStatus(ctx, omp);
-    updateRecommendationsNudge(ctx, omp);
+  pi.on("session_start", async (_event, ctx) => {
+    updateFooterStatus(ctx);
     updateAnnouncementsNudge(ctx);
     updateDoctorNudge(ctx);
-
-    if (doctorRefreshTimer) clearTimeout(doctorRefreshTimer);
-    doctorRefreshTimer = setTimeout(() => {
-      if (isAbortedSafe(ctx)) return;
-      void refreshRuntimeDiagnosticsCache()
-        .then(() => {
-          if (!isAbortedSafe(ctx)) updateDoctorNudge(ctx);
-        })
-        .catch(() => undefined);
-    }, 2_500);
-    doctorRefreshTimer.unref?.();
-
-    autoUpdateCoordinator.onSessionStart(event.reason, ctx);
+    autoUpdateCoordinator.onSessionStart(ctx);
   });
 
   pi.on("agent_start", () => {
@@ -375,19 +282,15 @@ export default function sfPiManagerExtension(pi: ExtensionAPI) {
   pi.on("agent_end", async (event, ctx) => {
     // OMP has no agent_settled. It marks non-terminal ends (retry, compaction,
     // queued follow-up, async wait) with willContinue; only a terminal end is
-    // the settled boundary. Pi never sets the flag, and its later agent_start
-    // aborts and defers any update a retry interrupts.
+    // the settled boundary.
     const { willContinue, messages } = event as { willContinue?: boolean; messages?: unknown };
     if (willContinue === true) return;
     await autoUpdateCoordinator.onAgentSettled(ctx, endedAborted(messages));
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
-    if (doctorRefreshTimer) clearTimeout(doctorRefreshTimer);
-    doctorRefreshTimer = undefined;
     autoUpdateCoordinator.onSessionShutdown();
     ctx.ui.setStatus(STATUS_KEY, undefined);
-    ctx.ui.setStatus(RECOMMENDATIONS_STATUS_KEY, undefined);
     ctx.ui.setStatus(ANNOUNCEMENTS_STATUS_KEY, undefined);
     ctx.ui.setStatus(DOCTOR_STATUS_KEY, undefined);
     ctx.ui.setStatus("sf-pi-auto-update", undefined);
@@ -412,7 +315,7 @@ function endedAborted(messages: unknown): boolean {
 export function getSfPiArgumentCompletions(prefix: string): SfPiArgumentCompletion[] | null {
   const context = parseArgumentCompletionPrefix(prefix);
 
-  // Pi passes the whole argument tail after `/sf-pi ` as the completion prefix,
+  // OMP passes the whole argument tail after `/sf-pi ` as the completion prefix,
   // then replaces that same tail when a completion is accepted. Nested
   // completions therefore return full argument-tail values such as
   // `auto-update status`, while keeping leaf labels such as `status` for a
@@ -423,10 +326,6 @@ export function getSfPiArgumentCompletions(prefix: string): SfPiArgumentCompleti
 
   const sub = context.tokens[0]?.toLowerCase();
   if (!sub) return null;
-
-  if ((sub === "telemetry" || sub === "tel") && context.tokenIndex === 1) {
-    return completeArgumentTail(TELEMETRY_COMPLETIONS, context);
-  }
 
   if (
     (sub === "auto-update" || sub === "autoupdate" || sub === "update-auto") &&
@@ -534,10 +433,6 @@ export function parseCommandArgs(raw: string): CommandArgs {
     const rest = tokens.slice(1).join(" ");
     return { subcommand: "doctor", scope, rest };
   }
-  if (sub === "telemetry" || sub === "tel") {
-    const rest = tokens.slice(1).join(" ");
-    return { subcommand: "telemetry", scope, rest };
-  }
   if (sub === "auto-update" || sub === "autoupdate" || sub === "update-auto") {
     const rest = tokens.slice(1).join(" ");
     return { subcommand: "auto-update", scope, rest };
@@ -596,42 +491,36 @@ export async function handleCommand(
   const args = parseCommandArgs(raw);
   // Resolve scope here so handlers always receive a concrete value but
   // parseCommandArgs stays pure (no fs access — keeps unit tests fast).
-  const omp = isOmpHost(pi);
-  const scope = args.scope ?? resolveManagerScope(omp, ctx.cwd);
+  const scope = args.scope ?? resolveOmpConfigScope(ctx.cwd);
 
   switch (args.subcommand) {
     case "overlay":
       await handleOverlay(pi, ctx, scope, args.route);
       break;
     case "list":
-      await handleList(ctx, scope, omp);
+      await handleList(ctx, scope);
       break;
     case "enable":
-      await handleToggle(ctx, scope, omp, args.target, true);
+      await handleToggle(ctx, scope, args.target, true);
       break;
     case "disable":
-      await handleToggle(ctx, scope, omp, args.target, false);
+      await handleToggle(ctx, scope, args.target, false);
       break;
     case "enable-all":
-      await handleToggleAll(ctx, scope, omp, true);
+      await handleToggleAll(ctx, scope, true);
       break;
     case "disable-all":
-      await handleToggleAll(ctx, scope, omp, false);
+      await handleToggleAll(ctx, scope, false);
       break;
     case "status":
-      await handleStatus(ctx, scope, omp);
+      await handleStatus(ctx, scope);
       break;
     case "display":
       handleDisplay(ctx, scope, args.target);
       break;
-    case "recommended": {
-      const recArgs = parseRecommendedArgs(args.rest ?? "");
-      if (!args.rest || !/\b(global|project)\b/i.test(args.rest)) {
-        recArgs.scope = scope;
-      }
-      await handleRecommended(pi, ctx, PACKAGE_VERSION, PACKAGE_ROOT, recArgs);
+    case "recommended":
+      handleRecommended(ctx, PACKAGE_ROOT, parseRecommendedArgs(args.rest ?? ""));
       break;
-    }
     case "announcements": {
       const annArgs = parseAnnouncementsArgs(args.rest ?? "");
       await handleAnnouncements(ctx, PACKAGE_ROOT, annArgs);
@@ -654,11 +543,6 @@ export async function handleCommand(
       updateDoctorNudge(ctx);
       break;
     }
-    case "telemetry": {
-      const telArgs = parseTelemetryArgs(args.rest ?? "");
-      await handleTelemetry(ctx, telArgs, PACKAGE_VERSION);
-      break;
-    }
     case "auto-update": {
       await handleAutoUpdate(pi, ctx, parseAutoUpdateArgs(args.rest ?? ""), autoUpdateRunner);
       break;
@@ -679,19 +563,14 @@ async function handleOverlay(
   scope: "global" | "project",
   initialRoute?: OverlayInitialRoute,
 ): Promise<void> {
-  const omp = isOmpHost(pi);
   if (ctx.mode !== "tui") {
     // Custom overlay components require a real terminal UI. RPC has
     // ctx.hasUI=true, so fall back to the text list outside TUI mode.
-    await handleList(ctx, scope, omp);
+    await handleList(ctx, scope);
     return;
   }
 
-  const target = resolveEnablementTarget(omp, ctx.cwd, scope);
-  if (!target) {
-    ctx.ui.notify(notInstalledMessage(ctx.cwd, scope), "warning");
-    return;
-  }
+  const target = resolveEnablementTarget(ctx.cwd, scope);
 
   const extensions = buildExtensionStates(target.disabledFiles);
 
@@ -729,26 +608,15 @@ async function handleOverlay(
     return;
   }
 
-  if (result.changed || result.needsReload) {
-    // Use the scope from the overlay result (user may have toggled it)
-    const effectiveScope = result.scope ?? scope;
-    const effectiveTarget = resolveEnablementTarget(omp, ctx.cwd, effectiveScope) ?? target;
-
-    if (effectiveTarget.host === "pi") {
-      effectiveTarget.apply(result.disabledFiles);
-      ctx.ui.notify("sf-pi extensions updated. Reloading…", "info");
-      await ctx.reload();
-      return;
-    }
-    // OMP: extension enablement applies on restart; a config-panel reload
-    // request still refreshes the session.
-    if (result.changed) {
-      effectiveTarget.apply(result.disabledFiles);
-      await finishEnablementChange(ctx, effectiveTarget, "sf-pi extensions updated");
-    }
-    if (result.needsReload) await ctx.reload();
-    return;
+  // Enablement applies on the next OMP start, in the scope the user may have
+  // toggled in the overlay; a config-panel reload request still refreshes the
+  // session.
+  if (result.changed) {
+    const effectiveTarget = resolveEnablementTarget(ctx.cwd, result.scope ?? scope);
+    effectiveTarget.apply(result.disabledFiles);
+    finishEnablementChange(ctx, effectiveTarget, "sf-pi extensions updated");
   }
+  if (result.needsReload) await ctx.reload();
 }
 
 function collectOverlayActions(
@@ -768,15 +636,14 @@ function collectOverlayActions(
 async function handleList(
   ctx: ExtensionCommandContext,
   scope: "global" | "project",
-  omp: boolean,
 ): Promise<void> {
-  const target = resolveEnablementTarget(omp, ctx.cwd, scope);
-  const states = buildExtensionStates(target?.disabledFiles ?? new Set<string>());
+  const target = resolveEnablementTarget(ctx.cwd, scope);
+  const states = buildExtensionStates(target.disabledFiles);
 
   const enabledCount = states.filter((e) => e.enabled).length;
   const lines = [
     `sf-pi v${PACKAGE_VERSION} — ${enabledCount}/${states.length} extensions enabled`,
-    `Settings scope: ${scope}${target ? "" : " (package not found in settings)"}`,
+    `Settings scope: ${scope}`,
     "",
     ...states.map((ext) => {
       const icon = ext.alwaysActive ? "◆" : ext.enabled ? "●" : "○";
@@ -791,7 +658,6 @@ async function handleList(
 async function handleToggle(
   ctx: ExtensionCommandContext,
   scope: "global" | "project",
-  omp: boolean,
   target: string | undefined,
   enable: boolean,
 ): Promise<void> {
@@ -821,11 +687,7 @@ async function handleToggle(
     return;
   }
 
-  const enablement = resolveEnablementTarget(omp, ctx.cwd, scope);
-  if (!enablement) {
-    ctx.ui.notify(notInstalledMessage(ctx.cwd, scope), "warning");
-    return;
-  }
+  const enablement = resolveEnablementTarget(ctx.cwd, scope);
 
   const disabledFiles = enablement.disabledFiles;
   const wasEnabled = !disabledFiles.has(ext.file);
@@ -847,21 +709,16 @@ async function handleToggle(
   }
 
   enablement.apply(disabledFiles);
-  await finishEnablementChange(ctx, enablement, `${ext.name} ${enable ? "enabled" : "disabled"}`);
+  finishEnablementChange(ctx, enablement, `${ext.name} ${enable ? "enabled" : "disabled"}`);
   return;
 }
 
 async function handleToggleAll(
   ctx: ExtensionCommandContext,
   scope: "global" | "project",
-  omp: boolean,
   enable: boolean,
 ): Promise<void> {
-  const enablement = resolveEnablementTarget(omp, ctx.cwd, scope);
-  if (!enablement) {
-    ctx.ui.notify(notInstalledMessage(ctx.cwd, scope), "warning");
-    return;
-  }
+  const enablement = resolveEnablementTarget(ctx.cwd, scope);
 
   const disabledFiles = new Set<string>();
 
@@ -879,24 +736,19 @@ async function handleToggleAll(
   const count = enable
     ? SF_PI_REGISTRY.length
     : SF_PI_REGISTRY.filter((e) => !e.alwaysActive).length;
-  await finishEnablementChange(ctx, enablement, `${count} extension(s) ${action}`);
+  finishEnablementChange(ctx, enablement, `${count} extension(s) ${action}`);
   return;
 }
 
 async function handleStatus(
   ctx: ExtensionCommandContext,
   scope: "global" | "project",
-  omp: boolean,
 ): Promise<void> {
-  const target = resolveEnablementTarget(omp, ctx.cwd, scope);
-  const states = buildExtensionStates(target?.disabledFiles ?? new Set<string>());
+  const target = resolveEnablementTarget(ctx.cwd, scope);
+  const states = buildExtensionStates(target.disabledFiles);
 
   const enabledCount = states.filter((e) => e.enabled).length;
   const display = readEffectiveSfPiDisplaySettings(ctx.cwd);
-  const telemetry = getTelemetryState();
-  const telemetryLine = telemetry.effectivelyEnabled
-    ? `Privacy: telemetry on (${telemetry.source === "user-override" ? "user override" : "unset"})`
-    : `Privacy: telemetry off (${telemetry.source === "sf-pi-default" ? "sf-pi default" : "user override"})`;
 
   const lines = [
     "sf-pi Extension Suite",
@@ -905,7 +757,6 @@ async function handleStatus(
     `Package root: ${PACKAGE_ROOT}`,
     `Extensions: ${enabledCount}/${states.length} enabled`,
     `Display profile: ${display.profile} (${describeDisplaySettingsSource(display)})`,
-    telemetryLine,
     `Settings scope: ${scope}`,
     ...enablementStatusLines(target),
     "",
@@ -965,7 +816,7 @@ function handleDisplay(
 
 function handleHelp(ctx: ExtensionCommandContext): void {
   const lines = [
-    `sf-pi v${PACKAGE_VERSION} — Salesforce extension manager for pi`,
+    `sf-pi v${PACKAGE_VERSION} — Salesforce extension manager for OMP`,
     "",
     "Commands:",
     `  /${COMMAND_NAME}                          Open interactive TUI overlay`,
@@ -977,11 +828,10 @@ function handleHelp(ctx: ExtensionCommandContext): void {
     `  /${COMMAND_NAME} disable-all [scope]       Disable all (except manager)`,
     `  /${COMMAND_NAME} status [scope]            Show summary`,
     `  /${COMMAND_NAME} display [profile] [scope] Show or set display profile`,
-    `  /${COMMAND_NAME} recommended [...]         Manage recommended external extensions`,
+    `  /${COMMAND_NAME} recommended               List recommended packages and their OMP coverage`,
     `  /${COMMAND_NAME} announcements [...]       List/dismiss/reset sf-pi announcements`,
     `  /${COMMAND_NAME} skills [...]              Skill-source summary (manage in /sf-skills)`,
     `  /${COMMAND_NAME} doctor [fix ...]          Diagnose and repair startup/skill setup`,
-    `  /${COMMAND_NAME} telemetry [status|on|off] Show or change pi anonymous-telemetry posture`,
     `  /${COMMAND_NAME} auto-update [status|on|off|run] Manage native auto-update`,
     `  /${COMMAND_NAME} help                      Show this help`,
     "",
@@ -991,9 +841,9 @@ function handleHelp(ctx: ExtensionCommandContext): void {
         `  ${ext.id} [${ext.category}]${ext.alwaysActive ? " (always active)" : ""} — ${ext.description}`,
     ),
     "",
-    "Scope defaults to wherever sf-pi is installed (project takes precedence over global).",
+    "Scope defaults to project when the project OMP config defines disabledExtensions, otherwise global.",
     "Pass 'global' or 'project' as the last token to override.",
-    "Under OMP, enable/disable writes OMP-native disabledExtensions and applies on the next OMP start.",
+    "enable/disable writes OMP-native disabledExtensions and applies on the next OMP start.",
   ];
 
   ctx.ui.notify(lines.join("\n"), "info");
@@ -1003,12 +853,10 @@ function handleHelp(ctx: ExtensionCommandContext): void {
 // Footer status
 // -------------------------------------------------------------------------------------------------
 
-function updateFooterStatus(ctx: ExtensionContext, omp: boolean): void {
+function updateFooterStatus(ctx: ExtensionContext): void {
   let disabled = new Set<string>();
   try {
-    disabled =
-      resolveEnablementTarget(omp, ctx.cwd, resolveManagerScope(omp, ctx.cwd))?.disabledFiles ??
-      disabled;
+    disabled = resolveEnablementTarget(ctx.cwd, resolveOmpConfigScope(ctx.cwd)).disabledFiles;
   } catch {
     // Footer status is best-effort; a malformed config must not break startup.
   }
@@ -1023,52 +871,16 @@ function updateFooterStatus(ctx: ExtensionContext, omp: boolean): void {
   );
 }
 
-function enablementStatusLines(target: EnablementTarget | null): string[] {
-  if (!target) return ["Package in settings: no"];
-  if (target.host === "omp") {
-    return [
-      "Host: OMP (extensions loaded by the sf-omp launcher)",
-      `Enablement config: ${target.location} (disabledExtensions; restart OMP to apply)`,
-    ];
-  }
+function enablementStatusLines(target: EnablementTarget): string[] {
   return [
-    "Package in settings: yes",
-    `Settings file: ${target.location}`,
-    `Package source: ${target.source}`,
+    "Host: OMP (extensions loaded by the sf-omp launcher)",
+    `Enablement config: ${target.location} (disabledExtensions; restart OMP to apply)`,
   ];
 }
 
-// Surface a one-line nudge in the footer when the user hasn't seen the
-// current recommendations revision. Zero-cost when there are no pending
-// items or the user opted out via SF_PI_RECOMMENDATIONS=off.
-function updateRecommendationsNudge(ctx: ExtensionContext, omp: boolean): void {
-  // Recommended Pi packages cannot load under the sf-omp launcher; don't nag.
-  if (omp) {
-    ctx.ui.setStatus(RECOMMENDATIONS_STATUS_KEY, undefined);
-    return;
-  }
-  try {
-    const manifest = loadRecommendationsManifest(PACKAGE_ROOT);
-    const state = readRecommendationsState();
-    const nudge = computeRecommendationsNudge(manifest, state);
-    if (!nudge.show) {
-      ctx.ui.setStatus(RECOMMENDATIONS_STATUS_KEY, undefined);
-      return;
-    }
-    const icon = glyph("whatsNew", resolveGlyphMode({ cwd: ctx.cwd }));
-    ctx.ui.setStatus(
-      RECOMMENDATIONS_STATUS_KEY,
-      `${icon} sf-pi: ${nudge.pendingCount} new recommended extension(s) — /sf-pi recommended`,
-    );
-  } catch {
-    // Nudge is best-effort; never break session_start.
-    ctx.ui.setStatus(RECOMMENDATIONS_STATUS_KEY, undefined);
-  }
-}
-
-// Footer nudge for unacknowledged announcements. Mirrors the
-// recommendations nudge pattern: one line, best-effort, cleared when the
-// user acknowledges via splash dismiss or explicit `/sf-pi announcements`.
+// Footer nudge for unacknowledged announcements: one line, best-effort,
+// cleared when the user acknowledges via splash dismiss or explicit
+// `/sf-pi announcements`.
 function updateAnnouncementsNudge(ctx: ExtensionContext): void {
   try {
     const manifest = loadAnnouncementsManifest(PACKAGE_ROOT);
@@ -1089,11 +901,10 @@ function updateAnnouncementsNudge(ctx: ExtensionContext): void {
   }
 }
 
-// Footer nudge for actionable setup issues. Startup uses cached runtime
-// diagnostics; the live runtime refresh is delayed until after first paint.
+// Footer nudge for actionable setup issues.
 function updateDoctorNudge(ctx: ExtensionContext): void {
   try {
-    const report = runDoctorDiagnostics({ cwd: ctx.cwd, runtime: "cached" });
+    const report = runDoctorDiagnostics({ cwd: ctx.cwd });
     const nudge = summarizeStartupDoctorNudge(report);
     if (!nudge || nudge.issueCount === 0) {
       ctx.ui.setStatus(DOCTOR_STATUS_KEY, undefined);
@@ -1116,17 +927,4 @@ export function buildExtensionStates(disabledFiles: Set<string>): ExtensionState
     ...ext,
     enabled: ext.alwaysActive || !disabledFiles.has(ext.file),
   }));
-}
-
-// Build a friendly "package not installed in this scope" warning. When the
-// package exists in the *other* scope we point the user at it instead of
-// asking them to reinstall, which is the common case after the scope
-// auto-detect change in #88.
-function notInstalledMessage(cwd: string, scope: "global" | "project"): string {
-  const otherScope = scope === "global" ? "project" : "global";
-  const otherMatch = findPackageInSettings(cwd, otherScope);
-  if (otherMatch) {
-    return `sf-pi package is installed in ${otherScope} settings, not ${scope}. Re-run with \`${otherScope}\` as the last token, or remove the explicit scope to auto-detect.`;
-  }
-  return `sf-pi package not found in project or global settings. Install with: pi install . (project) or pi install -g <source> (global).`;
 }

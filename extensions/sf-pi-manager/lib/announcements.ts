@@ -195,9 +195,7 @@ function handleReset(ctx: ExtensionCommandContext): void {
 /**
  * Decide whether to show the footer nudge for new announcements.
  *
- * Mirrors computeRecommendationsNudge() in shape so the manager's
- * session_start handler stays symmetric. The rule is simpler here — we
- * surface a nudge whenever the manifest revision is newer than the one
+ * We surface a nudge whenever the manifest revision is newer than the one
  * the user has acknowledged AND there is at least one currently visible
  * item after filtering.
  */

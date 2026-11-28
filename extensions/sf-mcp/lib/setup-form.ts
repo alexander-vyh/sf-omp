@@ -274,7 +274,7 @@ function setupControls(theme: Theme, preset: McpPreset): Control[] {
       kind: "choice",
       key: "region",
       label: "Workspace region",
-      help: "app.intercom.com is US; app.eu.intercom.com is EU. AU-hosted workspaces are not supported by Intercom MCP. Sign in afterwards with /mcp login on Pi or /mcp reauth on OMP; the host registers its own OAuth client.",
+      help: "app.intercom.com is US; app.eu.intercom.com is EU. AU-hosted workspaces are not supported by Intercom MCP. Sign in afterwards with /mcp reauth; OMP registers its own OAuth client.",
       options: [
         { label: "United States", value: "US" },
         { label: "European Union", value: "EU" },

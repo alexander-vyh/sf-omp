@@ -2,8 +2,7 @@
 /**
  * OMP-native enablement state for bundled SF Pi extensions.
  *
- * Pi filters package extensions through `settings.json`; OMP ignores that file.
- * OMP's own switch is `disabledExtensions` in its YAML config, where an entry
+ * OMP's switch is `disabledExtensions` in its YAML config, where an entry
  * `extension-module:<id>` disables the extension module whose directory is
  * `extensions/<id>/` (global `<agentDir>/config.yml`, project
  * `<cwd>/.omp/config.yml`; OMP replaces arrays across layers, so a project list

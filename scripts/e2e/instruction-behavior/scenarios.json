@@ -37,7 +37,7 @@
   {
     "id": "repository-owned-metadata",
     "prompt": "Refactor a Salesforce metadata file already owned by this repository. Invoke the first local inspection tool; do not retrieve from the org before understanding local state.",
-    "expected_first_tools": ["read", "grep", "find", "ls", "bash"]
+    "expected_first_tools": ["read", "grep", "glob", "find", "bash"]
   },
   {
     "id": "org-owned-metadata",
@@ -73,15 +73,15 @@
     "forbidden_tools": ["web_search"]
   },
   {
-    "id": "pi-runtime-architecture",
-    "prompt": "Decide which Pi extension lifecycle hook should add persistent context. Invoke a local tool to inspect installed Pi documentation or this repository first; this is not a Salesforce solution-design decision.",
-    "expected_first_tools": ["read", "grep", "find", "ls", "bash"],
+    "id": "omp-runtime-architecture",
+    "prompt": "Decide which OMP extension lifecycle hook should add persistent context. Invoke a local tool to inspect installed OMP documentation or this repository first; this is not a Salesforce solution-design decision.",
+    "expected_first_tools": ["read", "grep", "glob", "find", "bash"],
     "forbidden_tools": ["sf_docs"]
   },
   {
     "id": "explicit-typescript-refactor",
     "prompt": "Refactor a generic TypeScript parser in this repository. Invoke a local inspection tool first; do not force Salesforce runtime tools into this explicit general-engineering task.",
-    "expected_first_tools": ["read", "grep", "find", "ls", "bash", "subagent"],
+    "expected_first_tools": ["read", "grep", "glob", "find", "bash", "task"],
     "forbidden_tools": ["sf_apex", "sf_soql", "agentscript_authoring"]
   },
   {

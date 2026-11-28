@@ -3,7 +3,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { globalAgentPath, globalSettingsPath } from "../pi-paths.ts";
+import { globalSettingsPath } from "../pi-paths.ts";
+import { skillAgentDir } from "../skill-sources/skill-settings.ts";
 import { updateSkillSources } from "../skill-sources/skill-sources.ts";
 import { runDoctorDiagnostics } from "./diagnostics.ts";
 import type { DoctorFixOptions, DoctorFixResult, SkillCollision, SkillLocation } from "./types.ts";
@@ -19,9 +20,9 @@ export function applyDoctorFixes(options: DoctorFixOptions = {}): DoctorFixResul
     const changed = repairStartupSettings();
     if (changed) {
       result.changed = true;
-      result.messages.push("Enabled quiet/header startup in global settings.");
+      result.messages.push("Set the SF Pi welcome to header mode in global settings.");
     } else {
-      result.messages.push("Startup settings already use quiet/header mode.");
+      result.messages.push("The SF Pi welcome already uses header mode.");
     }
   }
 
@@ -29,16 +30,20 @@ export function applyDoctorFixes(options: DoctorFixOptions = {}): DoctorFixResul
     updateSkillSources({
       add: [],
       remove: report.staleSkillPaths.map((entry) => entry.raw),
+      cwd,
       home,
     });
     result.changed = true;
-    result.messages.push(`Pruned ${report.staleSkillPaths.length} stale skills[] path(s).`);
+    result.messages.push(
+      `Pruned ${report.staleSkillPaths.length} stale skills.customDirectories path(s).`,
+    );
   }
 
   if (options.fixSkillLinks && report.availableSkillRoots.length > 0) {
     updateSkillSources({
       add: report.availableSkillRoots.map((root) => root.settingsPath),
       remove: [],
+      cwd,
       home,
     });
     result.changed = true;
@@ -76,7 +81,6 @@ export function repairStartupSettings(settingsFile: string = globalSettingsPath(
   const sfPi = readObject(settings.sfPi);
   const welcome = readObject(sfPi.welcome);
 
-  settings.quietStartup = "header";
   settings.sfPi = {
     ...sfPi,
     welcome: {
@@ -100,7 +104,7 @@ function quarantineDuplicateSalesforceSkills(
   skippedNonSalesforce: number;
 } {
   const stamp = now.toISOString().replace(/[:.]/g, "-");
-  const quarantineDir = globalAgentPath("skills-quarantine", stamp);
+  const quarantineDir = path.join(skillAgentDir(), "skills-quarantine", stamp);
   const moved: Array<{ name: string; from: string; to: string }> = [];
   let skippedNonSalesforce = 0;
 
@@ -140,9 +144,9 @@ function quarantineDuplicateSalesforceSkills(
 }
 
 function isSafeToQuarantine(location: SkillLocation): boolean {
-  // Only move duplicate files from pi-owned skill roots. External harness
+  // Only move duplicate files from OMP-owned skill roots. External harness
   // folders are user-owned sources of truth; leave those untouched.
-  return location.rootKind === "pi" || location.rootKind === "agents";
+  return location.rootKind === "omp" || location.rootKind === "agents";
 }
 
 function skillMoveSource(location: SkillLocation): string | undefined {

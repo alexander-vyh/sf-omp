@@ -12,7 +12,6 @@ import {
   type AutoUpdateStatus,
 } from "../../../lib/common/auto-update/store.ts";
 import { runNativeAutoUpdate } from "./auto-update-runner.ts";
-import { isOmpRuntime } from "../../../lib/common/pi-compat.ts";
 
 export { runNativeAutoUpdate } from "./auto-update-runner.ts";
 
@@ -67,20 +66,10 @@ export async function handleAutoUpdate(
         "",
         "Native Auto Update is opt-in. Due work waits for the next terminal agent_end (settled turn).",
         "First-party targets:",
-        ...(isOmpRuntime()
-          ? [
-              "  1. OMP runtime is pinned by the sf-omp checkout lockfile",
-              "  2. sf-omp checkout: git fetch upstream; when cleanly behind, git pull --ff-only + npm ci",
-              "  3. sf update stable",
-              "Dirty, detached, ahead, diverged, or upstream-less checkouts are reported and left untouched.",
-            ]
-          : [
-              "  1. Pi runtime updates remain user-managed; stable pre-2.0 releases are loadable",
-              "  2. compatibility preflight + pi update --extension <source> --no-approve",
-              "  3. sf update stable",
-              "Outdated, compatible, unpinned global npm packages such as Herdr are eligible.",
-              "Pinned, local, git, project, incompatible, and unverifiable packages remain untouched.",
-            ]),
+        "  1. OMP runtime: native omp on PATH; update it separately with `omp update`",
+        "  2. sf-omp checkout: git fetch upstream; when cleanly behind, git pull --ff-only + npm ci",
+        "  3. sf update stable",
+        "Dirty, detached, ahead, diverged, or upstream-less checkouts are reported and left untouched.",
       ].join("\n"),
       "info",
     );
@@ -108,8 +97,8 @@ export function renderAutoUpdateStatus(
     ),
     "",
     "Native targets:",
-    "  Pi runtime: user-managed; newer stable 0.x releases use forward compatibility",
-    "  Pi packages: compatibility preflight, then pi update --extension <source> --no-approve",
+    "  OMP runtime: native omp on PATH; update it with `omp update`",
+    "  sf-omp checkout: clean fast-forward from upstream, then npm ci",
     "  Salesforce CLI: sf update stable",
   ].filter((line): line is string => !!line);
   return lines.join("\n");

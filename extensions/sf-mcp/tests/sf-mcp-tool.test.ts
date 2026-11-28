@@ -31,15 +31,10 @@ function registeredTool(dependencies?: Parameters<typeof registerSfMcpTool>[1]) 
   return registerTool.mock.calls[0]![0];
 }
 
-function context(
-  cwd: string,
-  trusted = true,
-  executeTool: (name: string, args: Record<string, unknown>) => Promise<unknown> = vi.fn(),
-) {
+function context(cwd: string, trusted = true) {
   return {
     cwd,
     isProjectTrusted: () => trusted,
-    executeTool,
   } as never;
 }
 
@@ -48,9 +43,8 @@ async function execute(
   cwd: string,
   params: Record<string, unknown>,
   trusted = true,
-  executeTool?: (name: string, args: Record<string, unknown>) => Promise<unknown>,
 ) {
-  return tool.execute("call-1", params, undefined, undefined, context(cwd, trusted, executeTool));
+  return tool.execute("call-1", params, undefined, undefined, context(cwd, trusted));
 }
 
 describe("sf_mcp tool", () => {
@@ -81,7 +75,7 @@ describe("sf_mcp tool", () => {
       scope: "global",
       preset_id: "intercom",
     });
-    expect(handoff.details).toMatchObject({ command: "/mcp login intercom", exposedTools: 19 });
+    expect(handoff.details).toMatchObject({ command: "/mcp reauth intercom", exposedTools: 19 });
     expect(handoff.details.warning).toBeUndefined();
   });
 
@@ -210,7 +204,7 @@ describe("sf_mcp tool", () => {
       details: {
         ok: true,
         serverName: "salesforce-headless-360-orga",
-        command: "/mcp login salesforce-headless-360-orga",
+        command: "/mcp reauth salesforce-headless-360-orga",
       },
     });
   });
@@ -257,85 +251,6 @@ describe("sf_mcp tool", () => {
     expect(names[1]).toMatch(/^salesforce-headless-360-demo_a-[a-f0-9]{8}$/u);
     const config = JSON.parse(readFileSync(mcpConfigPath(cwd, "global"), "utf8"));
     expect(Object.keys(config.mcpServers)).toHaveLength(2);
-  });
-
-  it("verifies a logged-in Headless 360 instance against its planned org identity", async () => {
-    const cwd = workspace();
-    const binding = {
-      targetOrg: "OrgA",
-      alias: "OrgA",
-      orgId: "example-org-a",
-      orgType: "developer" as const,
-      hostKey: "orga.develop",
-      serverUrl: "https://api.salesforce.com/platform/mcp/v1/d/orga.develop/platform/headless-360",
-      authorizationIssuer: "https://orga.develop.my.salesforce.com",
-    };
-    const tool = registeredTool({ resolveHostedOrgBinding: vi.fn(async () => binding) });
-    const connection = await execute(tool, cwd, {
-      action: "connection.plan",
-      scope: "global",
-      preset_id: "headless-360",
-      target_org: "OrgA",
-      oauth_client_id: "public-client",
-    });
-    await execute(tool, cwd, {
-      action: "connection.apply",
-      scope: "global",
-      preset_id: "headless-360",
-      connection_name: connection.details.connectionName,
-      plan_id: connection.details.planId,
-      plan_hash: connection.details.planHash,
-      allow_mutation: true,
-    });
-    const tools = await execute(tool, cwd, {
-      action: "tools.plan",
-      scope: "global",
-      preset_id: "headless-360",
-      connection_name: connection.details.connectionName,
-      tool_profile: "recommended",
-    });
-    await execute(tool, cwd, {
-      action: "tools.apply",
-      scope: "global",
-      preset_id: "headless-360",
-      connection_name: connection.details.connectionName,
-      plan_id: tools.details.planId,
-      plan_hash: tools.details.planHash,
-      allow_mutation: true,
-    });
-    const executeTool = vi.fn(async () => ({
-      content: [{ type: "text", text: JSON.stringify({ organization_id: binding.orgId }) }],
-    }));
-
-    const verified = await execute(
-      tool,
-      cwd,
-      {
-        action: "identity.verify",
-        scope: "global",
-        preset_id: "headless-360",
-        connection_name: connection.details.connectionName,
-      },
-      true,
-      executeTool,
-    );
-
-    expect(verified).toMatchObject({
-      details: {
-        ok: true,
-        action: "identity.verify",
-        connectionName: "salesforce-headless-360-orga",
-        verified: true,
-      },
-    });
-    expect(executeTool).toHaveBeenCalledWith(
-      "mcp__salesforce_headless_360_orga__dispatch_readonly",
-      expect.objectContaining({
-        url: "https://orga.develop.my.salesforce.com/services/oauth2/userinfo",
-        method: "GET",
-      }),
-      { signal: undefined },
-    );
   });
 
   it("hands identity verification back when the host cannot delegate tool calls", async () => {
@@ -519,7 +434,7 @@ describe("sf_mcp tool", () => {
       url: "https://api.salesforce.com/platform/mcp/v1/sandbox/platform/headless-360",
       oauth: {
         clientId: consumerKey,
-        callbackUrl: "http://localhost:8765/callback",
+        redirectUri: "http://localhost:8765/callback",
       },
       exposure: "hidden",
       toolExposure: {
@@ -669,7 +584,7 @@ describe("sf_mcp tool", () => {
         ok: true,
         action: "login.handoff",
         serverName: "salesforce-headless-360",
-        command: "/mcp login salesforce-headless-360",
+        command: "/mcp reauth salesforce-headless-360",
       },
     });
     expect(handoff.content[0]?.text).toContain("human OAuth consent");

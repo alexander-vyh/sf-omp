@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
- * Pi-owned Fin workspace credentials, one pair per named workspace.
+ * OMP-owned Fin workspace credentials, one pair per named workspace.
  *
  * - `default` workspace: `/login sf-fin` (personal API token) and
  *   `/login sf-fin-agent` (Fin Agent API key), unchanged for existing users.
@@ -148,7 +148,7 @@ export function createSfFinAuthController(
           return {
             auth: { apiKey: token },
             env: { [ENV_REGION]: region },
-            source: saved ? "Pi saved credential" : ENV_TOKEN,
+            source: saved ? "OMP saved credential" : ENV_TOKEN,
           };
         },
       },
@@ -201,7 +201,7 @@ export function notConnectedMessage(workspace: string = DEFAULT_WORKSPACE): stri
       : `Fin workspace "${workspace}" is not connected.`,
     `Run ${login} in interactive TUI mode; the personal API token is entered in a masked prompt and the region is detected.`,
     ...(isDefault(workspace)
-      ? [`For automation, set ${ENV_TOKEN} (and optionally ${ENV_REGION}) before starting Pi.`]
+      ? [`For automation, set ${ENV_TOKEN} (and optionally ${ENV_REGION}) before starting OMP.`]
       : []),
   ].join("\n");
 }
@@ -278,7 +278,7 @@ export function createSfFinAgentAuthController(
           if (!key) return undefined;
           return {
             auth: { apiKey: key },
-            source: saved ? "Pi saved credential" : AGENT_API_ENV_KEY,
+            source: saved ? "OMP saved credential" : AGENT_API_ENV_KEY,
           };
         },
       },

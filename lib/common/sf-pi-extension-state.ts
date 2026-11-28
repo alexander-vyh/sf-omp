@@ -2,21 +2,12 @@
 /**
  * Shared sf-pi extension enablement state.
  *
- * sf-pi stores bundled-extension disables as Pi package filters in
- * settings.json, for example an include-all pattern plus an exclusion for
- * `extensions/sf-slack/index.ts`.
- * Multiple extensions need to answer the same question ("is optional extension X enabled?")
- * before surfacing status UI, so this module centralizes Pi's project-over-global
- * precedence and package-source matching rules.
+ * Bundled-extension disables live in OMP's native `disabledExtensions` config
+ * (`extension-module:<id>`; see `./omp-extension-state.ts`). Multiple
+ * extensions need to answer the same question ("is optional extension X
+ * enabled?") before surfacing status UI, so this module centralizes it.
  */
-import path from "node:path";
 import { SF_PI_REGISTRY } from "../../catalog/registry.ts";
-import { globalSettingsPath, projectSettingsPath, readJsonFile } from "./sf-pi-settings.ts";
-import {
-  findSfPiPackageEntry,
-  getDisabledExtensionFiles,
-  getExplicitlyEnabledExtensionFiles,
-} from "./sf-pi-package-resolution.ts";
 import { readOmpDisabledExtensionFiles } from "./omp-extension-state.ts";
 
 export type SfPiExtensionId = (typeof SF_PI_REGISTRY)[number]["id"];
@@ -27,34 +18,23 @@ const STATUS_KEY_EXTENSION_ID: Record<string, SfPiExtensionId | "always"> = {
   "sf-pi": "always",
 };
 
+/** Registry `file` values disabled in the OMP config for `cwd`; unreadable config disables nothing. */
 export function getDisabledExtensionFilesForCwd(cwd: string): Set<string> {
-  const projectPath = projectSettingsPath(cwd);
-  const projectSettings = readJsonFile(projectPath);
-  const projectEntry = findSfPiPackageEntry(projectSettings, path.dirname(projectPath));
-  if (projectEntry) {
-    return getDisabledExtensionFiles(projectSettings, projectEntry.index);
+  try {
+    return readOmpDisabledExtensionFiles(cwd);
+  } catch {
+    return new Set();
   }
-
-  const globalPath = globalSettingsPath();
-  const globalSettings = readJsonFile(globalPath);
-  const globalEntry = findSfPiPackageEntry(globalSettings, path.dirname(globalPath));
-  return globalEntry ? getDisabledExtensionFiles(globalSettings, globalEntry.index) : new Set();
 }
 
 export function isSfPiExtensionEnabled(cwd: string, extensionId: SfPiExtensionId): boolean {
-  const extension = SF_PI_REGISTRY.find((entry) => entry.id === extensionId);
-  if (!extension) return false;
-  if (extension.alwaysActive) return true;
-  if (!extension.defaultEnabled) {
-    return getEnabledExtensionFilesForCwd(cwd).has(extension.file);
-  }
-  return !getDisabledExtensionFilesForCwd(cwd).has(extension.file);
+  if (!SF_PI_REGISTRY.some((entry) => entry.id === extensionId)) return false;
+  return !isExtensionDisabledInOmpConfig(extensionId, cwd);
 }
 
 /**
  * True when the OMP-native `disabledExtensions` config for `cwd` disables this
- * bundled extension (`extension-module:<id>`). OMP-host callers only: Pi hosts
- * use the settings.json package filters above. alwaysActive extensions and
+ * bundled extension (`extension-module:<id>`). alwaysActive extensions and
  * unreadable config never count as disabled, so a bad file cannot hide tools.
  */
 export function isExtensionDisabledInOmpConfig(
@@ -83,20 +63,4 @@ export function filterEnabledExtensionStatuses(
     }
   }
   return filtered;
-}
-
-function getEnabledExtensionFilesForCwd(cwd: string): Set<string> {
-  const projectPath = projectSettingsPath(cwd);
-  const projectSettings = readJsonFile(projectPath);
-  const projectEntry = findSfPiPackageEntry(projectSettings, path.dirname(projectPath));
-  if (projectEntry) {
-    return getExplicitlyEnabledExtensionFiles(projectSettings, projectEntry.index);
-  }
-
-  const globalPath = globalSettingsPath();
-  const globalSettings = readJsonFile(globalPath);
-  const globalEntry = findSfPiPackageEntry(globalSettings, path.dirname(globalPath));
-  return globalEntry
-    ? getExplicitlyEnabledExtensionFiles(globalSettings, globalEntry.index)
-    : new Set();
 }

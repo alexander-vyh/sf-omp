@@ -114,7 +114,7 @@ function buildManagerActions(pi: ExtensionAPI): ManagerDetailAction[] {
               requestRender: ui.requestRender,
               prepareLogin: () =>
                 prepareDocsLogin(ctx)
-                  ? `Prepared /login ${PROVIDER_NAME} in Pi's editor.`
+                  ? `Prepared /login ${PROVIDER_NAME} in OMP's editor.`
                   : `Run /login ${PROVIDER_NAME} in interactive TUI mode.`,
             }),
         }
@@ -196,7 +196,7 @@ async function connect(ctx: ExtensionCommandContext, fromPanel: boolean): Promis
           "Native login collects the docs endpoint URL, then the access token in the host's masked prompt. The host stores both.",
           `${ENV_TOKEN} and ${ENV_ENDPOINT} remain available for automation and are never modified.`,
         ].join("\n")
-      : `Run /login ${PROVIDER_NAME} in interactive TUI mode, or set ${ENV_TOKEN} and ${ENV_ENDPOINT} before starting Pi for automation.`,
+      : `Run /login ${PROVIDER_NAME} in interactive TUI mode, or set ${ENV_TOKEN} and ${ENV_ENDPOINT} before starting OMP for automation.`,
     prepared ? "info" : "warning",
     fromPanel,
   );
@@ -254,10 +254,10 @@ function prepareDocsLogout(ctx: ExtensionCommandContext): string {
     if (tokenSource === "none" && endpointSource === "none") {
       return "No SF Docs credential is configured.";
     }
-    return `${ENV_TOKEN} or ${ENV_ENDPOINT} is active. Native logout does not modify environment variables; unset them outside Pi and restart the session.`;
+    return `${ENV_TOKEN} or ${ENV_ENDPOINT} is active. Native logout does not modify environment variables; unset them outside OMP and restart the session.`;
   }
   if (!ctx.hasUI) {
-    return `Run \`/logout ${PROVIDER_NAME}\` in an interactive Pi session. Environment variables are left untouched.`;
+    return `Run \`/logout ${PROVIDER_NAME}\` in an interactive OMP session. Environment variables are left untouched.`;
   }
   ctx.ui.setEditorText(`/logout ${PROVIDER_NAME}`);
   return `Prefilled \`/logout ${PROVIDER_NAME}\` in the editor. Review and submit it to clear only the saved credential; environment variables are left untouched.`;

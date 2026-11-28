@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
- * Strict, atomic reads and writes for the host's native mcp.json files.
+ * Strict, atomic reads and writes for OMP's native mcp.json files.
  *
- * SF MCP models every entry in Pi's shape. On OMP the file dialect differs:
- * `timeout` is milliseconds (Pi: seconds) and a fixed OAuth redirect is
- * `oauth.redirectUri` (Pi: `oauth.callbackUrl`). Entries are converted at this
+ * SF MCP models every entry in the Pi SDK's shape. OMP's file dialect differs:
+ * `timeout` is milliseconds (model: seconds) and a fixed OAuth redirect is
+ * `oauth.redirectUri` (model: `oauth.callbackUrl`). Entries are converted at this
  * read/write boundary so OMP's loader receives values it actually honors.
  */
 import {
@@ -73,22 +73,9 @@ export type McpConfigMutationResult =
       message: string;
     };
 
-export type NativeMcpDialect = "pi" | "omp";
-
-let nativeDialect: NativeMcpDialect = "pi";
-
-/** Selects the running host's mcp.json dialect; set once by the extension factory. */
-export function setNativeMcpDialect(dialect: NativeMcpDialect): void {
-  nativeDialect = dialect;
-}
-
-export function getNativeMcpDialect(): NativeMcpDialect {
-  return nativeDialect;
-}
-
 /**
- * Native files the host loads: `<agentDir>/mcp.json` and the host's project
- * config directory (`.pi/mcp.json` on Pi, `.omp/mcp.json` on OMP).
+ * Native files OMP loads: `<agentDir>/mcp.json` and the project config
+ * directory (`.omp/mcp.json`; `CONFIG_DIR_NAME` resolves through OMP's compat layer).
  */
 export function mcpConfigPath(cwd: string, scope: "global" | "project"): string {
   return scope === "global"
@@ -196,7 +183,7 @@ export function upsertMcpServer(
       reason: exact ? "server-exists" : "server-name-conflict",
       message: exact
         ? `${serverName} already exists in ${filePath}. Review or adopt it instead of overwriting it.`
-        : `${serverName} conflicts with ${matches.join(", ")} after Pi normalizes hyphens and underscores. Resolve the duplicate before installing this preset.`,
+        : `${serverName} conflicts with ${matches.join(", ")} after OMP normalizes hyphens and underscores. Resolve the duplicate before installing this preset.`,
     };
   }
 
@@ -317,7 +304,7 @@ function writeMcpRoot(filePath: string, root: McpFileRoot): McpConfigMutationRes
 }
 
 function toNativeRoot(root: McpFileRoot): McpFileRoot {
-  if (nativeDialect === "pi" || !root.mcpServers) return root;
+  if (!root.mcpServers) return root;
   return {
     ...root,
     mcpServers: Object.fromEntries(
@@ -329,22 +316,21 @@ function toNativeRoot(root: McpFileRoot): McpFileRoot {
   };
 }
 
-/** Pi-shaped entry → OMP file entry (milliseconds, `redirectUri`). */
+/** Model-shaped entry → OMP file entry (milliseconds, `redirectUri`). */
 function toNativeEntry(entry: McpServerConfig): McpServerConfig {
-  if (nativeDialect === "pi") return entry;
   const next = { ...entry };
   if (typeof next.timeout === "number") next.timeout = Math.round(next.timeout * 1000);
   if ("oauth" in next && next.oauth?.callbackUrl !== undefined) {
     const { callbackUrl, ...oauth } = next.oauth;
-    // `redirectUri` is OMP's field; Pi's OAuth type does not declare it.
+    // `redirectUri` is OMP's field; the Pi SDK's OAuth type does not declare it.
     next.oauth = Object.assign(oauth, { redirectUri: callbackUrl });
   }
   return next;
 }
 
-/** OMP file entry → Pi-shaped entry; exact inverse of {@link toNativeEntry}. */
+/** OMP file entry → model-shaped entry; exact inverse of {@link toNativeEntry}. */
 function fromNativeEntry(entry: McpServerConfig): McpServerConfig {
-  if (nativeDialect === "pi" || !isRecord(entry)) return entry;
+  if (!isRecord(entry)) return entry;
   const next = { ...entry };
   if (typeof next.timeout === "number") next.timeout = next.timeout / 1000;
   if (

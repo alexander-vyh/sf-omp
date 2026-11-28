@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type * as PiCompatModule from "../../../lib/common/pi-compat.ts";
 
 const monthlyUsageMock = vi.hoisted(() => {
   const unregisters: Array<ReturnType<typeof vi.fn>> = [];
@@ -89,12 +88,6 @@ const providerTelemetryMock = vi.hoisted(() => ({
   recordProviderResponse: vi.fn(),
 }));
 vi.mock("../lib/provider-telemetry.ts", () => providerTelemetryMock);
-
-const hostMock = vi.hoisted(() => ({ omp: false }));
-vi.mock("../../../lib/common/pi-compat.ts", async (importOriginal) => {
-  const original = await importOriginal<typeof PiCompatModule>();
-  return { ...original, isOmpHost: () => hostMock.omp };
-});
 
 interface FakePi {
   events: EventEmitter;
@@ -184,41 +177,26 @@ describe("gateway extension lifecycle", () => {
     expect(pi.handlers.message_end).toHaveLength(1);
   });
 
-  it("registers one complete native Provider", async () => {
+  it("registers by provider name and config", async () => {
     const { default: extension } = await import("../index.ts");
     const pi = makeFakePi();
 
     extension(pi as never);
 
-    expect(pi.registerProvider).toHaveBeenCalledTimes(1);
-    expect(pi.registerProvider).toHaveBeenCalledWith(providerRuntimeMock.provider);
+    const calls = pi.registerProvider.mock.calls as Array<[string, Record<string, unknown>]>;
+    expect(calls.map(([name]) => name)).toEqual(Array(4).fill("sf-llm-gateway"));
+    expect(calls.slice(0, 3).map(([, config]) => config.api)).toEqual([
+      "sf-llm-gateway-anthropic-messages",
+      "sf-llm-gateway-openai-completions",
+      "sf-llm-gateway-openai-responses",
+    ]);
+    const [, main] = calls[3] ?? [];
+    expect(main).toMatchObject({
+      oauth: { name: "SF LLM Gateway API key" },
+      fetchDynamicModels: expect.any(Function),
+    });
+    expect(pi.registerProvider).not.toHaveBeenCalledWith(providerRuntimeMock.provider);
     expect(pi.unregisterProvider).not.toHaveBeenCalled();
-  });
-
-  it("registers by provider name and config on OMP", async () => {
-    hostMock.omp = true;
-    try {
-      const { default: extension } = await import("../index.ts");
-      const pi = makeFakePi();
-
-      extension(pi as never);
-
-      const calls = pi.registerProvider.mock.calls as Array<[string, Record<string, unknown>]>;
-      expect(calls.map(([name]) => name)).toEqual(Array(4).fill("sf-llm-gateway"));
-      expect(calls.slice(0, 3).map(([, config]) => config.api)).toEqual([
-        "sf-llm-gateway-anthropic-messages",
-        "sf-llm-gateway-openai-completions",
-        "sf-llm-gateway-openai-responses",
-      ]);
-      const [, main] = calls[3] ?? [];
-      expect(main).toMatchObject({
-        oauth: { name: "SF LLM Gateway API key" },
-        fetchDynamicModels: expect.any(Function),
-      });
-      expect(pi.registerProvider).not.toHaveBeenCalledWith(providerRuntimeMock.provider);
-    } finally {
-      hostMock.omp = false;
-    }
   });
 
   it("restores human-only command output on session events instead of message rendering", async () => {

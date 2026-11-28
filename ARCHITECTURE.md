@@ -35,7 +35,6 @@ sf-pi/
 │   ├── sf-fin/
 │   ├── sf-flow/
 │   ├── sf-guardrail/
-│   ├── sf-herdr/
 │   ├── sf-integrate/
 │   ├── sf-llm-gateway/
 │   ├── sf-lsp/
@@ -85,7 +84,7 @@ ones agents and maintainers most often need:
 | `scripts/docs-health.mjs`                 | Checks factual doc drift, manual-evidence freshness, and the tracked public-text corpus.                             |
 | `scripts/check-external-links.mjs`        | Generates the scheduled report-only external-link artifact; never runs in normal PR validation.                      |
 | `scripts/check-architecture.mjs`          | Checks source-size advisories and shared state-store placement separately from docs health.                          |
-| `scripts/instruction-surface-report.mjs`  | Writes sanitized SF Pi instruction-size JSON and Markdown through the exact Pi runtime.                              |
+| `scripts/instruction-surface-report.mjs`  | Writes sanitized SF Pi instruction-size JSON and Markdown through the pinned OMP runtime.                            |
 | `scripts/e2e/instruction-behavior/run.ts` | Runs the opt-in model routing regression with local reads allowed and every non-local tool blocked before execution. |
 | `scripts/add-spdx-headers.mjs`            | Adds or checks SPDX headers for source scripts. Pre-commit auto-adds missing headers; CI uses the check path.        |
 | `scripts/check-llm-artifacts.sh`          | CI guard for unresolved conflict markers, prompt-template tokens, and LLM TODO markers.                              |

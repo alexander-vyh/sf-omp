@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../lib/common/sf-pi-extension-state.ts", () => ({
   isSfPiExtensionEnabled: vi.fn(() => true),
+  // requirePiVersion() gates the factory on the OMP config.
+  isExtensionDisabledInOmpConfig: vi.fn(() => false),
 }));
 
 vi.mock("../lib/readiness.ts", async () => {

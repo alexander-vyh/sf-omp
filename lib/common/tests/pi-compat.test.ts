@@ -1,25 +1,15 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
- * Version-gate unit tests for pi-compat.
- *
- * Covers the semver-ish comparator and the documented precedence rules used
- * by `requirePiVersion` without trying to stub out `readFileSync`. The
- * console.warn-capture test exercises the public behavior agent authors care
- * about: on an older pi the gate returns false AND logs exactly one line per
- * extension name.
+ * Unit tests for pi-compat: the semver-ish comparator and the factory-time
+ * gate, which honours the SF Pi Manager's OMP-native `disabledExtensions`.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  AUDITED_MAX_PI_VERSION_EXCLUSIVE,
-  classifyPiVersion,
-  compareVersions,
-  getInstalledPiVersion,
-  HARD_MAX_PI_VERSION_EXCLUSIVE,
-  isPiVersionLoadable,
-  MIN_PI_VERSION,
-  RECOMMENDED_PI_VERSION,
-  requirePiVersion,
-} from "../pi-compat.ts";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as YAML from "yaml";
+import { compareVersions, requirePiVersion } from "../pi-compat.ts";
 
 describe("compareVersions", () => {
   it("returns 0 for equal full-release versions", () => {
@@ -51,122 +41,43 @@ describe("compareVersions", () => {
   });
 });
 
-describe("Pi compatibility policy", () => {
-  it("distinguishes audited, forward-compatible, and blocked releases", () => {
-    expect(MIN_PI_VERSION).toBe("1.5.1");
-    expect(AUDITED_MAX_PI_VERSION_EXCLUSIVE).toBe("1.5.3");
-    expect(HARD_MAX_PI_VERSION_EXCLUSIVE).toBe("2.0.0");
-    expect(RECOMMENDED_PI_VERSION).toBe("1.5.2");
-
-    expect(classifyPiVersion("0.99.2")).toBe("too-old");
-    expect(classifyPiVersion("1.0.0")).toBe("too-old");
-    expect(classifyPiVersion("1.0.1")).toBe("too-old");
-    expect(classifyPiVersion("1.0.2")).toBe("too-old");
-    expect(classifyPiVersion("1.0.3")).toBe("too-old");
-    expect(classifyPiVersion("1.0.4")).toBe("too-old");
-    expect(classifyPiVersion("1.1.0")).toBe("too-old");
-    expect(classifyPiVersion("1.2.0")).toBe("too-old");
-    expect(classifyPiVersion("1.2.1")).toBe("too-old");
-    expect(classifyPiVersion("1.3.0")).toBe("too-old");
-    expect(classifyPiVersion("1.3.1")).toBe("too-old");
-    expect(classifyPiVersion("1.4.0")).toBe("too-old");
-    expect(classifyPiVersion("1.5.0")).toBe("too-old");
-    expect(classifyPiVersion("1.5.1")).toBe("audited");
-    expect(classifyPiVersion("1.5.2")).toBe("audited");
-    expect(classifyPiVersion("1.5.3")).toBe("forward-compatible");
-    expect(classifyPiVersion("1.99.0")).toBe("forward-compatible");
-    expect(classifyPiVersion("1.0.0-rc.1")).toBe("prerelease");
-    expect(classifyPiVersion("2.0.0")).toBe("major-version");
-
-    expect(isPiVersionLoadable("0.99.2")).toBe(false);
-    expect(isPiVersionLoadable("1.0.0")).toBe(false);
-    expect(isPiVersionLoadable("1.0.0-rc.1")).toBe(false);
-    expect(isPiVersionLoadable("1.5.0")).toBe(false);
-    expect(isPiVersionLoadable("1.5.1")).toBe(true);
-    expect(isPiVersionLoadable("1.5.2")).toBe(true);
-    expect(isPiVersionLoadable("2.0.0")).toBe(false);
-  });
-});
-
 describe("requirePiVersion", () => {
+  const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+  const tempDirs: string[] = [];
+  let agentDir = "";
+
+  beforeEach(() => {
+    // Native global config refuses paths outside this checkout's .runtime directory.
+    const root = fileURLToPath(new URL("../../../.runtime/skill-tests/", import.meta.url));
+    mkdirSync(root, { recursive: true });
+    const dir = mkdtempSync(path.join(root, "pi-compat-"));
+    const cwd = mkdtempSync(path.join(tmpdir(), "pi-compat-cwd-"));
+    tempDirs.push(dir, cwd);
+    agentDir = path.join(dir, "agent");
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    // No project `.omp/config.yml` from the runner's cwd may override global config.
+    vi.spyOn(process, "cwd").mockReturnValue(cwd);
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
+    if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+    for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
 
-  it("accepts the installed audited or forward-compatible runtime", () => {
-    const installed = getInstalledPiVersion();
-    expect(installed).toBeDefined();
-    const compatibility = classifyPiVersion(installed!);
-    expect(["audited", "forward-compatible"]).toContain(compatibility);
-
-    // Preserve the process-wide forward-warning latch for the explicit
-    // once-only test below when the nightly `latest` overlay is ahead.
-    if (compatibility === "audited") {
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      expect(requirePiVersion(null, "sf-pi-compat-test", MIN_PI_VERSION)).toBe(true);
-      expect(warn).not.toHaveBeenCalled();
-    } else {
-      expect(isPiVersionLoadable(installed!)).toBe(true);
-    }
+  it("loads every extension when the OMP config disables none", () => {
+    expect(requirePiVersion({}, "sf-slack")).toBe(true);
   });
 
-  it("returns false and logs once when below the floor", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    // Use a floor far above any plausible installed version so the gate
-    // definitely trips, regardless of which pi version the dev has locally.
-    const unreachable = "9999.0.0";
-    // First call: logs.
-    expect(requirePiVersion(null, "sf-pi-compat-once", unreachable)).toBe(false);
-    // Second call with the same extension name: no second log.
-    expect(requirePiVersion(null, "sf-pi-compat-once", unreachable)).toBe(false);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toMatch(/sf-pi-compat-once/);
-    expect(warn.mock.calls[0][0]).toMatch(/9999\.0\.0/);
-    expect(warn.mock.calls[0][0]).toMatch(/Pi 1\.5\.2/);
-    expect(warn.mock.calls[0][0]).toMatch(/\/sf-pi doctor runtime/);
-  });
+  it("skips only the extension the manager disabled in the OMP config", () => {
+    mkdirSync(agentDir, { recursive: true });
+    writeFileSync(
+      path.join(agentDir, "config.yml"),
+      YAML.stringify({ disabledExtensions: ["extension-module:sf-slack"] }),
+    );
 
-  it("older Pi degrades by skipping the extension instead of throwing", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    const ok = requirePiVersion({ any: "shape" }, "sf-old-pi-skip", "9999.0.0");
-
-    expect(ok).toBe(false);
-    expect(warn.mock.calls[0][0]).toContain('Skipping "sf-old-pi-skip"');
-    expect(warn.mock.calls[0][0]).toContain("Use Pi 1.5.2");
-  });
-
-  it("warns once across isolated module graphs for a newer stable Pi", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const stateKey = Symbol.for("sf-pi.pi-compat.forward-warning");
-    const processState = globalThis as typeof globalThis & Record<symbol, unknown>;
-    delete processState[stateKey];
-
-    const first = await import("../pi-compat.ts");
-    const installed = first.getInstalledPiVersion();
-    expect(installed).toBeDefined();
-    expect(first.requirePiVersion(null, "sf-forward-a", "0.0.0", installed!, "2.0.0")).toBe(true);
-
-    vi.resetModules();
-    const second = await import("../pi-compat.ts");
-    expect(second.requirePiVersion(null, "sf-forward-b", "0.0.0", installed!, "2.0.0")).toBe(true);
-
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toContain("forward-compatibility mode");
-    expect(warn.mock.calls[0][0]).not.toContain("Skipping");
-    delete processState[stateKey];
-  });
-
-  it("still blocks a Pi major version pending review", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const installed = getInstalledPiVersion();
-    expect(installed).toBeDefined();
-
-    const ok = requirePiVersion(null, "sf-major-pi-skip", "0.0.0", "0.0.0", installed!);
-
-    expect(ok).toBe(false);
-    expect(warn.mock.calls[0][0]).toContain('Skipping "sf-major-pi-skip"');
-    expect(warn.mock.calls[0][0]).toContain(`stable pi-coding-agent >= 0.0.0 and < ${installed}`);
-    expect(warn.mock.calls[0][0]).toContain("/sf-pi doctor runtime");
+    expect(requirePiVersion({}, "sf-slack")).toBe(false);
+    expect(requirePiVersion({}, "sf-apex")).toBe(true);
   });
 });

@@ -37,8 +37,8 @@
       "~/.pi/agent/auth.json (Pi-owned API-key credential + default non-secret URL)",
       "<globalAgentDir>/sf-llm-gateway.json (non-secret settings)",
       "<globalAgentDir>/sf-llm-gateway/* (monthly usage and diagnostic state)",
-      "Pi settings.json sfPi.compaction.model (global/project compaction model preference)",
-      "Pi settings.json sfPi.llmGateway.priority (trusted project/global priority preference)"
+      "SF Pi settings.json sfPi.compaction.model (global/project compaction model preference)",
+      "SF Pi settings.json sfPi.llmGateway.priority (trusted project/global priority preference)"
     ],
     "safety": [
       "API-key input uses SF Pi's shared fixed-mask component and never enters Pi's visible stock prompt.",

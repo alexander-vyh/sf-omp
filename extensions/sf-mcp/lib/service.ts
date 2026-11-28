@@ -195,7 +195,7 @@ export function installPreset(input: {
     path: file,
     changed: true,
     reloadRequired: true,
-    message: `${input.replaceExisting ? "Reset" : "Enabled"} ${preset.label} as ${configuredName} in ${file}. Reload Pi, then use /mcp to connect or sign in.`,
+    message: `${input.replaceExisting ? "Reset" : "Enabled"} ${preset.label} as ${configuredName} in ${file}. Run /mcp reload, then use /mcp to connect or sign in.`,
   };
 }
 
@@ -243,7 +243,7 @@ export function adoptPreset(input: {
     path: file,
     changed: false,
     reloadRequired: false,
-    message: `Adopted ${managed.configuredName} without changing Pi's native MCP configuration.`,
+    message: `Adopted ${managed.configuredName} without changing OMP's native MCP configuration.`,
   };
 }
 
@@ -450,7 +450,7 @@ export function updateManagedPresetToolPolicy(input: {
     path: file,
     changed: true,
     reloadRequired: true,
-    message: `Updated ${preset.label} tool exposure for ${managed.configuredName} in ${file}. Reload Pi to apply it.`,
+    message: `Updated ${preset.label} tool exposure for ${managed.configuredName} in ${file}. Run /mcp reload to apply it.`,
   };
 }
 

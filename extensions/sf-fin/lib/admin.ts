@@ -46,9 +46,9 @@ export interface AdminRequest {
 }
 
 /**
- * Persisted Fin sign-in, owned by Pi. `restore` puts the stored cookies into
+ * Persisted Fin sign-in, owned by OMP. `restore` puts the stored cookies into
  * the browser before a Fin page; `finish` saves rotated cookies back through
- * Pi and clears them from the browser. Both never throw.
+ * OMP and clears them from the browser. Both never throw.
  */
 export interface AdminSignin {
   /** Provider id for `/login`, shown in recovery text. */
@@ -140,7 +140,7 @@ export async function runAdmin(
     return fail(
       restored === "expired"
         ? `The saved Fin sign-in has expired. Run /login ${signin.loginId} and sign in again in the window that opens.`
-        : `No saved Fin sign-in for workspace "${profile.name}". Run /login ${signin.loginId} once; Pi keeps it.`,
+        : `No saved Fin sign-in for workspace "${profile.name}". Run /login ${signin.loginId} once; OMP keeps it.`,
       restored === "expired" ? "signin_expired" : "signed_out",
       { loginId: signin.loginId },
     );
@@ -156,7 +156,7 @@ export async function runAdmin(
     }
     return result;
   } finally {
-    // Save rotated cookies through Pi, then clear them from the browser, on
+    // Save rotated cookies through OMP, then clear them from the browser, on
     // every path, so the browser's own state file never keeps a Fin sign-in.
     await signin.finish();
   }
@@ -272,7 +272,7 @@ function listPages(profile: WorkspaceProfile, signin: AdminSignin): AdminResult 
       profile.appId
         ? `Open one with sf_fin action='admin' operation='open' page=<id>.`
         : `Run /sf-fin setup first so the workspace's app id is verified.`,
-      `Sign-in: saved by Pi under /login ${signin.loginId}.`,
+      `Sign-in: saved by OMP under /login ${signin.loginId}.`,
     ].join("\n"),
     details: { pages: FIN_ADMIN_PAGE_IDS, appBound: Boolean(profile.appId) },
   };
@@ -283,7 +283,7 @@ function signInWithPi(signin: AdminSignin): AdminResult {
     ok: true,
     text: [
       `Run /login ${signin.loginId}. A browser window opens on Fin's sign-in page; sign in there yourself.`,
-      "Pi saves the sign-in like your other Fin credentials, so later admin pages need no sign-in until Fin expires it (about two weeks).",
+      "OMP saves the sign-in like your other Fin credentials, so later admin pages need no sign-in until Fin expires it (about two weeks).",
     ].join("\n"),
     details: { loginId: signin.loginId, handoff: "login" },
   };

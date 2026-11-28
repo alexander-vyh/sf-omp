@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Command handlers for `/sf-pi doctor`. */
+import path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { applyDoctorFixes } from "../../../lib/common/doctor/fixes.ts";
 import { runDoctorDiagnostics } from "../../../lib/common/doctor/diagnostics.ts";
@@ -8,14 +9,7 @@ import {
   type RegisteredDoctorOutcome,
 } from "../../../lib/common/doctor/registry.ts";
 import type { DoctorIssue, DoctorReport } from "../../../lib/common/doctor/types.ts";
-import { writeCachedRuntimeDiagnostics } from "../../../lib/common/doctor/runtime-cache.ts";
-import {
-  AUDITED_MAX_PI_VERSION_EXCLUSIVE,
-  getInstalledPiVersion,
-  HARD_MAX_PI_VERSION_EXCLUSIVE,
-  isOmpRuntime,
-} from "../../../lib/common/pi-compat.ts";
-import { runPiWebAccessDoctor } from "./pi-web-access-doctor.ts";
+import { CHECKOUT_ROOT } from "./auto-update-checkout.ts";
 
 export type DoctorSubcommand = "status" | "fix" | "runtime";
 export type DoctorFixTarget = "all" | "startup" | "skills";
@@ -60,31 +54,15 @@ export async function handleDoctor(
 }
 
 function handleRuntime(ctx: ExtensionCommandContext): void {
-  const report = runDoctorDiagnostics({ cwd: ctx.cwd });
-  writeCachedRuntimeDiagnostics(report.runtime);
-  ctx.ui.notify(renderRuntimeReport(report), "info");
+  ctx.ui.notify(renderRuntimeReport(runDoctorDiagnostics({ cwd: ctx.cwd })), "info");
 }
 
 async function handleStatus(ctx: ExtensionCommandContext): Promise<void> {
   const report = runDoctorDiagnostics({ cwd: ctx.cwd });
-  writeCachedRuntimeDiagnostics(report.runtime);
   // Aggregate every registered per-extension doctor with a small budget so
-  // a slow network probe never blocks the report. The recommended-package
-  // compatibility check is also bounded and returns null when not installed.
-  // Slow / failed providers are surfaced inline as "timeout" / "error" rows.
-  const [extensionOutcomes, webAccessReport] = await Promise.all([
-    runRegisteredDoctors({ cwd: ctx.cwd }),
-    runPiWebAccessDoctor({ cwd: ctx.cwd }),
-  ]);
-  if (webAccessReport) {
-    extensionOutcomes.push({
-      extensionId: webAccessReport.extensionId,
-      status: "ok",
-      report: webAccessReport,
-      durationMs: webAccessReport.durationMs ?? 0,
-    });
-    extensionOutcomes.sort((a, b) => a.extensionId.localeCompare(b.extensionId));
-  }
+  // a slow network probe never blocks the report. Slow / failed providers are
+  // surfaced inline as "timeout" / "error" rows.
+  const extensionOutcomes = await runRegisteredDoctors({ cwd: ctx.cwd });
 
   const lines = [renderDoctorReport(report)];
   if (extensionOutcomes.length > 0) {
@@ -102,21 +80,22 @@ async function handleStatus(ctx: ExtensionCommandContext): Promise<void> {
 
 async function handleFix(ctx: ExtensionCommandContext, target: DoctorFixTarget): Promise<boolean> {
   const report = runDoctorDiagnostics({ cwd: ctx.cwd });
-  writeCachedRuntimeDiagnostics(report.runtime);
   const hasStartupFix = target === "all" || target === "startup";
   const hasSkillsFix = target === "all" || target === "skills";
 
   const planned: string[] = [];
-  if (hasStartupFix) planned.push('set quietStartup="header" and sfPi.welcome.mode=header');
+  if (hasStartupFix) planned.push("set sfPi.welcome.mode=header");
   if (hasSkillsFix) {
     if (report.skillCollisions.length > 0) {
       planned.push(
-        "move duplicate sf-* skills from pi-owned roots to a timestamped quarantine folder",
+        "move duplicate sf-* skills from OMP-owned roots to a timestamped quarantine folder",
       );
     }
-    if (report.staleSkillPaths.length > 0) planned.push("prune stale settings.skills[] paths");
+    if (report.staleSkillPaths.length > 0) {
+      planned.push("prune stale skills.customDirectories paths");
+    }
     if (report.availableSkillRoots.length > 0) {
-      planned.push("link available Claude/Codex/Cursor skill roots into settings.skills[]");
+      planned.push("link available Claude/Codex/Cursor skill roots into skills.customDirectories");
     }
   }
 
@@ -174,43 +153,23 @@ async function handleFix(ctx: ExtensionCommandContext, target: DoctorFixTarget):
 
 function renderRuntimeReport(report: DoctorReport): string {
   const runtime = report.runtime;
-  const lines = [
+  return [
     "sf-pi Runtime Doctor",
     "",
-    ...ompHostLines(),
-    `Pi runtime:       ${runtime.piVersion ?? "unknown"}`,
-    `Audited Pi:       >=${runtime.requiredPiVersion} <${AUDITED_MAX_PI_VERSION_EXCLUSIVE}`,
-    `Loadable Pi:      stable >=${runtime.requiredPiVersion} <${HARD_MAX_PI_VERSION_EXCLUSIVE}`,
+    `Host runtime:     OMP ${runtime.ompVersion ?? "unknown"} (sf-omp host)`,
     `Node.js:          ${runtime.nodeVersion}`,
-    `Node executable:  ${runtime.nodePath ?? "unknown"}`,
-    `npm executable:   ${runtime.npmPath ?? "unknown"}`,
-    `pi executable:    ${runtime.piPath ?? "unknown"}`,
-    `npm global root:  ${runtime.npmGlobalRoot ?? "unknown"}`,
-    `npm before:       ${runtime.npmBefore ?? "not set"}`,
-    `npm min-release-age: ${runtime.npmMinReleaseAge ?? "not set"}`,
-    `npm minimum-release-age: ${runtime.npmMinimumReleaseAge ?? "not set"}`,
-    `Installed package: ${runtime.installedPiPackageVersion ? `@earendil-works/pi-coding-agent@${runtime.installedPiPackageVersion}` : "unknown"}`,
-    `Latest package:    ${runtime.latestPiPackageVersion ? `@earendil-works/pi-coding-agent@${runtime.latestPiPackageVersion}` : "unknown"}`,
+    `Node executable:  ${runtime.nodePath}`,
     "",
-    "All pi executables:",
-    ...(runtime.allPiPaths.length > 0
-      ? runtime.allPiPaths.map((item) => `  ${item}`)
-      : ["  none found"]),
-    "",
-    "Suggested repair:",
-    ...runtime.updateAdvice.map((item) => `  ${item}`),
-  ];
-  return lines.join("\n");
+    "Update OMP: omp update --check, then omp update",
+  ].join("\n");
 }
 
 function renderDoctorReport(report: DoctorReport): string {
   const lines = [
     "sf-pi Doctor",
     "",
-    ...ompHostLines(),
-    `Pi runtime:       ${report.piVersion ?? "unknown"}`,
+    `Host runtime:     OMP ${report.ompVersion ?? "unknown"} (sf-omp host)`,
     `Node.js:          ${report.nodeVersion}`,
-    `Quiet startup:    ${report.quietStartup ? "yes" : "no"}`,
     `Welcome mode:     ${report.welcomeMode ?? "auto"}`,
     `Safe start env:   ${report.safeStartRequested ? "yes" : "no"}`,
     "",
@@ -236,7 +195,7 @@ function renderDoctorReport(report: DoctorReport): string {
   }
 
   if (report.staleSkillPaths.length > 0) {
-    lines.push("", "Stale skills[] paths:");
+    lines.push("", "Stale skills.customDirectories paths:");
     for (const stale of report.staleSkillPaths) lines.push(`  ${stale.raw} → ${stale.resolved}`);
   }
 
@@ -253,16 +212,11 @@ function renderDoctorReport(report: DoctorReport): string {
   lines.push(`Fix startup only: ${PREFIX} fix startup`);
   lines.push(`Fix skill wiring/collisions: ${PREFIX} fix skills`);
   lines.push(`Fix all safe issues: ${PREFIX} fix`);
-  lines.push("Recovery launch: SF_PI_SAFE_START=1 pi");
+  lines.push(
+    `Recovery launch: SF_PI_SAFE_START=1 ${path.join(CHECKOUT_ROOT, "tools", "bin", "omp")}`,
+  );
 
   return lines.join("\n");
-}
-
-/** On OMP the "Pi runtime" rows describe the Pi CLI on PATH, not the host. */
-function ompHostLines(): string[] {
-  return isOmpRuntime()
-    ? [`Host runtime:     OMP ${getInstalledPiVersion() ?? "unknown"} (sf-omp host)`]
-    : [];
 }
 
 function renderIssue(issue: DoctorIssue): string[] {

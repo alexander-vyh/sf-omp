@@ -2,38 +2,20 @@
 /**
  * Resolve the sf-pi package root for runtime asset lookups.
  *
- * Prefer Pi's package manager for configured package sources so npm/git/local
- * install semantics stay owned by Pi. Fall back to a bounded module-relative
- * walk for development and explicit `-e` runs where sf-pi may not be present in
- * settings yet.
+ * sf-omp is loaded explicitly from its checkout (`-e <checkout>`), so the root
+ * is found with a bounded walk up from this module to the directory holding
+ * both `package.json` and `catalog/`.
  */
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  DefaultPackageManager,
-  SettingsManager,
-  getAgentDir,
-} from "@earendil-works/pi-coding-agent";
-import { findPackageInSettings } from "./sf-pi-package-state.ts";
 
 export interface SfPiPackageRootResolution {
   packageRoot?: string;
-  source: "pi-package-manager" | "module-walk" | "missing";
+  source: "module-walk" | "missing";
 }
 
-export function resolveSfPiPackageRoot(
-  options: {
-    cwd?: string;
-    from?: string;
-  } = {},
-): SfPiPackageRootResolution {
-  const cwd = options.cwd ?? process.cwd();
-  const configured = resolveConfiguredPackageRoot(cwd);
-  if (configured) {
-    return { packageRoot: configured, source: "pi-package-manager" };
-  }
-
+export function resolveSfPiPackageRoot(options: { from?: string } = {}): SfPiPackageRootResolution {
   const walked = resolvePackageRootFromModule(options.from ?? import.meta.url);
   if (walked) {
     return { packageRoot: walked, source: "module-walk" };
@@ -42,27 +24,8 @@ export function resolveSfPiPackageRoot(
   return { source: "missing" };
 }
 
-export function resolveSfPiPackageRootPath(
-  options: { cwd?: string; from?: string } = {},
-): string | undefined {
+export function resolveSfPiPackageRootPath(options: { from?: string } = {}): string | undefined {
   return resolveSfPiPackageRoot(options).packageRoot;
-}
-
-function resolveConfiguredPackageRoot(cwd: string): string | undefined {
-  const projectMatch = findPackageInSettings(cwd, "project");
-  const globalMatch = findPackageInSettings(cwd, "global");
-  const match = projectMatch ?? globalMatch;
-  if (!match) return undefined;
-
-  try {
-    const agentDir = getAgentDir();
-    const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: true });
-    const packageManager = new DefaultPackageManager({ cwd, agentDir, settingsManager });
-    const scope = match === projectMatch ? "project" : "user";
-    return packageManager.getInstalledPath(match.source, scope);
-  } catch {
-    return undefined;
-  }
 }
 
 function resolvePackageRootFromModule(from: string): string | undefined {

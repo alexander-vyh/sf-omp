@@ -1217,7 +1217,7 @@ class SfMcpConfigPanel implements RowsPanel {
         kind: "result",
         title: "Project setup unavailable",
         message:
-          "Project MCP configuration is unavailable until Pi trusts this project. Switch to global scope or use /trust.",
+          "Project MCP configuration is unavailable until OMP trusts this project. Switch to global scope or use /trust.",
         tone: "warning",
         needsReload: false,
       };
@@ -1289,7 +1289,7 @@ class SfMcpConfigPanel implements RowsPanel {
         kind: "result",
         title: "Project setup unavailable",
         message:
-          "Project MCP setup is unavailable until Pi trusts this project. Switch to global scope or use /trust.",
+          "Project MCP setup is unavailable until OMP trusts this project. Switch to global scope or use /trust.",
         tone: "warning",
         needsReload: false,
       };
@@ -1298,10 +1298,10 @@ class SfMcpConfigPanel implements RowsPanel {
     if (state.managed.status === "project-override") {
       this.view = {
         kind: "result",
-        title: "Project override is Pi-managed",
+        title: "Project override is host-managed",
         message:
           state.managed.message ??
-          "Use Pi's native /mcp surface to change this project override, or explicitly reset it to a full project preset.",
+          "Use OMP's native /mcp surface to change this project override, or explicitly reset it to a full project preset.",
         tone: "warning",
         needsReload: false,
       };
@@ -1326,7 +1326,7 @@ class SfMcpConfigPanel implements RowsPanel {
       this.view = {
         kind: "result",
         title: "Native MCP configuration is invalid",
-        message: state.managed.message ?? "Open Pi's native /mcp manager for repair guidance.",
+        message: state.managed.message ?? "Open OMP's native /mcp manager for repair guidance.",
         tone: "error",
         needsReload: false,
       };
@@ -1453,7 +1453,7 @@ class SfMcpConfigPanel implements RowsPanel {
     if (!state) return;
     if (this.scope === "project" && !this.projectTrusted) {
       this.setMessage(
-        "Project MCP setup is unavailable until Pi trusts this project. Switch to global scope or use /trust.",
+        "Project MCP setup is unavailable until OMP trusts this project. Switch to global scope or use /trust.",
         "warning",
       );
       return;

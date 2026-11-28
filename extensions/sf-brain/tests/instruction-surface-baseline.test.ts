@@ -45,6 +45,6 @@ describe("Instruction Surface baseline", () => {
     });
     expect(
       compareInstructionSurfaceToBaseline(current, { ...baseline, pi_runtime_version: "0.99.0" }),
-    ).toMatchObject({ comparable: false, reason: "Pi Runtime versions differ." });
+    ).toMatchObject({ comparable: false, reason: "Host runtime versions differ." });
   });
 });

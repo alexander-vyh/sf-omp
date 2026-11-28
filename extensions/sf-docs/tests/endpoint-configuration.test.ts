@@ -85,11 +85,17 @@ describe("SF Docs authenticated configuration", () => {
       modelRegistry: { authStorage },
     });
 
-    const provider = pi.registerProvider.mock.calls[0]?.[0];
-    expect(provider).toMatchObject({ id: "sf-docs", name: "SF Docs" });
-    expect(provider.auth.apiKey.name).toBe("SF Docs access token");
-    expect(provider.auth.oauth).toBeUndefined();
-    expect(provider.getModels()).toEqual([]);
+    const [name, config] = pi.registerProvider.mock.calls[0] ?? [];
+    expect(name).toBe("sf-docs");
+    expect(config).toEqual({ oauth: expect.objectContaining({ name: "SF Docs" }) });
+    // API-key only: OMP's /login goes straight to the endpoint prompt, with no
+    // sign-in method choice.
+    const onPrompt = vi.fn(async (_prompt: { message: string }): Promise<string> => {
+      throw new Error("stop");
+    });
+    await expect(config.oauth.login({ onPrompt, onAuth: vi.fn() })).rejects.toThrow("stop");
+    expect(onPrompt).toHaveBeenCalledTimes(1);
+    expect(onPrompt.mock.calls[0]?.[0].message).toBe("SF Docs endpoint URL");
     expect(authStorage.login).not.toHaveBeenCalled();
     expect(authStorage.set).not.toHaveBeenCalled();
     expect(setEditorText).toHaveBeenCalledWith("/login sf-docs");

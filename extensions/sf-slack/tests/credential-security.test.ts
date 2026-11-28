@@ -93,7 +93,7 @@ describe("SF Slack credential security", () => {
     await models.login("sf-slack", "api_key", { prompt: vi.fn(), notify: vi.fn() });
     await expect(models.getAuth("sf-slack")).resolves.toMatchObject({
       auth: { apiKey: "xoxp-pi-owned-token" },
-      source: "Pi saved credential",
+      source: "OMP saved credential",
     });
     await models.logout("sf-slack");
     await expect(models.getAuth("sf-slack")).resolves.toBeUndefined();
@@ -186,11 +186,15 @@ describe("SF Slack credential security", () => {
       modelRegistry: { authStorage },
     });
 
-    const provider = pi.registerProvider.mock.calls[0]?.[0];
-    expect(provider).toMatchObject({ id: "sf-slack", name: "SF Slack" });
-    expect(provider.auth.apiKey.login).toEqual(expect.any(Function));
-    expect(provider.auth.oauth.login).toEqual(expect.any(Function));
-    expect(provider.getModels()).toEqual([]);
+    const [name, config] = pi.registerProvider.mock.calls[0] ?? [];
+    expect(name).toBe("sf-slack");
+    expect(config).toEqual({ oauth: expect.objectContaining({ name: "SF Slack" }) });
+    // Both sign-in methods: OMP's /login first asks which one to use.
+    const onPrompt = vi.fn(async (_prompt: { message: string }): Promise<string> => {
+      throw new Error("stop");
+    });
+    await expect(config.oauth.login({ onPrompt, onAuth: vi.fn() })).rejects.toThrow("stop");
+    expect(onPrompt.mock.calls[0]?.[0].message).toMatch(/^SF Slack sign-in method\n1\) .+\n2\) .+/);
     expect(authStorage.login).not.toHaveBeenCalled();
     expect(authStorage.set).not.toHaveBeenCalled();
     expect(setEditorText).toHaveBeenCalledWith("/login sf-slack");

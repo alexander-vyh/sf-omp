@@ -136,7 +136,7 @@ class SfDocsDisconnectPanel implements ActionRows {
     const confirm = this.selected === 0;
     return [
       ` ${t.fg("accent", t.bold("Disconnect SF Docs"))}`,
-      ` ${t.fg("dim", "Prepare /logout sf-docs in Pi's editor for your review.")}`,
+      ` ${t.fg("dim", "Prepare /logout sf-docs in OMP's editor for your review.")}`,
       ` ${t.fg("dim", "No credential changes occur until you submit it; environment variables are untouched.")}`,
       ` ${t.fg("muted", `Current source: ${this.args.endpointSourceLabel}`)}`,
       "",

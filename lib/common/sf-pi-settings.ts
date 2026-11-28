@@ -7,8 +7,8 @@
  * - tolerant JSON reads
  * - stable JSON writes
  *
- * sf-pi package discovery + filter state lives in sf-pi-package-state.ts,
- * not here. This file only knows how to read and write a settings file.
+ * Bundled-extension enablement lives in native OMP config
+ * (omp-extension-state.ts), not here. This file only reads and writes a settings file.
  */
 import {
   closeSync,

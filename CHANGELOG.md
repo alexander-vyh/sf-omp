@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Agent Script eval suites can designate exact single-turn safety test IDs whose platform interception counts as a safe refusal; unlisted functional tests remain fail-closed.
 - sf-omp now supports native OMP only; upstream Pi is no longer a supported host. Removed the upstream Pi `peerDependencies`, Pi package keywords, and `pi install` guidance, and moved the human-only command output, Gateway thinking-ownership, and Auto Update runtime proofs from upstream Pi to the pinned OMP 19.2.1 devDependency. The `pi` manifest key stays because OMP reads it.
 - Fixed automatic Auto Update never running in OMP: OMP's `session_start` carries no reason, so a missing reason now counts as startup while an explicit reload still does not.
+- Removed SF Herdr (`/sf-herdr`, `sf_herdr_plan`): its planner required the upstream `pi-herdr` package tools (`herdr_layout`/`herdr_pane`/`herdr_agent`), which the explicit-only sf-omp launcher never loads. Also removed the `pi-herdr` recommendation, the SF Welcome Herdr row and Pi-bridge status, SF Code Analyzer's Herdr handoff guidance, and SF Guardrail's `herdr_pane.run` mediation. SF Plan Review's Herdr Annotate route is unchanged.
+- `/sf-pi doctor` skill checks now read OMP's `skills.customDirectories` config (the same file `/sf-pi doctor fix skills` edits) and OMP's native skill roots (`<agentDir>/skills`, `<project>/.omp/skills`) instead of the Pi `settings.json` `skills[]` array and `.pi/skills`. SF Docs, SF Fin, SF Slack and SF LLM Gateway report saved credentials as "OMP saved credential", and their setup hints refer to OMP instead of Pi.
 
 ### Full SF Pi parity in OMP
 

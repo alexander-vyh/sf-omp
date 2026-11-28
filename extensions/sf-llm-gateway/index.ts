@@ -243,7 +243,7 @@ import {
   createStaleUsageRefreshState,
   maybeAutoRefreshStaleUsage,
 } from "./lib/stale-usage-refresh.ts";
-import { isOmpHost, requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { requirePiVersion } from "../../lib/common/pi-compat.ts";
 import { nativeUi } from "../../lib/common/ui-rows.ts";
 import { markBootStep } from "../../lib/common/boot-timing.ts";
 import { globalAgentPath } from "../../lib/common/pi-paths.ts";
@@ -330,22 +330,16 @@ export default function sfLlmGatewayInternalExtension(pi: ExtensionAPI) {
   // refresher without leaking stale callbacks across reloads/resumes.
   let unregisterMonthlyUsage: (() => void) | null = null;
 
-  // Register one complete Provider. The host owns auth application, provider-scoped
+  // Register the provider by name + config. OMP owns auth application, provider-scoped
   // model persistence, refresh coordination, and API dispatch from this point on.
-  // OMP registers providers by name + config instead of a Provider object.
-  if (isOmpHost(pi)) {
-    // isOmpHost proved the OMP ExtensionAPI; Pi's declarations type the other shape.
-    const ompHost = pi as unknown as OmpProviderHost;
-    registerOmpGatewayProvider(ompHost, gatewayProviderRuntime, {
-      // OMP ignores message_end rewrites, so normalize at the stream boundary.
-      normalizeError: async (message) => {
-        const cwd = gatewayProviderRuntime.authController.getActiveCwd();
-        return cwd ? normalizeGatewayAssistantError(message, cwd) : undefined;
-      },
-    });
-  } else {
-    pi.registerProvider(gatewayProviderRuntime.provider);
-  }
+  // Pi's declarations type the Provider-object shape; the running host is OMP.
+  registerOmpGatewayProvider(pi as unknown as OmpProviderHost, gatewayProviderRuntime, {
+    // OMP ignores message_end rewrites, so normalize at the stream boundary.
+    normalizeError: async (message) => {
+      const cwd = gatewayProviderRuntime.authController.getActiveCwd();
+      return cwd ? normalizeGatewayAssistantError(message, cwd) : undefined;
+    },
+  });
 
   pi.on("message_end", handleGatewayRequestDiagnostics);
   pi.on("session_before_compact", handleGatewayCompaction);

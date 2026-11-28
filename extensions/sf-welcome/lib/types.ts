@@ -60,7 +60,7 @@ export interface ReleaseStatusInfo {
 
 /**
  * How the official forcedotcom/sf-skills repo is available to the
- * current pi install.
+ * current sf-omp install.
  *
  *   managed       — cloned + sentinel-marked by `/sf-skills defaults install`
  *   linked        — user-owned checkout wired via `/sf-skills defaults link`
@@ -125,36 +125,6 @@ export interface NodeRuntimeStatusInfo {
   loading: boolean;
 }
 
-export type HerdrRuntimeStatusKind =
-  "ready" | "tool-only" | "installed-not-active" | "missing" | "disabled";
-
-export type HerdrPiIntegrationStatusKind = "installed" | "missing" | "unknown";
-
-export interface HerdrPiIntegrationStatusInfo {
-  kind: HerdrPiIntegrationStatusKind;
-  path: string;
-  version?: number;
-  reason?: string;
-  loading: boolean;
-}
-
-export interface HerdrRuntimeStatusInfo {
-  kind: HerdrRuntimeStatusKind;
-  extensionEnabled: boolean;
-  toolActive: boolean;
-  packageInstalled: boolean;
-  activeControlEnv: boolean;
-  passiveStatusBridge: boolean;
-  piIntegration: HerdrPiIntegrationStatusInfo;
-  paneId?: string;
-  controlPackageVersion?: string;
-  runtimeVersion?: string;
-  runtimeChannel?: "stable" | "preview";
-  runtimeProtocol?: number;
-  runtimeVersionLoading?: boolean;
-  loading: boolean;
-}
-
 export type FontRuntimeStatusKind =
   "checking" | "installed" | "missing" | "unsupported" | "unknown";
 
@@ -192,25 +162,6 @@ export interface AutoUpdateStatusInfo {
   status: AutoUpdateStatus;
 }
 
-/** Install status shown in the splash's Recommendations block. */
-export type RecommendationDisplayStatus = "installed" | "pending" | "declined";
-
-/** Single recommended item shown in the splash's Recommendations block. */
-export interface RecommendationStatusItem {
-  id: string;
-  name: string;
-  status: RecommendationDisplayStatus;
-}
-
-/** Splash-facing payload for the Recommendations block. */
-export interface RecommendationsStatusSummary {
-  total: number;
-  installedCount: number;
-  pendingCount: number;
-  declinedCount: number;
-  items: RecommendationStatusItem[];
-}
-
 /** Splash-facing payload for the external-skill-sources nudge line.
  *  Populated only when at least one candidate root is detected but not
  *  yet wired into `~/.pi/agent/settings.json → skills[]`. */
@@ -242,15 +193,6 @@ export interface CaBundleNudgeSummary {
   command: string;
   /** Short prose surfaced in the splash row. */
   message: string;
-}
-
-/** Compact splash payload for the Privacy row.
- *  Computed from lib/common/privacy/state.ts at every collect call. */
-export interface PrivacyStatusSummary {
-  /** True when pi will currently send the anonymous install/update ping. */
-  telemetryEnabled: boolean;
-  /** Where the current value comes from. Drives the row label and color. */
-  source: "sf-pi-default" | "user-override" | "unset";
 }
 
 export interface SplashData {
@@ -290,12 +232,9 @@ export interface SplashData {
   compactionVisible?: boolean;
   /** Cache-only dedicated compaction configuration and model snapshot. */
   compactionStatus?: CompactionStatusSnapshot;
-  /** Install status for recommended external pi packages. Replaces the
-   * legacy Salesforce AI block when any recommendations are defined. */
-  recommendations?: RecommendationsStatusSummary;
   /** External skill-source directories detected on disk but not yet wired
-   * into pi's global settings. Drives the `/sf-pi skills` nudge line
-   * shown under the Recommended block. Undefined means no nudge. */
+   * into pi's global settings. Drives the `/sf-pi skills` nudge line.
+   * Undefined means no nudge. */
   skillSources?: SkillSourcesNudge;
   /** Startup/setup issues detected by sf-pi doctor. When present, the
    * welcome screen nudges the user toward `/sf-pi doctor` and safe-start
@@ -308,9 +247,6 @@ export interface SplashData {
    *  non-darwin platform. Only renders one row — no live probing on the
    *  splash hot path. */
   caBundleNudge?: CaBundleNudgeSummary;
-  /** Telemetry posture (sf-pi default opts users out of pi's anonymous
-   *  install/update ping). Always present after the first collect. */
-  privacy?: PrivacyStatusSummary;
   /** True while the first full filesystem/settings hydration pass is pending. */
   loading?: boolean;
   /** True while Slack auth status is still being checked. */
@@ -329,8 +265,6 @@ export interface SplashData {
   lspHealth?: SfLspHealthSnapshot;
   /** Current Node.js runtime support status. Pure process-local read. */
   nodeRuntime?: NodeRuntimeStatusInfo;
-  /** Upstream Herdr pane-control runtime status; distinct from sf-herdr being enabled. */
-  herdrRuntime?: HerdrRuntimeStatusInfo;
   /** Bundled Nerd Font / glyph fallback status. Cache-first then local-only refresh. */
   fontRuntime?: FontRuntimeStatusInfo;
   /** Optional Hunk diff-review tool readiness. Cache-first; no integration implied. */

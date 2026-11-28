@@ -163,7 +163,7 @@ describe("Settled-turn Update Coordinator through native OMP", () => {
       "npm ci",
       "sf update stable",
     ]);
-    // The checkout lockfile pins the OMP runtime: never `omp update` or `pi update`.
+    // Auto Update never updates the OMP runtime: no `omp update` or `pi update`.
     expect(commands.filter((command) => /^(?:omp|pi) /.test(command))).toEqual([]);
 
     expect(entries.map((entry) => entry.data?.title)).toEqual([

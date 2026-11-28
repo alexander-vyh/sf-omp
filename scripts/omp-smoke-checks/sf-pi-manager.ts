@@ -13,7 +13,7 @@ import {
   applyCheckoutUpdate,
   planCheckoutUpdate,
 } from "../../extensions/sf-pi-manager/lib/auto-update-checkout.ts";
-import type { CommandOutput, SmokeApi } from "../omp-smoke-extension.ts";
+import type { SmokeApi } from "../omp-smoke-extension.ts";
 import { OMP_VERSION } from "../omp-runtime.ts";
 
 const EXTENSION = "sf-pi-manager";
@@ -108,16 +108,7 @@ export default async function managerChecks(api: SmokeApi): Promise<void> {
   });
 
   await api.run("pi-manager.command.doctor.runtime", EXTENSION, async () => {
-    // The runtime doctor asks npm for the latest Pi version; keep smoke offline.
-    const previousOffline = process.env.npm_config_offline;
-    process.env.npm_config_offline = "true";
-    let output: CommandOutput;
-    try {
-      output = await api.runCommand("sf-pi", "doctor runtime");
-    } finally {
-      if (previousOffline === undefined) delete process.env.npm_config_offline;
-      else process.env.npm_config_offline = previousOffline;
-    }
+    const output = await api.runCommand("sf-pi", "doctor runtime");
     api.requireTrue(
       output.text.includes("sf-pi Runtime Doctor") &&
         output.text.includes(`Host runtime:     OMP ${OMP_VERSION}`),

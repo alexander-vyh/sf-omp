@@ -1,6 +1,6 @@
 ---
 title: Privacy & telemetry
-description: SF Pi telemetry behavior, Pi runtime controls, and aggregate project metrics.
+description: SF Pi telemetry behavior, the OMP host, and aggregate project metrics.
 ---
 
 # Privacy & telemetry
@@ -20,33 +20,11 @@ SF Pi does not collect or transmit:
 - command-level usage from installed copies;
 - persistent user, device, or installation identifiers.
 
-## Pi runtime install telemetry
+## OMP host telemetry
 
-The upstream Pi runtime is separate from SF Pi. Pi can emit an anonymous
-install/update version ping after a fresh install or detected update and can
-perform a latest-version check.
-
-SF Pi opts users out of Pi's install/update ping by default. On the first session,
-it writes `enableInstallTelemetry: false` to Pi's global `settings.json` only
-when that key is unset. An explicit user choice is always preserved.
-
-Manage the setting through the normal SF Pi Manager surface:
-
-```text
-/sf-pi telemetry status
-/sf-pi telemetry on
-/sf-pi telemetry off
-```
-
-This default intentionally does not:
-
-- disable Pi's latest-version check;
-- edit shell profiles or environment variables;
-- change which model provider receives user requests.
-
-Pi's latest-version check can be disabled separately with
-`PI_SKIP_VERSION_CHECK=1`, or all Pi network behavior can be constrained with
-Pi's documented offline mode.
+sf-omp runs SF Pi inside native OMP, which is separate from SF Pi. SF Pi does
+not change OMP's telemetry settings; see OMP's own documentation for its host
+behavior.
 
 ## Aggregate repository metrics
 

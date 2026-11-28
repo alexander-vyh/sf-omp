@@ -36,7 +36,7 @@ export function compareInstructionSurfaceToBaseline(
     return { comparable: false, reason: "Measurement schema versions differ." };
   }
   if (!report.pi_runtime_version || report.pi_runtime_version !== baseline.pi_runtime_version) {
-    return { comparable: false, reason: "Pi Runtime versions differ." };
+    return { comparable: false, reason: "Host runtime versions differ." };
   }
 
   const current: InstructionSurfaceBaselineMeasurement = {

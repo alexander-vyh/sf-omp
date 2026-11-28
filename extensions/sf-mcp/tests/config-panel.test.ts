@@ -151,7 +151,7 @@ describe("SF MCP Manager catalog", () => {
     expect(output).toContain("OAuth 2.0 Authorization Code + PKCE");
     expect(output).toContain("SF CLI and MCP credentials are separate");
     expect(output).toContain("Authorization time");
-    expect(output).toContain("Pi native /mcp owns the OAuth grant");
+    expect(output).toContain("OMP native /mcp owns the OAuth grant");
     expect(connectionLines.every((line) => visibleWidth(line) <= 110)).toBe(true);
   });
 
@@ -621,7 +621,7 @@ describe("SF MCP Manager catalog", () => {
     const setup = intercom.renderContent(110).join("\n");
     expect(setup).toContain("Workspace region");
     expect(setup).toContain("United States");
-    expect(setup).toContain("/mcp login");
+    expect(setup).toContain("/mcp reauth");
     expect(setup).not.toMatch(/client secret|CLIENT_SECRET/i);
     expect(overview.length).toBeGreaterThan(0);
   });

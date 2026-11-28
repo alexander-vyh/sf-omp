@@ -26,7 +26,6 @@ function baseData(): SplashData {
     monthlyCost: 0,
     monthlyBudget: 3000,
     sfCli: { installed: true, freshness: "latest", loading: false, installedVersion: "2.134.6" },
-    privacy: { telemetryEnabled: false, source: "sf-pi-default" },
   };
 }
 

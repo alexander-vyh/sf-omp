@@ -60,25 +60,11 @@ describe("effective tree", () => {
     expect(classifyInvocationMode(readFileSync(cloneFile, "utf8"))).toBe("agent-invocable");
 
     const effectiveApex = path.join(
-      home,
-      ".pi",
-      "agent",
-      "sf-skills",
-      "effective",
-      "skills",
+      managedEffectiveSkillsPath(),
       "platform-apex-generate",
       "SKILL.md",
     );
-    const effectiveDx = path.join(
-      home,
-      ".pi",
-      "agent",
-      "sf-skills",
-      "effective",
-      "skills",
-      "dx-org-switch",
-      "SKILL.md",
-    );
+    const effectiveDx = path.join(managedEffectiveSkillsPath(), "dx-org-switch", "SKILL.md");
     expect(classifyInvocationMode(readFileSync(effectiveApex, "utf8"))).toBe("agent-invocable");
     expect(classifyInvocationMode(readFileSync(effectiveDx, "utf8"))).toBe("manual-only");
     expect(readFileSync(effectiveDx, "utf8")).toContain("body for dx-org-switch");
@@ -111,16 +97,10 @@ describe("effective tree", () => {
     rmSync(path.join(cloneSkills, "drop-me"), { recursive: true, force: true });
     syncEffectiveSkills(cloneSkills, { default: "manual-only", packs: {}, skills: {} });
     expect(
-      readFileSync(
-        path.join(home, ".pi", "agent", "sf-skills", "effective", "skills", "keep-me", "SKILL.md"),
-        "utf8",
-      ),
+      readFileSync(path.join(managedEffectiveSkillsPath(), "keep-me", "SKILL.md"), "utf8"),
     ).toContain("keep-me");
     expect(() =>
-      readFileSync(
-        path.join(home, ".pi", "agent", "sf-skills", "effective", "skills", "drop-me", "SKILL.md"),
-        "utf8",
-      ),
+      readFileSync(path.join(managedEffectiveSkillsPath(), "drop-me", "SKILL.md"), "utf8"),
     ).toThrow();
   });
   it("keeps the existing effective tree and warns when the clone skills path is missing", () => {

@@ -7,6 +7,8 @@ export function renderInstructionSurfaceMarkdown(
   report: InstructionSurfaceReport,
   comparison?: InstructionSurfaceBaselineComparison,
 ): string {
+  const skillsUnavailable = report.unavailable.some((item) => item.surface === "skills");
+  const guidanceUnavailable = report.unavailable.some((item) => item.surface === "tool_guidance");
   const lines = [
     "# Instruction Surface Report",
     "",
@@ -14,7 +16,7 @@ export function renderInstructionSurfaceMarkdown(
     "",
     `- Mode: \`${report.mode}\``,
     `- Measurement schema: \`${report.schema_version}\``,
-    `- Pi Runtime: \`${report.pi_runtime_version ?? "unknown"}\``,
+    `- Host runtime: \`${report.pi_runtime_version ?? "unknown"}\``,
     `- SF Pi: \`${report.sf_pi_version ?? "unknown"}\``,
     "",
     "## Summary",
@@ -31,11 +33,13 @@ export function renderInstructionSurfaceMarkdown(
       report.summary.sf_pi_tool_definition_chars,
       report.sections.sf_pi_tool_definitions.approximate_tokens,
     ),
-    summaryRow(
-      "External Salesforce skills",
-      report.summary.external_salesforce_skill_chars,
-      report.sections.external_salesforce_skills.approximate_tokens,
-    ),
+    skillsUnavailable
+      ? "| External Salesforce skills | unavailable | unavailable |"
+      : summaryRow(
+          "External Salesforce skills",
+          report.summary.external_salesforce_skill_chars,
+          report.sections.external_salesforce_skills.approximate_tokens,
+        ),
     summaryRow(
       "Effective startup estimate",
       report.summary.effective_startup_estimate_chars,
@@ -47,10 +51,22 @@ export function renderInstructionSurfaceMarkdown(
     "| Section | Items | Characters | Approx. tokens |",
     "| --- | ---: | ---: | ---: |",
     sectionRow("Tool definitions", report.sections.sf_pi_tool_definitions),
-    sectionRow("Tool guidance", report.sections.sf_pi_tool_guidance),
+    guidanceUnavailable
+      ? "| Tool guidance | unavailable | unavailable | unavailable |"
+      : sectionRow("Tool guidance", report.sections.sf_pi_tool_guidance),
     sectionRow("Hidden context", report.sections.sf_pi_hidden_context),
-    sectionRow("Bundled extension skills", report.sections.bundled_extension_skills),
+    skillsUnavailable
+      ? "| Bundled extension skills | unavailable | unavailable | unavailable |"
+      : sectionRow("Bundled extension skills", report.sections.bundled_extension_skills),
     "",
+    ...(report.unavailable.length > 0
+      ? [
+          "## Unavailable on this host",
+          "",
+          ...report.unavailable.map((item) => `- \`${item.surface}\`: ${item.reason}`),
+          "",
+        ]
+      : []),
     ...baselineMarkdown(comparison),
     "## Largest contributors",
     "",

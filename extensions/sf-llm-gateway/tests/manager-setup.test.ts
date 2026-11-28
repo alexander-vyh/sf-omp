@@ -193,7 +193,7 @@ describe("Manager Gateway setup", () => {
       getProviderAuth: vi.fn(async () => ({
         auth: { apiKey: "pi-saved-test-key" },
         env: { [GATEWAY_RESOLVED_ROOT_ENV]: "https://gateway.example.test" },
-        source: "Pi saved credential",
+        source: "OMP saved credential",
       })),
       getAll: () => [],
       getAvailable: () => [],

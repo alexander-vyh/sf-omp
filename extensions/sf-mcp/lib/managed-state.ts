@@ -132,7 +132,7 @@ export function inspectManagedServer(
     return {
       status: "name-conflict",
       conflictingNames: matches,
-      message: `${matches.join(", ")} collide after Pi normalizes hyphens and underscores.`,
+      message: `${matches.join(", ")} collide after OMP normalizes hyphens and underscores.`,
     };
   }
 
@@ -152,7 +152,7 @@ export function inspectManagedServer(
       configuredName,
       override,
       message:
-        "Pi applies this project override to the matching global server. Use Pi's native /mcp surface to change or remove the override, or explicitly reset it to a full project preset.",
+        "OMP applies this project override to the matching global server. Use OMP's native /mcp surface to change or remove the override, or explicitly reset it to a full project preset.",
     };
   }
 

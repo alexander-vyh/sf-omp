@@ -90,7 +90,7 @@ describe("Gateway complete-Provider auth resolution", () => {
     expect(result).toEqual({
       auth: { apiKey: "native-private" },
       env: { [GATEWAY_RESOLVED_ROOT_ENV]: "https://project-a.example.test" },
-      source: "Pi saved credential",
+      source: "OMP saved credential",
     });
     expect(result?.source).not.toMatch(/native|primary-env|saved-project|saved-global-private/i);
   });
@@ -261,7 +261,7 @@ describe("Gateway complete-Provider auth resolution", () => {
     const getProviderAuth = vi.fn(async () => ({
       auth: { apiKey: "native-runtime-private" },
       env: { [GATEWAY_RESOLVED_ROOT_ENV]: "https://runtime.example.test/v1" },
-      source: "Pi saved credential",
+      source: "OMP saved credential",
     }));
     controller.bind("/workspace/project-a", UNUSED_UI, "tui", {
       getProviderAuth,
@@ -273,7 +273,7 @@ describe("Gateway complete-Provider auth resolution", () => {
     expect(resolved).toEqual({
       apiKey: "native-runtime-private",
       baseUrl: "https://runtime.example.test",
-      source: "Pi saved credential",
+      source: "OMP saved credential",
     });
     expect(resolved?.source).not.toContain("native-runtime-private");
 
@@ -337,7 +337,7 @@ describe("Gateway provider auth through Pi public Models", () => {
     expect(resolved).toEqual({
       auth: { apiKey: "canonical-login-key" },
       env: { [GATEWAY_RESOLVED_ROOT_ENV]: "https://gateway.example.test" },
-      source: "Pi saved credential",
+      source: "OMP saved credential",
     });
     expect(stockPrompt).toHaveBeenCalledWith({
       type: "text",

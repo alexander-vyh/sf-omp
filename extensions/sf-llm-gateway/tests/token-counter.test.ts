@@ -75,7 +75,7 @@ describe("countTokens", () => {
     vi.spyOn(gatewayProviderRuntime.authController, "resolveRuntimeAuth").mockResolvedValue({
       apiKey: "pi-saved-test-key",
       baseUrl: "https://gateway.example.test",
-      source: "Pi saved credential",
+      source: "OMP saved credential",
     });
     globalThis.fetch = vi.fn(async () =>
       jsonResponse(200, {

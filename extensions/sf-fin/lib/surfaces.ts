@@ -58,7 +58,7 @@ export const CAPABILITIES: readonly Capability[] = [
     {
       surface: "none",
       via: "/login sf-fin",
-      why: "Pi owns the token; SF Fin never uses the CLI's own login or keychain.",
+      why: "OMP owns the token; SF Fin never uses the CLI's own login or keychain.",
     },
   ),
   cap(

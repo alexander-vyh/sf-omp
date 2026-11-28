@@ -5,10 +5,12 @@
  */
 import { InMemoryCredentialStore, createModels, type AuthPrompt } from "@earendil-works/pi-ai";
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { registerAuthOnlyProvider } from "../../../lib/common/auth-only-provider.ts";
+import { SF_PI_CREDENTIAL_KIND } from "../../../lib/common/pi-auth-status.ts";
 import type { SecureCredentialPromptBridge } from "../../../lib/common/secure-credential-prompt.ts";
 import { createAgentApiClient, probeAgentApiAccess } from "../lib/agent-api.ts";
 import {
@@ -19,9 +21,16 @@ import {
   detectAgentKeySource,
   sameSecret,
 } from "../lib/agent-key.ts";
-import { createSfFinAgentAuthController } from "../lib/auth.ts";
+import { createSfFinAgentAuthController, createSfFinAuthController } from "../lib/auth.ts";
 import { buildDebugBundle } from "../lib/debug.ts";
 import { createFinService } from "../lib/service.ts";
+
+// OMP's compatibility shim returns a provider's first active credential row.
+const ompRows = vi.hoisted(() => new Map<string, unknown>());
+vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  readStoredCredential: (provider: string) => ompRows.get(provider),
+}));
 
 const UNUSED_UI = {} as ExtensionUIContext;
 const AGENT_KEY = "fin-agent-sentinel-key-000000000000";
@@ -29,6 +38,7 @@ const PERSONAL = "fin-personal-sentinel-token-11111111";
 let agentDir: string;
 
 beforeEach(() => {
+  ompRows.clear();
   agentDir = mkdtempSync(path.join(tmpdir(), "sf-fin-agent-key-"));
   vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
   vi.stubEnv("FIN_AGENT_API_KEY", "");
@@ -42,9 +52,17 @@ afterEach(() => {
 function bridge(value: string): SecureCredentialPromptBridge {
   return { bind: vi.fn(), clear: vi.fn(), prompt: vi.fn(async () => value) };
 }
-function writeAuth(body: unknown): void {
-  mkdirSync(agentDir, { recursive: true });
-  writeFileSync(path.join(agentDir, "auth.json"), `${JSON.stringify(body)}\n`, "utf8");
+/** Row OMP stores after `/login <provider>` with an SF Pi API-key provider. */
+function ompApiKeyRow(provider: string, key: string, env?: Record<string, string>) {
+  return {
+    type: "oauth",
+    access: key,
+    refresh: "",
+    expires: 253_402_300_799_000,
+    accountId: provider,
+    [SF_PI_CREDENTIAL_KIND]: "api_key",
+    ...(env ? { env } : {}),
+  };
 }
 function modelsWith(value: string) {
   const promptBridge = bridge(value);
@@ -66,14 +84,14 @@ describe("Fin Agent API key storage", () => {
     expect(credential).toEqual({ type: "api_key", key: AGENT_KEY });
     await expect(models.getAuth("sf-fin-agent")).resolves.toMatchObject({
       auth: { apiKey: AGENT_KEY },
-      source: "Pi saved credential",
+      source: "OMP saved credential",
     });
     expect(promptBridge.prompt).toHaveBeenCalledTimes(1);
     expect(noPrompt).not.toHaveBeenCalled();
   });
 
   it("rejects the personal API token at login, before Pi persists anything", async () => {
-    writeAuth({ "sf-fin": { type: "api_key", key: PERSONAL } });
+    ompRows.set("sf-fin", ompApiKeyRow("sf-fin", PERSONAL));
     const { models } = modelsWith(PERSONAL);
     await expect(
       models.login("sf-fin-agent", "api_key", { prompt: noPrompt, notify: vi.fn() }),
@@ -102,7 +120,7 @@ describe("Fin Agent API key storage", () => {
   it("detects the key source for status without returning the value", () => {
     expect(detectAgentKeySource({})).toBe("none");
     expect(detectAgentKeySource({ FIN_AGENT_API_KEY: AGENT_KEY })).toBe("env");
-    writeAuth({ "sf-fin-agent": { type: "api_key", key: AGENT_KEY } });
+    ompRows.set("sf-fin-agent", ompApiKeyRow("sf-fin-agent", AGENT_KEY));
     expect(detectAgentKeySource({})).toBe("pi-auth");
     const text = agentKeyStatusLines({}, "pi-auth").join("\n");
     expect(text).toContain("/login sf-fin-agent");
@@ -118,16 +136,16 @@ describe("Fin Agent API key storage", () => {
 });
 
 describe("Fin Agent API key separation and transport", () => {
+  /** OMP host after sf-fin registered its providers and both `/login`s stored a key. */
   function ctxWith(keys: { agent?: string; personal?: string }) {
-    return {
-      cwd: agentDir,
-      modelRegistry: {
-        getProviderAuth: vi.fn(async (provider: string) => {
-          const key = provider === "sf-fin-agent" ? keys.agent : keys.personal;
-          return key ? { auth: { apiKey: key }, env: { INTERCOM_REGION: "us" } } : undefined;
-        }),
-      },
-    };
+    const ompPi = { registerProvider: vi.fn() };
+    registerAuthOnlyProvider(ompPi as never, createSfFinAuthController(bridge("")).provider);
+    registerAuthOnlyProvider(ompPi as never, createSfFinAgentAuthController(bridge("")).provider);
+    if (keys.personal) {
+      ompRows.set("sf-fin", ompApiKeyRow("sf-fin", keys.personal, { INTERCOM_REGION: "us" }));
+    }
+    if (keys.agent) ompRows.set("sf-fin-agent", ompApiKeyRow("sf-fin-agent", keys.agent));
+    return { cwd: agentDir, modelRegistry: { getApiKeyForProvider: vi.fn() } };
   }
 
   it("refuses to send a key equal to the personal token, from any source", async () => {

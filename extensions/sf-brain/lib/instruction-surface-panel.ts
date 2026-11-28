@@ -13,6 +13,8 @@ export function renderInstructionSurfaceReport(
   comparison?: InstructionSurfaceBaselineComparison,
 ): string[] {
   const safeWidth = Number.isFinite(width) ? Math.max(20, Math.floor(width)) : 100;
+  const skillsUnavailable = report.unavailable.some((item) => item.surface === "skills");
+  const guidanceUnavailable = report.unavailable.some((item) => item.surface === "tool_guidance");
   const lines: string[] = [
     "Instruction Surface Report",
     "Advisory character counts; prompt contents are never displayed.",
@@ -21,16 +23,25 @@ export function renderInstructionSurfaceReport(
     row("System prompt", report.summary.system_prompt_chars),
     row("SF Pi-owned", report.summary.sf_pi_owned_chars),
     row("SF Pi tool definitions", report.summary.sf_pi_tool_definition_chars),
-    row("External Salesforce skills", report.summary.external_salesforce_skill_chars),
+    skillsUnavailable
+      ? `  ${"External Salesforce skills".padEnd(29)} unavailable`
+      : row("External Salesforce skills", report.summary.external_salesforce_skill_chars),
     row("Effective startup estimate", report.summary.effective_startup_estimate_chars),
     row("Approximate tokens", report.summary.approximate_effective_startup_tokens),
     "",
     "SF Pi-owned sections",
     sectionRow("Tool definitions", report.sections.sf_pi_tool_definitions),
-    sectionRow("Tool guidance", report.sections.sf_pi_tool_guidance),
+    guidanceUnavailable
+      ? `  ${"Tool guidance".padEnd(20)} unavailable`
+      : sectionRow("Tool guidance", report.sections.sf_pi_tool_guidance),
     sectionRow("Hidden context", report.sections.sf_pi_hidden_context),
-    sectionRow("Bundled skills", report.sections.bundled_extension_skills),
+    skillsUnavailable
+      ? `  ${"Bundled skills".padEnd(20)} unavailable`
+      : sectionRow("Bundled skills", report.sections.bundled_extension_skills),
     "",
+    ...(report.unavailable.length > 0
+      ? ["Unavailable on this host", ...report.unavailable.map((item) => `  • ${item.reason}`), ""]
+      : []),
     ...comparisonLines(comparison),
     "Largest SF Pi contributors",
     ...report.largest_contributors

@@ -110,7 +110,7 @@ validation.
 This complete inventory is generated from `package.json`; edit that file and run `npm run generate-catalog`.
 
 <details>
-<summary>Show all 82 package scripts</summary>
+<summary>Show all 79 package scripts</summary>
 
 **Generated sources**
 
@@ -194,13 +194,10 @@ This complete inventory is generated from `package.json`; edit that file and run
 - `npm run e2e:sf-flow-families`
 - `npm run e2e:sf-flow-lifecycle`
 - `npm run e2e:sf-flow-provision`
-- `npm run e2e:sf-herdr`
 - `npm run e2e:sf-integrate`
 - `npm run e2e:sf-integrate-eca-matrix`
 - `npm run e2e:sf-integrate-outbound`
 - `npm run e2e:sf-lwc`
-- `npm run e2e:sf-mcp`
-- `npm run e2e:sf-mcp-contract`
 - `npm run e2e:sf-soql`
 
 **Development utilities**
@@ -386,8 +383,11 @@ instance URLs, raw responses, or private artifact paths.
 
 sf-pi keeps a curated list of external open-source pi extensions in
 [`catalog/recommendations.json`](./catalog/recommendations.json). We do not
-redistribute these packages — we only point at their upstream sources so
-users can install them via `pi install`.
+redistribute these packages — we only point at their upstream sources. sf-omp
+launches OMP explicit-only (`--no-extensions -e <checkout>`), so installed
+packages are never loaded; the Manager reports each recommendation as
+unsupported on OMP and names the OMP-native or bundled capability that covers
+it where one exists.
 
 To propose a new recommendation:
 

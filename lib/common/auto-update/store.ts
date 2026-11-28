@@ -2,7 +2,7 @@
 /**
  * Shared Native Auto Update settings and status.
  *
- * Settings live in global Pi settings because updates mutate the local machine,
+ * Settings live in global settings.json because updates mutate the local machine,
  * not a project. Status is cached so SF Welcome can render without running
  * update commands on the startup path.
  */
@@ -15,7 +15,8 @@ export const AUTO_UPDATE_CADENCE_MS = 24 * 60 * 60 * 1000;
 export const AUTO_UPDATE_STALE_RUNNING_MS = 30 * 60 * 1000;
 
 export type AutoUpdateResult = "success" | "failed" | "skipped";
-export type AutoUpdateTarget = "pi-runtime" | "pi-packages" | "sf-omp-checkout" | "sf-cli";
+/** `pi-runtime` is the host (native OMP) runtime; the key name is persisted state. */
+export type AutoUpdateTarget = "pi-runtime" | "sf-omp-checkout" | "sf-cli";
 
 export interface AutoUpdateTargetResult {
   target: AutoUpdateTarget;
@@ -122,12 +123,10 @@ export function markAutoUpdateRunning(target: AutoUpdateTarget): AutoUpdateStatu
     targets: undefined,
     message:
       target === "pi-runtime"
-        ? "Checking the Pi runtime"
-        : target === "pi-packages"
-          ? "Updating Pi packages"
-          : target === "sf-omp-checkout"
-            ? "Updating the sf-omp checkout"
-            : "Updating Salesforce CLI",
+        ? "Checking the OMP runtime"
+        : target === "sf-omp-checkout"
+          ? "Updating the sf-omp checkout"
+          : "Updating Salesforce CLI",
   });
 }
 
@@ -204,13 +203,7 @@ function normalizeStatus(value: unknown): AutoUpdateStatus {
 }
 
 function normalizeTarget(value: unknown): AutoUpdateTarget | undefined {
-  if (
-    value === "pi-runtime" ||
-    value === "pi-packages" ||
-    value === "sf-omp-checkout" ||
-    value === "sf-cli"
-  )
-    return value;
+  if (value === "pi-runtime" || value === "sf-omp-checkout" || value === "sf-cli") return value;
   if (value === "pi") return "pi-runtime";
   return undefined;
 }

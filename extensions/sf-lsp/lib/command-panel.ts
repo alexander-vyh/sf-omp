@@ -62,8 +62,8 @@ export async function openSfLspPanel(
                   ? "Disable this extension"
                   : "Enable this extension",
                 description: options.lifecycle.enabled
-                  ? "Add an exclusion for sf-lsp to your sf-pi settings and reload"
-                  : "Remove the exclusion for sf-lsp from your sf-pi settings and reload",
+                  ? "Add an exclusion for sf-lsp to your OMP config and restart OMP"
+                  : "Remove the exclusion for sf-lsp from your OMP config and restart OMP",
               },
             ]
           : []),

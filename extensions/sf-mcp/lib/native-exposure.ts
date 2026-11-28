@@ -1,14 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
- * Enforces Pi's `hidden` MCP tool exposure on hosts that ignore it.
+ * Enforces the reviewed `hidden` MCP tool exposure, which OMP itself ignores.
  *
- * OMP loads mcp.json entries but drops Pi's `exposure`/`toolExposure` fields, so
+ * OMP loads mcp.json entries but drops the `exposure`/`toolExposure` fields, so
  * every tool of a governed server would otherwise be callable. OMP describes
  * each MCP tool with `mcpServerName`/`mcpToolName`; SF MCP resolves those
  * against the native entry's reviewed policy. Only `hidden` changes behavior:
  * OMP has no codemode/deferred tiers, so other exposures keep OMP's default.
- * Pi reports no MCP identity on tools and enforces exposure natively, so this
- * is inert there.
  */
 import { inspectMcpConfig, mcpConfigPath, type McpExposure } from "./mcp-config.ts";
 

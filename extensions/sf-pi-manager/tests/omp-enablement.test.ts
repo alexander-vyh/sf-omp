@@ -12,12 +12,6 @@ import { fileURLToPath } from "node:url";
 import * as YAML from "yaml";
 import sfPiManagerExtension from "../index.ts";
 
-// vi.mock is hoisted above the imports, so the manager sees an OMP host.
-vi.mock("../../../lib/common/pi-compat.ts", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../../lib/common/pi-compat.ts")>()),
-  isOmpHost: () => true,
-}));
-
 const originalHome = process.env.HOME;
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const tempDirs: string[] = [];
@@ -145,15 +139,21 @@ describe("sf-pi manager on the OMP host", () => {
     expect(text).toMatch(/Recommended extensions \(OMP host\): \d+ unsupported/);
     expect(text).toContain("explicit-only");
     expect(text).toContain("✗ pi-web-access (npm:pi-web-access)");
-    expect(text).toContain("Under OMP: The bundled sf-herdr extension.");
+    expect(text).toContain("Under OMP: OMP's native task subagents.");
   });
 
-  it("refuses recommended install without running pi install", async () => {
+  it("refuses recommended install and remove", async () => {
+    const command = loadCommand();
     const ctx = makeContext("rpc");
-    await loadCommand()("recommended install pi-web-access", ctx);
+    await command("recommended install pi-web-access", ctx);
+    await command("recommended rm pi-web-access", ctx);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("/sf-pi recommended install is not supported under sf-omp."),
+      "warning",
+    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("/sf-pi recommended remove is not supported under sf-omp."),
       "warning",
     );
     expect(ctx.reload).not.toHaveBeenCalled();

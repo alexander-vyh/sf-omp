@@ -2,10 +2,9 @@
 /**
  * Helpers for npm's release-age / before policy.
  *
- * SF Pi uses these to avoid showing Pi Runtime update nudges when npm would
- * intentionally hide a newly-published release. This module is pure: callers
- * own subprocess execution so startup paths can stay cache-first and tests can
- * inject command output directly.
+ * The Fin CLI installer uses these to pick a release npm's policy will accept.
+ * This module is pure: callers own subprocess execution so tests can inject
+ * command output directly.
  */
 import { compareVersions } from "./catalog-state/whats-new.ts";
 
@@ -88,13 +87,6 @@ export function pickPolicyVisibleVersion(
     .sort((a, b) => compareVersions(b, a));
 
   return eligible[0];
-}
-
-export function readConfiguredNpmCommand(settings: Record<string, unknown>): string[] | undefined {
-  const value = settings.npmCommand;
-  if (!Array.isArray(value)) return undefined;
-  const command = value.filter((part): part is string => typeof part === "string" && !!part);
-  return command.length > 0 ? command : undefined;
 }
 
 function buildReleaseAgePolicy(

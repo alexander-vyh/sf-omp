@@ -19,7 +19,7 @@ import { parseDoctorArgs } from "../lib/doctor-command.ts";
 describe("parseCommandArgs", () => {
   it("defaults to overlay with auto-detect scope when no args", () => {
     // scope=undefined signals "resolve at dispatch time" (project > global).
-    // See lib/common/sf-pi-package-state.ts > resolveEffectiveScope.
+    // See lib/common/omp-extension-state.ts > resolveOmpConfigScope.
     const result = parseCommandArgs("");
     expect(result.subcommand).toBe("overlay");
     expect(result.scope).toBeUndefined();
@@ -164,6 +164,10 @@ describe("parseCommandArgs", () => {
     expect(result.subcommand).toBe("auto-update");
     expect(result.rest).toBe("run");
   });
+
+  it("treats the removed telemetry subcommand as unknown", () => {
+    expect(parseCommandArgs("telemetry off").subcommand).toBe("help");
+  });
 });
 
 describe("getSfPiArgumentCompletions", () => {
@@ -194,11 +198,6 @@ describe("getSfPiArgumentCompletions", () => {
   it("returns full argument-tail values for auto-update actions", () => {
     expect(values("auto-update st")).toEqual(["auto-update status"]);
     expect(labels("auto-update st")).toEqual(["status"]);
-  });
-
-  it("returns full argument-tail values for telemetry actions", () => {
-    expect(values("telemetry o")).toEqual(["telemetry on", "telemetry off"]);
-    expect(labels("telemetry o")).toEqual(["on", "off"]);
   });
 
   it("returns full argument-tail values for display profiles and scopes", () => {

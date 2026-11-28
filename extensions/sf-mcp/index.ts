@@ -2,18 +2,18 @@
 /**
  * sf-mcp behavior contract
  *
- * SF MCP is a catalog and conflict-aware installer for Pi's native MCP runtime.
+ * SF MCP is a catalog and conflict-aware installer for OMP's native MCP runtime.
  * It never connects an MCP server itself; its model tool only plans and writes
- * reviewed native configuration while Pi continues to own transport and OAuth.
+ * reviewed native configuration while OMP continues to own transport and OAuth.
  *
  * Behavior matrix:
  *
  *   Trigger                    | Result
  *   ---------------------------|-----------------------------------------------------------
  *   extension load             | Register command and Manager actions; no network/process
- *   session_start              | Cache routing guidance; deactivate policy-hidden MCP tools (OMP)
- *   before_agent_start         | Add guidance only for accepted active overlaps; re-hide (OMP)
- *   tool_call                  | Block an MCP tool whose native policy is hidden (OMP)
+ *   session_start              | Cache routing guidance; deactivate policy-hidden MCP tools
+ *   before_agent_start         | Append routing for accepted active overlaps; re-hide tools
+ *   tool_call                  | Block an MCP tool whose native policy is hidden
  *   /sf-mcp                    | Open the SF Pi Manager detail page
  *   Manager Settings           | Show the preset catalog and explicit setup workflow
  *   /sf-mcp status             | Print native-config and overlap status
@@ -43,10 +43,10 @@ import {
   registerManagerDetailActions,
   type ManagerDetailAction,
 } from "../../lib/common/manager-actions.ts";
-import { isOmpHost, requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { requirePiVersion } from "../../lib/common/pi-compat.ts";
 import { withSafeCommandHandler } from "../../lib/common/safe-command-handler.ts";
 import { formatConflictPlan } from "./lib/conflict-planner.ts";
-import { mcpConfigPath, setNativeMcpDialect } from "./lib/mcp-config.ts";
+import { mcpConfigPath } from "./lib/mcp-config.ts";
 import { deactivateHiddenMcpTools, hiddenMcpToolNames } from "./lib/native-exposure.ts";
 import { captureObservedMcpTools } from "./lib/observed-tools.ts";
 import { SALESFORCE_MCP_PRESETS, getPreset } from "./lib/presets.ts";
@@ -104,9 +104,9 @@ const ACTIONS: SfPiCommandAction<SfMcpAction>[] = [
   },
   {
     value: "native",
-    label: "Open Pi native MCP manager",
+    label: "Open OMP native MCP manager",
     description: "Prepare /mcp for connection, OAuth, exposure, and error management.",
-    group: "Native Pi",
+    group: "Native OMP",
   },
   {
     value: "help",
@@ -119,7 +119,6 @@ const ACTIONS: SfPiCommandAction<SfMcpAction>[] = [
 export default function sfMcp(pi: ExtensionAPI): void {
   if (!requirePiVersion(pi, "sf-mcp")) return;
 
-  setNativeMcpDialect(isOmpHost(pi) ? "omp" : "pi");
   registerSfMcpTool(pi);
   let routingGuidelines: string[] = [];
   pi.on("session_start", async (_event, ctx) => {
@@ -127,29 +126,21 @@ export default function sfMcp(pi: ExtensionAPI): void {
     routingGuidelines = buildMcpRoutingGuidelines(ctx.cwd);
     await deactivateHiddenMcpTools(pi, ctx.cwd);
   });
-  // One registration serves both hosts: Pi passes mutable structured prompt
-  // sections, OMP passes an ordered policy-block array and takes a replacement.
+  // OMP passes an ordered policy-block array and takes a replacement; Pi's
+  // declarations type the other event shape.
   const hostEvents = pi as unknown as {
     on(
       event: "before_agent_start",
       handler: (
-        event: { systemPrompt: unknown; systemPromptOptions?: { promptGuidelines: string[] } },
+        event: { systemPrompt: string[] },
         ctx: ExtensionContext,
-      ) => Promise<{ systemPrompt: string[] } | undefined>,
+      ) => Promise<{ systemPrompt: string[] }>,
     ): void;
   };
   hostEvents.on("before_agent_start", async (event, ctx) => {
     captureObservedMcpTools(pi.getAllTools());
     await deactivateHiddenMcpTools(pi, ctx.cwd);
-    if (Array.isArray(event.systemPrompt)) {
-      return { systemPrompt: withMcpRoutingBlock(event.systemPrompt, routingGuidelines) };
-    }
-    const promptGuidelines = event.systemPromptOptions?.promptGuidelines;
-    if (!promptGuidelines) return undefined;
-    for (const guideline of routingGuidelines) {
-      if (!promptGuidelines.includes(guideline)) promptGuidelines.push(guideline);
-    }
-    return undefined;
+    return { systemPrompt: withMcpRoutingBlock(event.systemPrompt, routingGuidelines) };
   });
   pi.on("tool_call", (event, ctx) => {
     if (!event.toolName.startsWith("mcp__")) return undefined;
@@ -162,7 +153,7 @@ export default function sfMcp(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand(COMMAND_NAME, {
-    description: "Salesforce MCP preset catalog, conflict planning, and native Pi setup",
+    description: "Salesforce MCP preset catalog, conflict planning, and native OMP setup",
     getArgumentCompletions: (prefix) => getFirstTokenCompletionsFromActions(ACTIONS, prefix),
     handler: async (args, ctx) => {
       await withSafeCommandHandler(ctx, COMMAND_NAME, async () => {
@@ -263,7 +254,7 @@ async function handleAction(
         pi,
         ctx,
         "SF MCP disable",
-        "Project MCP configuration is unavailable until Pi trusts this project. Use --scope global or /trust.",
+        "Project MCP configuration is unavailable until OMP trusts this project. Use --scope global or /trust.",
         fromPanel,
       );
     }
@@ -294,18 +285,10 @@ async function handleAction(
   if (action === "native") {
     if (ctx.mode === "tui") {
       ctx.ui.setEditorText("/mcp");
-      ctx.ui.notify("Prepared Pi's native /mcp manager in the editor.", "info");
+      ctx.ui.notify("Prepared OMP's native /mcp manager in the editor.", "info");
       return;
     }
-    return emit(
-      pi,
-      ctx,
-      "Native MCP",
-      isOmpHost(pi)
-        ? "Run `/mcp list` in an interactive OMP session."
-        : "Run `pi mcp list --json` outside a session.",
-      fromPanel,
-    );
+    return emit(pi, ctx, "Native MCP", "Run `/mcp list` in an interactive OMP session.", fromPanel);
   }
   return emit(pi, ctx, "SF MCP help", renderHelp(), fromPanel);
 }
@@ -340,8 +323,8 @@ function renderStatus(cwd: string, scope: "global" | "project"): string {
 
 function renderHelp(): string {
   return [
-    "SF MCP is a conflict-aware catalog for Pi's built-in MCP runtime.",
-    "Its sf_mcp tool plans native configuration; Pi still owns transport, OAuth, connections, and tokens.",
+    "SF MCP is a conflict-aware catalog for OMP's built-in MCP runtime.",
+    "Its sf_mcp tool plans native configuration; OMP still owns transport, OAuth, connections, and tokens.",
     "",
     "Commands:",
     "  /sf-mcp                         Open SF MCP in the Manager",
@@ -349,7 +332,7 @@ function renderHelp(): string {
     "  /sf-mcp status [--scope ...]    Show native configuration state",
     "  /sf-mcp conflicts <preset>      Explain capability overlaps",
     "  /sf-mcp disable <preset> [name] Disable one unchanged managed connection",
-    "  /sf-mcp native                  Prepare Pi's native /mcp manager",
+    "  /sf-mcp native                  Prepare OMP's native /mcp manager",
     "",
     "Use the catalog to enable presets. Existing entries require explicit adoption or diff-reviewed reset.",
   ].join("\n");

@@ -119,7 +119,7 @@ function handleList(ctx: ExtensionCommandContext): void {
     ctx.ui.notify(
       projectTrusted
         ? "No external skill directories detected under ~/.claude, ~/.codex, ~/.cursor, or this project."
-        : "No external global skill directories detected under ~/.claude, ~/.codex, or ~/.cursor. Project sources are hidden until Pi trusts this project.",
+        : "No external global skill directories detected under ~/.claude, ~/.codex, or ~/.cursor. Project sources are hidden because the host reports this project as untrusted.",
       "info",
     );
     return;
@@ -143,7 +143,7 @@ function handleList(ctx: ExtensionCommandContext): void {
   if (!projectTrusted) {
     lines.push(
       "",
-      "Project-scope sources are hidden until Pi trusts this project. Use /trust for future sessions, or restart with --approve to include them.",
+      "Project-scope sources are hidden because the host reports this project as untrusted.",
     );
   }
   lines.push(

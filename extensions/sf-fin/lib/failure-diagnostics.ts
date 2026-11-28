@@ -22,7 +22,7 @@ const PATTERNS: FailurePattern[] = [
     pattern:
       /UNABLE_TO_VERIFY_LEAF_SIGNATURE|SELF_SIGNED_CERT|CERT_HAS_EXPIRED|unable to get local issuer/i,
     advice:
-      "TLS certificate error. On a corporate network, set NODE_EXTRA_CA_CERTS to your CA bundle before starting Pi.",
+      "TLS certificate error. On a corporate network, set NODE_EXTRA_CA_CERTS to your CA bundle before starting OMP.",
   },
   {
     id: "ip-allowlist",

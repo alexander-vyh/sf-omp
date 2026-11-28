@@ -1,35 +1,15 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
- * Tests for extension state building and settings.json round-trips.
+ * Tests for extension state building.
  *
- * Covers: buildExtensionStates, getDisabledExtensions, applyExtensionState
+ * Covers: buildExtensionStates
  *
- * These functions determine which extensions are shown as enabled/disabled in
- * the TUI overlay and list commands. The exclusion pattern parsing and write-
- * back logic must match Pi's native package filtering spec exactly.
+ * This determines which extensions are shown as enabled/disabled in the TUI
+ * overlay and list commands, from the disabled-file set read out of OMP's
+ * `disabledExtensions`.
  */
-import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { applyExtensionState, buildExtensionStates, getDisabledExtensions } from "../index.ts";
-import { TEST_PACKAGE_SOURCE } from "../../../lib/common/test-fixtures.ts";
-
-const tempDirs: string[] = [];
-
-function createTempSettingsFile(settings: Record<string, unknown>): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "sf-pi-manager-test-"));
-  tempDirs.push(dir);
-  const filePath = path.join(dir, "settings.json");
-  writeFileSync(filePath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
-  return filePath;
-}
-
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+import { describe, expect, it } from "vitest";
+import { buildExtensionStates } from "../index.ts";
 
 // -------------------------------------------------------------------------------------------------
 // buildExtensionStates
@@ -77,174 +57,5 @@ describe("buildExtensionStates", () => {
     expect(spinner!.name).toBe("SF Ohana Spinner");
     expect(spinner!.category).toBe("ui");
     expect(spinner!.file).toBe("extensions/sf-ohana-spinner/index.ts");
-  });
-});
-
-// -------------------------------------------------------------------------------------------------
-// getDisabledExtensions
-// -------------------------------------------------------------------------------------------------
-
-describe("getDisabledExtensions", () => {
-  it("returns no disabled extensions for non-existent settings file when all defaults are enabled", () => {
-    const result = getDisabledExtensions("/tmp/does-not-exist-sf-pi-test.json");
-    expect(result).toEqual(new Set());
-  });
-
-  it("returns no disabled extensions for string-form package entry when all defaults are enabled", () => {
-    const settingsPath = createTempSettingsFile({
-      packages: [TEST_PACKAGE_SOURCE],
-    });
-
-    expect(getDisabledExtensions(settingsPath)).toEqual(new Set());
-  });
-
-  it("reads exclusion patterns from object-form package entry", () => {
-    const settingsPath = createTempSettingsFile({
-      packages: [
-        {
-          source: TEST_PACKAGE_SOURCE,
-          extensions: [
-            "extensions/*/index.ts",
-            "!extensions/sf-ohana-spinner/index.ts",
-            "!extensions/sf-llm-gateway/index.ts",
-          ],
-        },
-      ],
-    });
-
-    expect(getDisabledExtensions(settingsPath)).toEqual(
-      new Set(["extensions/sf-ohana-spinner/index.ts", "extensions/sf-llm-gateway/index.ts"]),
-    );
-  });
-
-  it("ignores non-exclusion extension entries", () => {
-    const settingsPath = createTempSettingsFile({
-      packages: [
-        {
-          source: TEST_PACKAGE_SOURCE,
-          extensions: [
-            "extensions/*/index.ts",
-            "extensions/other/*.ts",
-            "!extensions/sf-ohana-spinner/index.ts",
-          ],
-        },
-      ],
-    });
-
-    expect(getDisabledExtensions(settingsPath)).toEqual(
-      new Set(["extensions/sf-ohana-spinner/index.ts"]),
-    );
-  });
-
-  it("does not mark default-enabled extensions disabled when listed as explicitly enabled", () => {
-    const settingsPath = createTempSettingsFile({
-      packages: [
-        {
-          source: TEST_PACKAGE_SOURCE,
-          extensions: ["extensions/*/index.ts"],
-          enabledExtensions: ["extensions/sf-data360/index.ts"],
-        },
-      ],
-    });
-
-    expect(getDisabledExtensions(settingsPath)).not.toContain("extensions/sf-data360/index.ts");
-  });
-});
-
-// -------------------------------------------------------------------------------------------------
-// applyExtensionState
-// -------------------------------------------------------------------------------------------------
-
-describe("applyExtensionState", () => {
-  it("writes object-form package entry with exclusion patterns when some extensions are disabled", () => {
-    const settingsPath = createTempSettingsFile({
-      packages: [
-        {
-          source: TEST_PACKAGE_SOURCE,
-          skills: ["skills/*.md"],
-          themes: ["themes/*.json"],
-        },
-      ],
-    });
-
-    applyExtensionState(
-      {
-        index: 0,
-        source: TEST_PACKAGE_SOURCE,
-        isObject: true,
-        settingsPath,
-      },
-      new Set(["extensions/sf-data360/index.ts", "extensions/sf-ohana-spinner/index.ts"]),
-    );
-
-    const updated = JSON.parse(readFileSync(settingsPath, "utf8")) as {
-      packages: Array<Record<string, unknown>>;
-    };
-
-    expect(updated.packages[0]).toEqual({
-      source: TEST_PACKAGE_SOURCE,
-      skills: ["skills/*.md"],
-      themes: ["themes/*.json"],
-      extensions: [
-        "extensions/*/index.ts",
-        "!extensions/sf-data360/index.ts",
-        "!extensions/sf-ohana-spinner/index.ts",
-      ],
-    });
-  });
-
-  it("preserves object form when non-extension package config remains", () => {
-    const settingsPath = createTempSettingsFile({
-      packages: [
-        {
-          source: TEST_PACKAGE_SOURCE,
-          extensions: ["extensions/*/index.ts", "!extensions/sf-ohana-spinner/index.ts"],
-          skills: ["skills/*.md"],
-        },
-      ],
-    });
-
-    applyExtensionState(
-      {
-        index: 0,
-        source: TEST_PACKAGE_SOURCE,
-        isObject: true,
-        settingsPath,
-      },
-      new Set(),
-    );
-
-    const updated = JSON.parse(readFileSync(settingsPath, "utf8")) as {
-      packages: unknown[];
-    };
-
-    expect(updated.packages[0]).toEqual({
-      source: TEST_PACKAGE_SOURCE,
-      skills: ["skills/*.md"],
-    });
-  });
-
-  it("round-trips with getDisabledExtensions", () => {
-    const settingsPath = createTempSettingsFile({
-      packages: [TEST_PACKAGE_SOURCE],
-    });
-
-    const disabled = new Set([
-      "extensions/sf-data360/index.ts",
-      "extensions/sf-ohana-spinner/index.ts",
-      "extensions/sf-llm-gateway/index.ts",
-    ]);
-
-    applyExtensionState(
-      {
-        index: 0,
-        source: TEST_PACKAGE_SOURCE,
-        isObject: false,
-        settingsPath,
-      },
-      disabled,
-    );
-
-    expect(getDisabledExtensions(settingsPath)).toEqual(disabled);
   });
 });

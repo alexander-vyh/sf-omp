@@ -15,7 +15,8 @@ import {
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(currentDir, "../../..");
-const piBin = path.join(repoRoot, "node_modules", ".bin", "pi");
+// The repository launcher runs native OMP with `--no-extensions -e <checkout>` and the global auth bridge.
+const ompLauncher = path.join(repoRoot, "tools", "bin", "omp");
 const probeExtension = path.join(currentDir, "probe-extension.ts");
 const scenariosPath = path.join(currentDir, "scenarios.json");
 const args = parseArgs(process.argv.slice(2));
@@ -36,7 +37,6 @@ for (const scenario of scenarios) {
   const observationPath = path.join(runDir, "observation.json");
   try {
     const cliArgs = [
-      "--approve",
       "--no-session",
       "-e",
       probeExtension,
@@ -46,7 +46,7 @@ for (const scenario of scenarios) {
       "--print",
       scenario.prompt,
     ];
-    const processResult = spawnSync(piBin, cliArgs, {
+    const processResult = spawnSync(ompLauncher, cliArgs, {
       cwd: repoRoot,
       env: {
         ...process.env,

@@ -856,7 +856,7 @@ export class SfPiOverlayComponent implements ExtensionRows {
         label: ext.enabled ? "Disable extension" : "Enable extension",
         group: "Lifecycle",
         description: ext.enabled
-          ? "Add this extension to the disabled extension list (Pi package filters or OMP disabledExtensions)."
+          ? "Add this extension to OMP disabledExtensions (applies on the next OMP start)."
           : "Remove this extension from the disabled extension list.",
       });
     }

@@ -6,8 +6,7 @@
  *   - Two-column (default, termWidth ≥ SINGLE_COL_THRESHOLD):
  *       Left:  Gradient Pi logo, model info, optional gateway usage,
  *              environment checks, and release freshness rows
- *       Right: Announcements, loaded counts, recent sessions,
- *              recommended extensions, attribution
+ *       Right: Announcements, loaded counts, recent sessions, attribution
  *   - Single-column (narrow terminals): left block stacked above right block
  *     so no content gets squeezed or truncated with an ellipsis. See issue #17
  *     (macOS Terminal.app at ~92 cols was rendering the splash with a hard
@@ -310,7 +309,7 @@ function shouldRenderMonthlyUsage(data: SplashData): boolean {
 }
 
 const ICON_COL_WIDTH = 2;
-const LABEL_COL_WIDTH = "Herdr (Multiplexer)".length;
+const LABEL_COL_WIDTH = "Context Compaction".length;
 
 type SplashGlyphKey = Parameters<typeof glyph>[0];
 
@@ -629,44 +628,6 @@ function formatNodeRuntimeStatusValue(data: SplashData): string {
   return `${SF_ORANGE("?")} ${SF_ORANGE("Unknown")}`;
 }
 
-function compactHerdrRuntimeVersion(version: string): string {
-  const preview = version.match(/^(\d+\.\d+\.\d+-preview)/);
-  return preview?.[1] ?? version;
-}
-
-function formatHerdrRuntimeStatusValue(data: SplashData): string {
-  const herdr = data.herdrRuntime;
-  if (!herdr || herdr.loading) return MUTED("Checking");
-  if (herdr.kind === "ready") {
-    if (herdr.runtimeVersionLoading) {
-      return `${SF_GREEN("✓")} ${SF_GREEN("tools ready")} ${MUTED("· version checking")}`;
-    }
-    const version = herdr.runtimeVersion
-      ? compactHerdrRuntimeVersion(herdr.runtimeVersion)
-      : undefined;
-    if (herdr.piIntegration.kind !== "installed" && herdr.packageInstalled) {
-      const identity = version ? `${version} · ` : "";
-      return `${SF_ORANGE("!")} ${SF_ORANGE(`${identity}Pi bridge setup needed`)}`;
-    }
-    return version
-      ? `${SF_GREEN("✓")} ${SF_GREEN(version)} ${MUTED("· tools ready")}`
-      : `${SF_GREEN("✓")} ${SF_GREEN("tools ready")}`;
-  }
-  if (herdr.kind === "tool-only") {
-    return `${SF_ORANGE("!")} ${SF_ORANGE("Tools active")} ${MUTED("· start Pi inside Herdr")}`;
-  }
-  if (herdr.kind === "installed-not-active") {
-    const detail = herdr.activeControlEnv
-      ? "· reload or check package filters"
-      : "· start Pi inside Herdr";
-    return `${SF_ORANGE("!")} ${SF_ORANGE("Package installed")} ${MUTED(detail)}`;
-  }
-  if (herdr.kind === "disabled") {
-    return `${MUTED("○")} ${MUTED("Disabled")}`;
-  }
-  return `${SF_ORANGE("!")} ${SF_ORANGE("Not installed")} ${MUTED("· /sf-herdr doctor")}`;
-}
-
 function formatFontRuntimeStatusValue(data: SplashData, mode: GlyphMode): string {
   const font = data.fontRuntime;
   if (!font || font.loading || font.kind === "checking") {
@@ -766,11 +727,9 @@ function formatAutoUpdateStatusValue(data: SplashData, mode: GlyphMode): string 
   if (auto.status.running) {
     const labels: Record<string, string> = {
       "sf-cli": "SF CLI",
-      "pi-packages": "Pi packages",
       "sf-omp-checkout": "sf-omp checkout",
-      "pi-runtime": "Pi runtime",
     };
-    const target = labels[auto.status.currentTarget ?? "pi-runtime"] ?? "Pi runtime";
+    const target = labels[auto.status.currentTarget ?? "sf-omp-checkout"] ?? "sf-omp checkout";
     return MUTED(`${glyph("hourglass", mode)} Updating ${target}`);
   }
   if (!auto.enabled) return `${MUTED("○")} ${MUTED("Off · optional")}`;
@@ -791,7 +750,7 @@ function autoUpdateActionHint(data: SplashData): string | null {
   const auto = data.autoUpdate;
   if (!auto || !auto.enabled) return null;
   if (auto.status.lastResult === "failed") return "/sf-pi auto-update status";
-  if (auto.status.restartRecommended) return "restart pi to use updated runtime/extensions";
+  if (auto.status.restartRecommended) return "restart OMP to load the updated sf-omp checkout";
   return null;
 }
 
@@ -1088,12 +1047,6 @@ function buildLeftColumn(
     );
   }
 
-  // Herdr always consumes exactly one startup row. Healthy protocol/control
-  // identity belongs in on-demand detail rather than a second gray sub-line.
-  lines.push(
-    formatGlyphInfoRow("herdr", mode, "Herdr (Multiplexer)", formatHerdrRuntimeStatusValue(data)),
-  );
-
   lines.push(formatGlyphInfoRow("fonts", mode, "Fonts", formatFontRuntimeStatusValue(data, mode)));
   const fontHint = fontActionHint(data);
   if (fontHint) {
@@ -1150,16 +1103,6 @@ function buildLeftColumn(
     lines.push(`   ${MUTED(`→ ${truncated}`)}`);
   }
 
-  // Privacy / telemetry posture. sf-pi opts users out of pi's anonymous
-  // install/update ping by default. The row is always rendered so the
-  // posture is auditable at a glance — colored green for off, dim gray
-  // for on (informational, not a warning).
-  if (data.privacy) {
-    lines.push(
-      formatGlyphInfoRow("privacy", mode, "Privacy", formatPrivacyStatusValue(data.privacy)),
-    );
-  }
-
   lines.push(
     formatGlyphInfoRow("autoUpdate", mode, "Auto Update", formatAutoUpdateStatusValue(data, mode)),
   );
@@ -1185,10 +1128,9 @@ function buildLeftColumn(
     lines.push(`   ${MUTED(`→ ${truncated}`)}`);
   }
 
-  // SF Pi release freshness sits under SF Skills. Pi owns Pi Runtime
-  // release checks and update guidance. The sf-pi row carries the extension
-  // active/total count, replacing the older top-level "sf-pi Extensions"
-  // row without losing the enablement signal.
+  // SF Pi release freshness sits under SF Skills. The sf-pi row carries the
+  // extension active/total count, replacing the older top-level "sf-pi
+  // Extensions" row without losing the enablement signal.
   lines.push(
     formatGlyphInfoRow(
       "extensions",
@@ -1208,23 +1150,6 @@ function buildLeftColumn(
   return lines;
 }
 
-function formatPrivacyStatusValue(privacy: NonNullable<SplashData["privacy"]>): string {
-  const sourceLabel =
-    privacy.source === "sf-pi-default"
-      ? "sf-pi default"
-      : privacy.source === "user-override"
-        ? "user override"
-        : "unset";
-  // Lead with a ✓ glyph so this row aligns visually with the Slack /
-  // LLM Gateway / SF CLI rows above it. Color carries the semantics:
-  // green when telemetry is off (privacy-preserving), muted when on
-  // (informational, not a warning — see comment at call site).
-  if (privacy.telemetryEnabled) {
-    return `${MUTED("✓")} ${MUTED("telemetry on")} ${MUTED(`(${sourceLabel})`)}`;
-  }
-  return `${SF_GREEN("✓")} ${SF_GREEN("telemetry off")} ${MUTED(`(${sourceLabel})`)}`;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Right column builder
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1234,7 +1159,7 @@ function buildRightColumn(data: SplashData, colWidth: number, mode: GlyphMode): 
 
   // --- Doctor nudge (startup/setup self-heal) ---
   // Render first so setup issues get a clear, actionable next step instead
-  // of being buried behind general announcements or recommendations.
+  // of being buried behind general announcements.
   if (data.doctor && data.doctor.issueCount > 0) {
     lines.push(` ${BOLD}${SF_ORANGE(`${glyph("warn", mode)} Setup check`)}${RESET}`);
     const detail = truncate(data.doctor.message, Math.max(10, colWidth - 4));
@@ -1303,37 +1228,6 @@ function buildRightColumn(data: SplashData, colWidth: number, mode: GlyphMode): 
   }
   lines.push(horizontalRule(colWidth));
 
-  // --- Recommended extensions ---
-  // Replaces the legacy Salesforce AI block. Shows the install counter plus
-  // only the top four pending items so the splash stays scannable. Full
-  // detail, installed items, and declined decisions live in
-  // `/sf-pi recommended`.
-  const recs = data.recommendations;
-  if (recs && recs.total > 0) {
-    lines.push(
-      ` ${BOLD}${SF_BLUE(`${glyph("extensions", mode)} Recommended`)}${RESET}  ${SF_GREEN(`${recs.installedCount}`)}${MUTED(`/${recs.total} installed`)}`,
-    );
-    const pending = recs.items.filter((i) => i.status === "pending").slice(0, 4);
-    for (const item of pending) {
-      const truncated = truncate(item.name, Math.max(8, colWidth - 4));
-      lines.push(` ${MUTED("○")} ${MUTED(truncated)}`);
-    }
-    if (recs.pendingCount > 0) {
-      const more =
-        recs.pendingCount > pending.length
-          ? ` ${MUTED(`(+${recs.pendingCount - pending.length} more)`)}`
-          : "";
-      lines.push(
-        ` ${MUTED("→")} ${MUTED(`Top ${pending.length} not installed`)} ${SF_CYAN("/sf-pi recommended")}${more}`,
-      );
-    } else if (recs.installedCount === recs.total) {
-      lines.push(` ${SF_GREEN("✓")} ${MUTED("All recommendations installed")}`);
-    } else {
-      lines.push(` ${SF_GREEN("✓")} ${MUTED("No pending recommendations")}`);
-    }
-    lines.push(horizontalRule(colWidth));
-  }
-
   // --- External skill sources (Claude Code / Codex / Cursor interop) ---
   //
   // Surfaces a single-line nudge when pi's skill-discovery would pick up
@@ -1385,7 +1279,7 @@ function buildRightColumn(data: SplashData, colWidth: number, mode: GlyphMode): 
  *   - Never exceed the terminal. Keep a 2-col gutter when there is room so
  *     rounded corners do not sit on the pane edge.
  *   - No minimum box floor. A previous 80-col floor forced an 80-wide box
- *     into 60–79 col panes (typical Herdr vertical splits) and crashed Pi's
+ *     into 60–79 col panes (typical multiplexer vertical splits) and crashed Pi's
  *     TUI with `Rendered line N exceeds terminal width (80 > 78)`.
  *   - Maximum 220 so wide terminals fill instead of leaving a truncated-
  *     looking island with background text showing around it.

@@ -95,7 +95,7 @@ class SfPiManagerConfigPanel implements RowsPanel {
       pad(` ${autoCursor} ${t.fg("accent", autoBox)} ${t.bold("Enable daily native auto-update")}`),
     );
     for (const line of wrapPlainText(
-      "When enabled, due work waits for the next agent-settled boundary. SF Pi never updates or restarts the active Pi runtime. It updates only declared-compatible unpinned global npm Pi packages through Pi (including Herdr when outdated), then runs sf update stable.",
+      "When enabled, due work waits for the next agent-settled boundary. It fast-forwards a clean sf-omp checkout that is strictly behind its upstream (git pull --ff-only + npm ci), then runs sf update stable. It never updates or restarts the OMP runtime; use omp update for that.",
       Math.max(20, width - 5),
     )) {
       lines.push(pad(`    ${t.fg("dim", line)}`));

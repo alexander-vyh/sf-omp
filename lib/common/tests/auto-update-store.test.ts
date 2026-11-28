@@ -55,11 +55,12 @@ describe("Native Auto Update store", () => {
     markAutoUpdatePending();
     expect(readAutoUpdateStatus()).toMatchObject({ pending: true });
 
-    markAutoUpdateRunning("pi-packages");
+    markAutoUpdateRunning("sf-omp-checkout");
     expect(readAutoUpdateStatus()).toMatchObject({
       pending: false,
       running: true,
-      currentTarget: "pi-packages",
+      currentTarget: "sf-omp-checkout",
+      message: "Updating the sf-omp checkout",
     });
 
     markAutoUpdateResult({
@@ -67,8 +68,8 @@ describe("Native Auto Update store", () => {
       message: "done",
       restartRecommended: true,
       targets: [
-        { target: "pi-runtime", result: "skipped", message: "audited runtime retained" },
-        { target: "pi-packages", result: "success", message: "packages updated" },
+        { target: "pi-runtime", result: "skipped", message: "left to omp update" },
+        { target: "sf-omp-checkout", result: "success", message: "checkout updated" },
       ],
     });
     expect(readAutoUpdateStatus()).toMatchObject({
@@ -79,7 +80,7 @@ describe("Native Auto Update store", () => {
       restartRecommended: true,
       targets: [
         { target: "pi-runtime", result: "skipped" },
-        { target: "pi-packages", result: "success" },
+        { target: "sf-omp-checkout", result: "success" },
       ],
     });
   });
@@ -90,7 +91,7 @@ describe("Native Auto Update store", () => {
       message: `api_key=secret-value ${os.homedir()}/private https://private.example.test/path`,
       targets: [
         {
-          target: "pi-packages",
+          target: "sf-cli",
           result: "failed",
           message: `Bearer ${"x".repeat(24)} ${os.homedir()}`,
         },

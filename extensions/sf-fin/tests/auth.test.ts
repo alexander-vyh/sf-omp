@@ -43,7 +43,7 @@ function writeAuthFile(body: unknown): void {
   writeFileSync(path.join(agentDir, "auth.json"), `${JSON.stringify(body)}\n`, "utf8");
 }
 
-describe("sf-fin Pi-owned credential", () => {
+describe("sf-fin OMP-owned credential", () => {
   /** `/me` on the fixed regional hosts: 200 for `home`, 401 elsewhere (or a network error). */
   function meFetch(home: "us" | "eu" | "au" | "none" | "offline") {
     const hosts = {
@@ -86,7 +86,7 @@ describe("sf-fin Pi-owned credential", () => {
     await expect(models.getAuth("sf-fin")).resolves.toEqual({
       auth: { apiKey: SENTINEL },
       env: { INTERCOM_REGION: "eu" },
-      source: "Pi saved credential",
+      source: "OMP saved credential",
     });
     expect(prompt).not.toHaveBeenCalled();
     expect(promptBridge.prompt).toHaveBeenCalledTimes(1);

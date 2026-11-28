@@ -19,7 +19,7 @@ Use `sf_integrate` for plan-bound integration authentication setup in explicit S
 5. `mcp.handoff`
 6. Open the returned non-session-bearing Salesforce Setup URL, or pass the returned `navigation.route` as the `sf_browser_open_org` target, to inspect the exact External Client App.
 7. Pass the public consumer key and the same explicit `target_org` to `sf_mcp` with `status`, `connection.plan`, and exact `connection.apply`; use `login.handoff` with the returned per-org connection name. The interactive `/sf-mcp` Manager lists every instance beneath the preset and remains available for custom tool exposure.
-8. Reload Pi, run the returned per-org `/mcp login <connection-name>` command, and complete human OAuth consent.
+8. Run `/mcp reload`, then the returned per-org `/mcp login <connection-name>` command, and complete human OAuth consent.
 
 The generated public client uses `http://localhost:8765/callback`, Metadata API scopes `MCP, RefreshToken`, PKCE, named-user JWT access tokens, and refresh-token rotation. It never needs a client secret.
 

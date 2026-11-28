@@ -51,10 +51,9 @@ const SAMPLE_OUTCOMES: RegisteredDoctorOutcome[] = [
 
 vi.mock("../../../lib/common/doctor/diagnostics.ts", () => ({
   runDoctorDiagnostics: () => ({
-    piVersion: "0.86.1",
+    ompVersion: "19.2.1",
     nodeVersion: "v22.19.0",
-    runtime: {},
-    quietStartup: true,
+    runtime: { ompVersion: "19.2.1", nodeVersion: "v22.19.0", nodePath: "/usr/local/bin/node" },
     welcomeMode: "header",
     safeStartRequested: false,
     welcomeDisabled: false,
@@ -62,28 +61,10 @@ vi.mock("../../../lib/common/doctor/diagnostics.ts", () => ({
     skillCollisions: [],
     staleSkillPaths: [],
     availableSkillRoots: [],
-    sfPiPackageDuplicates: [],
   }),
 }));
-vi.mock("../lib/pi-web-access-doctor.ts", () => ({
-  runPiWebAccessDoctor: vi.fn().mockResolvedValue({
-    extensionId: "sf-pi-manager",
-    title: "pi-web-access compatibility",
-    summary: "1 warning",
-    durationMs: 3,
-    checks: [
-      {
-        id: "pi-web-access.synthetic-dns",
-        severity: "warn",
-        title: "pi-web-access may reject public fetches behind synthetic DNS",
-        detail: "github.com resolved into a reserved range.",
-        fix: "Review web-search.json.",
-      },
-    ],
-  }),
-}));
-vi.mock("../../../lib/common/doctor/runtime-cache.ts", () => ({
-  writeCachedRuntimeDiagnostics: vi.fn(),
+vi.mock("../../../lib/common/doctor/registry.ts", () => ({
+  runRegisteredDoctors: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("../../../lib/common/doctor/fixes.ts", () => ({
   applyDoctorFixes: () => ({
@@ -112,7 +93,7 @@ describe("handleDoctor", () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 
-  it("includes recommended pi-web-access compatibility diagnostics in status", async () => {
+  it("reports the OMP host and the sf-omp recovery launcher in status", async () => {
     const notify = vi.fn();
     const ctx = {
       cwd: "/tmp/sf-pi-doctor-test",
@@ -123,8 +104,35 @@ describe("handleDoctor", () => {
 
     await handleDoctor(ctx as unknown as ExtensionCommandContext, { subcommand: "status" });
 
+    expect(notify).toHaveBeenCalledOnce();
+    const [text, level] = notify.mock.calls[0] as [string, string];
+    expect(level).toBe("info");
+    expect(text).toContain("Host runtime:     OMP 19.2.1 (sf-omp host)");
+    expect(text).toContain("✓ No setup issues detected.");
+    expect(text).toMatch(/Recovery launch: SF_PI_SAFE_START=1 \S*tools[/\\]bin[/\\]omp$/m);
+  });
+
+  it("reports the native OMP runtime and its update command", async () => {
+    const notify = vi.fn();
+    const ctx = {
+      cwd: "/tmp/sf-pi-doctor-test",
+      hasUI: false,
+      ui: { notify },
+      reload: vi.fn(),
+    };
+
+    await handleDoctor(ctx as unknown as ExtensionCommandContext, { subcommand: "runtime" });
+
     expect(notify).toHaveBeenCalledWith(
-      expect.stringContaining("pi-web-access may reject public fetches behind synthetic DNS"),
+      [
+        "sf-pi Runtime Doctor",
+        "",
+        "Host runtime:     OMP 19.2.1 (sf-omp host)",
+        "Node.js:          v22.19.0",
+        "Node executable:  /usr/local/bin/node",
+        "",
+        "Update OMP: omp update --check, then omp update",
+      ].join("\n"),
       "info",
     );
   });

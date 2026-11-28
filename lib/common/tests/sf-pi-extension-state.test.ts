@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Unit tests for shared sf-pi extension enablement helpers. */
+/** Unit tests for shared sf-pi extension enablement helpers (native OMP config). */
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -10,27 +10,20 @@ import {
   isSfPiExtensionEnabled,
 } from "../sf-pi-extension-state.ts";
 
-function makeCwd(disabledFiles: string[]): string {
+/** Project-scope OMP config (`<cwd>/.omp/config.yml`) disabling the given bundled extensions. */
+function makeCwd(disabledIds: string[]): string {
   const cwd = mkdtempSync(join(tmpdir(), "sf-pi-extension-state-"));
-  const configDir = join(cwd, ".pi");
-  mkdirSync(configDir, { recursive: true });
+  mkdirSync(join(cwd, ".omp"), { recursive: true });
   writeFileSync(
-    join(configDir, "settings.json"),
-    `${JSON.stringify({
-      packages: [
-        {
-          source: "git:github.com/salesforce/sf-pi",
-          extensions: ["extensions/*/index.ts", ...disabledFiles.map((file) => `!${file}`)],
-        },
-      ],
-    })}\n`,
+    join(cwd, ".omp", "config.yml"),
+    `disabledExtensions:\n${disabledIds.map((id) => `  - extension-module:${id}\n`).join("")}`,
   );
   return cwd;
 }
 
 describe("sf-pi extension state", () => {
-  it("reads disabled extension filters from project settings", () => {
-    const cwd = makeCwd(["extensions/sf-slack/index.ts"]);
+  it("reads disabled bundled extensions from the project OMP config", () => {
+    const cwd = makeCwd(["sf-slack"]);
 
     expect(getDisabledExtensionFilesForCwd(cwd)).toEqual(new Set(["extensions/sf-slack/index.ts"]));
     expect(isSfPiExtensionEnabled(cwd, "sf-slack")).toBe(false);
@@ -38,28 +31,15 @@ describe("sf-pi extension state", () => {
     expect(isSfPiExtensionEnabled(cwd, "sf-welcome")).toBe(true);
   });
 
-  it("keeps default-enabled extensions enabled when listed as explicitly enabled", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "sf-pi-extension-state-"));
-    const configDir = join(cwd, ".pi");
-    mkdirSync(configDir, { recursive: true });
-    writeFileSync(
-      join(configDir, "settings.json"),
-      `${JSON.stringify({
-        packages: [
-          {
-            source: "git:github.com/salesforce/sf-pi",
-            extensions: ["extensions/*/index.ts"],
-            enabledExtensions: ["extensions/sf-data360/index.ts"],
-          },
-        ],
-      })}\n`,
-    );
+  it("never reports always-active extensions as disabled", () => {
+    const cwd = makeCwd(["sf-pi-manager"]);
 
-    expect(isSfPiExtensionEnabled(cwd, "sf-data360")).toBe(true);
+    expect(getDisabledExtensionFilesForCwd(cwd)).toEqual(new Set());
+    expect(isSfPiExtensionEnabled(cwd, "sf-pi-manager")).toBe(true);
   });
 
   it("filters footer statuses by owning extension enablement", () => {
-    const cwd = makeCwd(["extensions/sf-slack/index.ts"]);
+    const cwd = makeCwd(["sf-slack"]);
     const statuses = new Map([
       ["sf-slack-status", "Slack ✓ Connected"],
       ["sf-llm-gateway", "$1/∞"],

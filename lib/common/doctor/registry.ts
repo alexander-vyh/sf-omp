@@ -2,8 +2,8 @@
 /**
  * Process-scoped registry for per-extension doctor providers.
  *
- * `/sf-pi doctor` runs the built-in `runDoctorDiagnostics` (pi/node/skills/
- * package state) and then aggregates every extension that has registered a
+ * `/sf-pi doctor` runs the built-in `runDoctorDiagnostics` (OMP/Node/skills/
+ * startup state) and then aggregates every extension that has registered a
  * provider here. This replaces the historical pattern where each extension
  * shipped its own `lib/doctor.ts` consumed only by `/sf-X doctor` and never
  * surfaced in the manager.

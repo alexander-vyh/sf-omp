@@ -27,7 +27,7 @@ sf org list --all
 sf config get target-org
 ```
 
-Authenticate or set the target org with the Salesforce CLI, then reload pi.
+Authenticate or set the target org with the Salesforce CLI, then restart OMP.
 
 ## Glyphs render as question marks
 
@@ -82,14 +82,13 @@ Jump to an extension's Troubleshooting section to see the full fix. This index i
 
 **[SF Pi Manager](./extensions/sf-pi-manager.md#troubleshooting)**
 
-- The Manager cannot find SF Pi in settings
+- SF Pi commands are missing
 - A toggle does not take effect
-- A newer stable Pi version is outside the audited window
-- Auto Update skipped a package
+- The host runtime looks wrong
+- Auto Update did not update the checkout
 - Auto Update waits for a settled turn
 - Project changes do not stick
-- Recommended items or skill roots look stale
-- `pi-web-access` reports `Blocked internal address` for a public site
+- Announcements or skill roots look stale
 
 **[SF LLM Gateway](./extensions/sf-llm-gateway.md#troubleshooting)**
 
@@ -153,13 +152,6 @@ Jump to an extension's Troubleshooting section to see the full fix. This index i
 - Symptom
 - Symptom
 - Symptom
-
-**[SF Herdr](./extensions/sf-herdr.md#troubleshooting)**
-
-- `sf_herdr_plan` is unavailable
-- An ephemeral pane stayed open
-- The Herdr package is missing
-- Startup errors about `herdr_layout` / `herdr_pane` / `herdr_agent` conflicts
 
 **[SF Integrate](./extensions/sf-integrate.md#troubleshooting)**
 
@@ -279,8 +271,6 @@ Jump to an extension's Troubleshooting section to see the full fix. This index i
 
 - Glyphs render as boxes
 - The LSP row stays unknown
-- Herdr reports missing tools
-- Herdr tool-name conflicts at startup
 - Startup feels noisy
 - Content is clipped
 - Fonts are installed but glyphs remain wrong

@@ -90,7 +90,7 @@ export default function (pi: ExtensionAPI) {
   }));
 
   pi.on("before_agent_start", async (_event, ctx) => {
-    const disabled = disabledExtensionIds(pi, ctx.cwd);
+    const disabled = disabledExtensionIds(ctx.cwd);
     const enabled = new Set([...BUNDLED_EXTENSION_IDS].filter((id) => !disabled.has(id)));
     if (!shouldInjectConstitution(ctx.sessionManager, enabled)) return;
 
@@ -132,7 +132,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (_event, ctx) => {
     const summary = formatSfPiRoutingSummary(
       new Set(pi.getAllTools().map((tool) => tool.name)),
-      disabledExtensionIds(pi, ctx.cwd),
+      disabledExtensionIds(ctx.cwd),
     );
     if (!shouldInjectSfPiRoutingSummary(ctx.sessionManager, summary)) return;
 
