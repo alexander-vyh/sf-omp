@@ -163,16 +163,20 @@ describe("renderResult visual snapshots", () => {
     // Use a consistent default locale for snapshots, without replacing the
     // native formatting or overriding an explicit locale from the renderer.
     const { toLocaleDateString, toLocaleTimeString } = Date.prototype;
-    vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(
-      function (this: Date, locales, options) {
-        return toLocaleDateString.call(this, locales === undefined ? "en-US" : locales, options);
-      },
-    );
-    vi.spyOn(Date.prototype, "toLocaleTimeString").mockImplementation(
-      function (this: Date, locales, options) {
-        return toLocaleTimeString.call(this, locales === undefined ? "en-US" : locales, options);
-      },
-    );
+    vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(function (
+      this: Date,
+      locales,
+      options,
+    ) {
+      return toLocaleDateString.call(this, locales === undefined ? "en-US" : locales, options);
+    });
+    vi.spyOn(Date.prototype, "toLocaleTimeString").mockImplementation(function (
+      this: Date,
+      locales,
+      options,
+    ) {
+      return toLocaleTimeString.call(this, locales === undefined ? "en-US" : locales, options);
+    });
 
     getUserCache().clear();
     getChannelCache().clear();
