@@ -373,16 +373,16 @@ agent-facing tools.
 - Event handlers and TUI paths use public-seam Behavior Proofs where feasible; manual visual QA is final evidence only for visible behavior
 - Tests co-locate with their extension (`extensions/<id>/tests/`)
 - Run all tests: `npm test`
-- Run specific tests: `npx vitest run extensions/sf-ohana-spinner/tests/`
+- Run specific tests: `npm test -- extensions/sf-ohana-spinner/tests/` (Vitest runs under Bun for OMP's native modules)
 
 ## Development Workflow
 
 ```bash
 # Install dependencies
-npm install
+npm ci
 
-# Install locally for development
-pi install .
+# Run this checkout in native OMP
+npm start
 
 # Scaffold a new extension
 npm run scaffold -- --id sf-my-ext --category ui --intent "Personalize pi"

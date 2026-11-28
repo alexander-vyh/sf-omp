@@ -23,7 +23,7 @@ function tempFile(): string {
   return path.join(dir, "mcp.json");
 }
 
-describe("native Pi MCP configuration", () => {
+describe("native OMP MCP configuration", () => {
   it.each(["", "\uFEFF"])(
     "reads valid configuration without rewriting it (prefix %j)",
     (prefix) => {

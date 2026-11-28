@@ -196,7 +196,7 @@ export function registerSfIntegrateTool(
     promptSnippet:
       "Set up Salesforce hosted MCP OAuth, generic inbound ECA OAuth profiles, and outbound Named Credential stacks with plan-bound changes and compact proof.",
     promptGuidelines: [
-      "Use direction=mcp for Salesforce-side Headless 360 OAuth setup and hosted-server activation; sf_mcp remains the owner of Pi MCP configuration, exposure, connections, and tokens.",
+      "Use direction=mcp for Salesforce-side Headless 360 OAuth setup and hosted-server activation; sf_mcp remains the owner of OMP MCP configuration, exposure, connections, and tokens.",
       "Hosted MCP setup adopts an exact existing ECA, activates through runtime-proved Tooling capabilities, and returns activation_navigation.route for the sf_browser_open_org MCP Servers fallback when Tooling is unavailable.",
       "Use direction=inbound with eca_flow for Authorization Code, PKCE, Client Credentials, Device, JWT Bearer, or Token Exchange ECA profiles. Run plan, check-only-backed apply, then exact readback verification.",
       "Successful hosted MCP handoff includes the exact org identity, trusted host key, activation state, deterministic per-org server name, non-session-bearing Salesforce Setup URL, and navigation.route for sf_browser_open_org.",
