@@ -9,6 +9,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
+// Static: the extension's cold module graph exceeds the 5s per-test budget on
+// loaded CI runners when imported inside a test.
+import sfWelcome from "../index.ts";
 
 // Render assertions must not depend on the launching terminal (NO_COLOR, Terminal.app).
 beforeEach(() => {
@@ -61,16 +64,14 @@ describe("sf-welcome", () => {
     expect(source).toContain("dismiss(ctx)");
   });
 
-  it("exports a default function", async () => {
-    const mod = await import("../index.ts");
-    expect(typeof mod.default).toBe("function");
+  it("exports a default function", () => {
+    expect(typeof sfWelcome).toBe("function");
   });
 
-  it("registers flat slash-command completions", async () => {
-    const mod = await import("../index.ts");
+  it("registers flat slash-command completions", () => {
     const pi = { events: { on: vi.fn() }, on: vi.fn(), registerCommand: vi.fn() };
 
-    mod.default(pi as never);
+    sfWelcome(pi as never);
 
     const welcome = pi.registerCommand.mock.calls.find(([name]) => name === "sf-welcome")?.[1];
     expect(welcome?.getArgumentCompletions?.("sum")?.map((item) => item.value)).toEqual([
