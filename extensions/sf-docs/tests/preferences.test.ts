@@ -6,25 +6,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let tempAgentDir: string;
 
-vi.mock("@earendil-works/pi-coding-agent", async () => {
-  const actual = await vi.importActual<typeof import("@earendil-works/pi-coding-agent")>(
-    "@earendil-works/pi-coding-agent",
-  );
-  return { ...actual, getAgentDir: () => tempAgentDir };
-});
-
 describe("sf-docs preferences", () => {
   let cwd: string;
   let prefs: typeof import("../lib/preferences.ts");
 
   beforeEach(async () => {
     tempAgentDir = mkdtempSync(path.join(tmpdir(), "sf-docs-agent-"));
+    vi.stubEnv("PI_CODING_AGENT_DIR", tempAgentDir);
     cwd = mkdtempSync(path.join(tmpdir(), "sf-docs-cwd-"));
     vi.resetModules();
     prefs = await import("../lib/preferences.ts");
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     rmSync(tempAgentDir, { recursive: true, force: true });
     rmSync(cwd, { recursive: true, force: true });
   });

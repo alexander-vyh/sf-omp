@@ -6,23 +6,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let tempAgentDir: string;
 
-vi.mock("@earendil-works/pi-coding-agent", async () => {
-  const actual = await vi.importActual<typeof import("@earendil-works/pi-coding-agent")>(
-    "@earendil-works/pi-coding-agent",
-  );
-  return { ...actual, getAgentDir: () => tempAgentDir };
-});
-
 describe("sf-docs catalog cache", () => {
   let cache: typeof import("../lib/catalog-cache.ts");
 
   beforeEach(async () => {
     tempAgentDir = mkdtempSync(path.join(tmpdir(), "sf-docs-cache-"));
+    vi.stubEnv("PI_CODING_AGENT_DIR", tempAgentDir);
     vi.resetModules();
     cache = await import("../lib/catalog-cache.ts");
   });
 
-  afterEach(() => rmSync(tempAgentDir, { recursive: true, force: true }));
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(tempAgentDir, { recursive: true, force: true });
+  });
 
   it("caches only allowlisted collection metadata and reports staleness", () => {
     expect(cache.readCatalogCache(1000)).toMatchObject({ hit: false, stale: true });

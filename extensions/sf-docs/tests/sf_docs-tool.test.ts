@@ -9,16 +9,10 @@ let tempAgentDir: string;
 let originalEndpoint: string | undefined;
 let originalToken: string | undefined;
 
-vi.mock("@earendil-works/pi-coding-agent", async () => {
-  const actual = await vi.importActual<typeof import("@earendil-works/pi-coding-agent")>(
-    "@earendil-works/pi-coding-agent",
-  );
-  return { ...actual, getAgentDir: () => tempAgentDir };
-});
-
 describe("sf_docs tool", () => {
   beforeEach(() => {
     tempAgentDir = mkdtempSync(path.join(tmpdir(), "sf-docs-tool-"));
+    vi.stubEnv("PI_CODING_AGENT_DIR", tempAgentDir);
     originalEndpoint = process.env.SF_DOCS_MCP_ENDPOINT;
     originalToken = process.env.SF_DOCS_MCP_TOKEN;
     process.env.SF_DOCS_MCP_TOKEN = "sfmcp-test-token";
@@ -29,6 +23,7 @@ describe("sf_docs tool", () => {
     else process.env.SF_DOCS_MCP_ENDPOINT = originalEndpoint;
     if (originalToken === undefined) delete process.env.SF_DOCS_MCP_TOKEN;
     else process.env.SF_DOCS_MCP_TOKEN = originalToken;
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     rmSync(tempAgentDir, { recursive: true, force: true });
   });
