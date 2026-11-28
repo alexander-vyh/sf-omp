@@ -105,7 +105,12 @@ describe("emitHumanOnlyCommandOutput", () => {
       bold: (text: string) => text,
     };
     const custom = vi.fn(async (factory) => {
-      component = factory({ terminal: { rows: 30 } }, theme, {}, vi.fn());
+      component = factory(
+        { size: () => ({ columns: 80, rows: 30 }), requestRender: vi.fn(), suspend: vi.fn() },
+        theme,
+        {},
+        vi.fn(),
+      );
     });
     const ctx = {
       cwd: process.cwd(),

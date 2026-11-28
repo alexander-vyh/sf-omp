@@ -7,6 +7,7 @@ import type {
   ExtensionTheme as Theme,
   ExtensionUiHost,
 } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { stripEscapes } from "@oh-my-pi/pi-tui/text/ansi";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const PI_AGENT_ENV = "PI_CODING_AGENT_DIR";
@@ -76,7 +77,8 @@ describe("SF Guardrail config panel", () => {
     expect(panel.render(120).join("\n")).toContain("No matching rules.");
     panel.handleInput?.("\x1b[H");
     panel.handleInput?.("\x1b[120u"); // Kitty 'x' at the start of the query.
-    expect(panel.render(120).join("\n")).toContain("xdoes-not-exist");
+    // The focused field draws its caret with reverse video on the next glyph.
+    expect(stripEscapes(panel.render(120).join("\n"))).toContain("Filter: xdoes-not-exist (0)");
     panel.handleInput?.("\r");
     expect(panel.capturesNavigation?.()).toBe(false);
     panel.handleInput?.("\x1b");
