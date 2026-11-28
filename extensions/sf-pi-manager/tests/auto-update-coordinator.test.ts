@@ -115,6 +115,28 @@ describe("Agent-Settled Update Coordinator", () => {
     );
   });
 
+  it("treats OMP's reasonless session_start as startup, never an explicit reload", async () => {
+    writeAutoUpdateEnabled(true);
+    const pi = {
+      exec: vi.fn(async () => ({ stdout: "ok", stderr: "", code: 0, killed: false })),
+      appendEntry: vi.fn(),
+    } as unknown as ExtensionAPI;
+    const ctx = context();
+
+    const reloaded = makeCoordinator(pi);
+    reloaded.onSessionStart("reload", ctx);
+    await reloaded.onAgentSettled(ctx);
+    expect(pi.exec).not.toHaveBeenCalled();
+    expect(readAutoUpdateStatus().pending).not.toBe(true);
+
+    // OMP 19 emits `{ type: "session_start" }` without a reason, once per runtime start.
+    const started = makeCoordinator(pi);
+    started.onSessionStart(undefined, ctx);
+    expect(readAutoUpdateStatus()).toMatchObject({ pending: true, running: false });
+    await started.onAgentSettled(ctx);
+    expect(pi.exec).toHaveBeenCalledWith("sf", ["update", "stable"], expect.anything());
+  });
+
   it("waits in the background for idleness after a settled turn, without blocking", async () => {
     writeAutoUpdateEnabled(true);
     const calls: string[] = [];

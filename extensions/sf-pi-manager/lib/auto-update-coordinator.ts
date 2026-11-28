@@ -21,7 +21,8 @@ import { runNativeAutoUpdate, type NativeAutoUpdateRunOptions } from "./auto-upd
 import { appendAutoUpdateTranscript } from "./auto-update-transcript.ts";
 
 export interface AgentSettledUpdateCoordinator extends ManualAutoUpdateRunner {
-  onSessionStart(reason: string, ctx: ExtensionContext): void;
+  /** `reason` is undefined on OMP, whose session_start carries none. */
+  onSessionStart(reason: string | undefined, ctx: ExtensionContext): void;
   onAgentStart(): void;
   onAgentSettled(ctx: ExtensionContext, aborted?: boolean): Promise<void>;
   onSessionShutdown(): void;
@@ -128,7 +129,10 @@ export function createAgentSettledUpdateCoordinator(
   return {
     onSessionStart(reason, ctx) {
       disposed = false;
-      pending = reason === "startup" && ctx.hasUI && shouldRunAutoUpdate();
+      // OMP's session_start carries no reason and fires once per runtime start
+      // (session changes arrive as session_switch), so a missing reason is startup.
+      const startup = reason === undefined || reason === "startup";
+      pending = startup && ctx.hasUI && shouldRunAutoUpdate();
       if (pending) markAutoUpdatePending();
     },
     onAgentStart() {
