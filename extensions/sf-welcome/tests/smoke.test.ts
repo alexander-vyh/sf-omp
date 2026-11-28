@@ -9,16 +9,19 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
-// Static: the extension's cold module graph exceeds the 5s per-test budget on
-// loaded CI runners when imported inside a test.
-import sfWelcome from "../index.ts";
+import type sfWelcomeExtension from "../index.ts";
+
+let sfWelcome: typeof sfWelcomeExtension;
 
 // Render assertions must not depend on the launching terminal (NO_COLOR, Terminal.app).
-beforeEach(() => {
+// The first import loads the extension's cold module graph after the env stubs; it can
+// exceed the 5s per-test budget on loaded CI runners, so it runs in this hook instead.
+beforeEach(async () => {
   vi.stubEnv("NO_COLOR", undefined);
   vi.stubEnv("TERM_PROGRAM", undefined);
   vi.stubEnv("SF_PI_ASCII_ICONS", undefined);
-});
+  sfWelcome ??= (await import("../index.ts")).default;
+}, 30_000);
 
 afterEach(() => {
   vi.unstubAllEnvs();
