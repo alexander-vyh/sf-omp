@@ -21,7 +21,15 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["./scripts/vitest-setup.ts"],
     // Leave published OMP packages to Bun, which handles their `type: "text"` imports.
-    server: { deps: { external: [/\/node_modules\/@oh-my-pi\//] } },
+    // Inline the Pi SDK so its getAgentDir() sees the setup file's HOME-following
+    // `node:os` mock: Bun caches the startup home, so an external SDK would put
+    // fixture state in the developer's real ~/.pi/agent.
+    server: {
+      deps: {
+        external: [/\/node_modules\/@oh-my-pi\//],
+        inline: [/\/node_modules\/@earendil-works\/pi-coding-agent\//],
+      },
+    },
     coverage: {
       // Bun uses JavaScriptCore, not V8. Instrument source for coverage.
       provider: "istanbul",
