@@ -99,7 +99,7 @@ This complete top-level inventory is generated from `lib/common/`. Directory cou
 | `slack-status/`                | directory |                     1 |               0 |
 | `state-store.ts`               | module    |                     1 |               0 |
 | `test-fixtures.ts`             | module    |                     1 |               0 |
-| `tests/`                       | directory |                     0 |              53 |
+| `tests/`                       | directory |                     0 |              56 |
 | `tldraw-status/`               | directory |                     1 |               0 |
 | `ui-field.ts`                  | module    |                     1 |               0 |
 | `ui-glyphs.ts`                 | module    |                     1 |               0 |

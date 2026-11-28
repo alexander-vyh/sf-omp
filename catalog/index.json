@@ -1197,7 +1197,7 @@
     "entry": "extensions/sf-pi-manager/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 5409
+    "srcLoc": 5413
   },
   {
     "id": "sf-planreview",
