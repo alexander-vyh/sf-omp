@@ -9,8 +9,8 @@ import {
   truncateHead,
   truncateTail,
   type TruncationResult,
-  withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue } from "@oh-my-pi/pi-coding-agent/tools/file-mutation-queue";
 import type { SfPiToolResultEnvelope } from "../../../lib/common/display/types.ts";
 
 export type SlackTruncationStrategy = "head" | "tail";

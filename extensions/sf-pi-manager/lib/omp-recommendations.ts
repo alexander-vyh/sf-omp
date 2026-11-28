@@ -23,7 +23,6 @@ const OMP_COVERAGE: Record<string, string> = {
   "pi-interview": "OMP's native ask tool.",
   "pi-tool-display": "OMP's native tool-call rendering.",
   "pi-subagents": "OMP's native task subagents.",
-  "pi-herdr": "The bundled sf-herdr extension.",
 };
 
 export function ompRecommendationCoverage(id: string): string {

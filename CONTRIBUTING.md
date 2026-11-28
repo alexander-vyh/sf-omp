@@ -70,15 +70,15 @@ npm install
 - `pre-push` blocks force-pushes and deletion of `main`; CI remains the source
   of truth for full lint/typecheck/test validation.
 - `post-merge` runs `npm install` when a pull or merge changes
-  `package-lock.json`. Pi never installs dependencies for a local-path package,
-  so this keeps a checkout loaded with `pi install .` startable after a pull
+  `package-lock.json`. The OMP launcher loads this checkout in place and never
+  installs dependencies, so this keeps `tools/bin/omp` startable after a pull
   that adds a runtime dependency. A rebase pull that replays local commits skips
   this hook; run `npm install` after it.
 
-Optional local install for manual testing:
+Run the checkout in native OMP for manual testing:
 
 ```bash
-pi install .
+tools/bin/omp
 ```
 
 ## Scripts reference
@@ -110,7 +110,7 @@ validation.
 This complete inventory is generated from `package.json`; edit that file and run `npm run generate-catalog`.
 
 <details>
-<summary>Show all 83 package scripts</summary>
+<summary>Show all 79 package scripts</summary>
 
 **Generated sources**
 
@@ -194,13 +194,10 @@ This complete inventory is generated from `package.json`; edit that file and run
 - `npm run e2e:sf-flow-families`
 - `npm run e2e:sf-flow-lifecycle`
 - `npm run e2e:sf-flow-provision`
-- `npm run e2e:sf-herdr`
 - `npm run e2e:sf-integrate`
 - `npm run e2e:sf-integrate-eca-matrix`
 - `npm run e2e:sf-integrate-outbound`
 - `npm run e2e:sf-lwc`
-- `npm run e2e:sf-mcp`
-- `npm run e2e:sf-mcp-contract`
 - `npm run e2e:sf-soql`
 
 **Development utilities**
@@ -219,7 +216,6 @@ This complete inventory is generated from `package.json`; edit that file and run
 - `npm run audit:production`
 - `npm run omp`
 - `npm run parity:omp`
-- `npm run postinstall`
 - `npm run smoke:auth`
 - `npm run smoke:omp`
 - `npm run start`
@@ -387,8 +383,11 @@ instance URLs, raw responses, or private artifact paths.
 
 sf-pi keeps a curated list of external open-source pi extensions in
 [`catalog/recommendations.json`](./catalog/recommendations.json). We do not
-redistribute these packages — we only point at their upstream sources so
-users can install them via `pi install`.
+redistribute these packages — we only point at their upstream sources. sf-omp
+launches OMP explicit-only (`--no-extensions -e <checkout>`), so installed
+packages are never loaded; the Manager reports each recommendation as
+unsupported on OMP and names the OMP-native or bundled capability that covers
+it where one exists.
 
 To propose a new recommendation:
 

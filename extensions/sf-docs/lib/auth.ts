@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Pi-owned bearer credential and endpoint resolution for SF Docs. */
+/** OMP-owned bearer credential and endpoint resolution for SF Docs. */
 import type { AuthInteraction } from "@earendil-works/pi-ai";
 import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import {
@@ -94,7 +94,7 @@ export function createSfDocsAuthController(
               ...(endpoint?.ok === true ? { baseUrl: endpoint.endpoint } : {}),
             },
             ...(endpoint?.ok === true ? { env: { [ENV_ENDPOINT]: endpoint.endpoint } } : {}),
-            source: saved ? "Pi saved credential" : ENV_TOKEN,
+            source: saved ? "OMP saved credential" : ENV_TOKEN,
           };
         },
       },
@@ -162,7 +162,7 @@ export async function getDocsToken(
     message: [
       "SF Docs is not connected.",
       "Run /login sf-docs in interactive TUI mode; SF Pi prompts for the endpoint URL then masks the access token.",
-      `For automation, set ${ENV_TOKEN} and ${ENV_ENDPOINT} before starting Pi.`,
+      `For automation, set ${ENV_TOKEN} and ${ENV_ENDPOINT} before starting OMP.`,
     ].join("\n"),
   };
 }
@@ -223,7 +223,7 @@ export function resolveEndpoint(): EndpointResolution {
       error: [
         "SF Docs endpoint is not configured.",
         "Run /login sf-docs in interactive TUI mode; SF Pi prompts for the endpoint URL then masks the access token.",
-        `For automation, set ${ENV_ENDPOINT} and ${ENV_TOKEN} before starting Pi.`,
+        `For automation, set ${ENV_ENDPOINT} and ${ENV_TOKEN} before starting OMP.`,
       ].join("\n"),
     };
   }

@@ -1,94 +1,93 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+/** Status reads over OMP's agent-database credential rows. */
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   hasPiAuthProviderApiKey,
   readPiAuthProviderEnv,
   readPiAuthProviderStatus,
+  SF_PI_CREDENTIAL_KIND,
 } from "../pi-auth-status.ts";
 
-const tempDirs: string[] = [];
+// OMP's compatibility shim returns a provider's first active credential row.
+const ompRows = vi.hoisted(() => new Map<string, unknown>());
+vi.mock("@earendil-works/pi-coding-agent", () => ({
+  readStoredCredential: (provider: string) => ompRows.get(provider),
+}));
 
-function makeAuthFile(body: unknown): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "sf-pi-auth-status-"));
-  tempDirs.push(dir);
-  const file = path.join(dir, "auth.json");
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, `${JSON.stringify(body, null, 2)}\n`, "utf8");
-  return file;
+/** Row an SF Pi auth-only provider stores for a Pi API-key login. */
+function sfPiApiKeyRow(key: string, env?: Record<string, string>) {
+  return {
+    type: "oauth",
+    access: key,
+    refresh: "",
+    expires: 253_402_300_799_000,
+    accountId: "sf-docs",
+    [SF_PI_CREDENTIAL_KIND]: "api_key",
+    ...(env ? { env } : {}),
+  };
 }
 
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
+const sfPiOAuthRow = {
+  type: "oauth",
+  access: "secret-token",
+  refresh: "secret-refresh",
+  expires: Date.now(),
+  accountId: "sf-docs",
+  [SF_PI_CREDENTIAL_KIND]: "oauth",
+};
+
+beforeEach(() => ompRows.clear());
 
 describe("readPiAuthProviderStatus", () => {
-  it("detects Pi-owned API-key and OAuth credentials without returning values", () => {
-    for (const credential of [
+  it("detects OMP-stored API-key and OAuth credentials without returning values", () => {
+    for (const row of [
       { type: "api_key", key: "secret-key" },
-      { type: "oauth", access: "secret-token", refresh: "secret-refresh", expires: Date.now() },
+      sfPiApiKeyRow("secret-key"),
+      sfPiOAuthRow,
     ]) {
-      const file = makeAuthFile({ "sf-docs": credential });
+      ompRows.set("sf-docs", row);
 
-      expect(readPiAuthProviderStatus("sf-docs", file)).toEqual({
+      expect(readPiAuthProviderStatus("sf-docs")).toEqual({
         provider: "sf-docs",
         configured: true,
-        source: "pi-auth-store",
       });
     }
   });
 
-  it("reports missing or malformed auth stores as status only", () => {
-    const missingDir = mkdtempSync(path.join(tmpdir(), "sf-pi-auth-status-"));
-    tempDirs.push(missingDir);
-    const missing = path.join(missingDir, "auth.json");
-    expect(readPiAuthProviderStatus("sf-docs", missing)).toMatchObject({
+  it("reports missing or unrecognized credential rows as unconfigured", () => {
+    expect(readPiAuthProviderStatus("sf-docs")).toEqual({
+      provider: "sf-docs",
       configured: false,
-      source: "missing",
     });
 
-    const malformed = makeAuthFile("not-json-object");
-    writeFileSync(malformed, "{", "utf8");
-    expect(readPiAuthProviderStatus("sf-docs", malformed)).toMatchObject({
-      configured: false,
-      source: "pi-auth-store",
-    });
+    ompRows.set("sf-docs", { type: "session-cookie", value: "secret" });
+    expect(readPiAuthProviderStatus("sf-docs")).toMatchObject({ configured: false });
   });
 
   it("distinguishes API-key credentials from endpoint-only and OAuth entries", () => {
-    const apiKey = makeAuthFile({
-      "sf-docs": { type: "api_key", key: "secret-key" },
-    });
-    const endpointOnly = makeAuthFile({
-      "sf-docs": {
-        type: "api_key",
-        env: { SF_DOCS_MCP_ENDPOINT: "https://docs.example.test/" },
-      },
-    });
-    const oauth = makeAuthFile({
-      "sf-docs": { type: "oauth", access: "secret-token", expires: Date.now() },
-    });
+    ompRows.set("sf-docs", sfPiApiKeyRow("secret-key"));
+    expect(hasPiAuthProviderApiKey("sf-docs")).toBe(true);
 
-    expect(hasPiAuthProviderApiKey("sf-docs", apiKey)).toBe(true);
-    expect(hasPiAuthProviderApiKey("sf-docs", endpointOnly)).toBe(false);
-    expect(hasPiAuthProviderApiKey("sf-docs", oauth)).toBe(false);
+    ompRows.set(
+      "sf-docs",
+      sfPiApiKeyRow("", { SF_DOCS_MCP_ENDPOINT: "https://docs.example.test/" }),
+    );
+    expect(hasPiAuthProviderApiKey("sf-docs")).toBe(false);
+
+    ompRows.set("sf-docs", sfPiOAuthRow);
+    expect(hasPiAuthProviderApiKey("sf-docs")).toBe(false);
   });
 
   it("reads a named credential env value without returning secrets", () => {
     const secret = "sfmcp-must-not-return";
-    const file = makeAuthFile({
-      "sf-docs": {
-        type: "api_key",
-        key: secret,
-        env: { SF_DOCS_MCP_ENDPOINT: "https://docs.example.test/" },
-      },
-    });
+    ompRows.set(
+      "sf-docs",
+      sfPiApiKeyRow(secret, { SF_DOCS_MCP_ENDPOINT: "https://docs.example.test/" }),
+    );
 
-    expect(readPiAuthProviderEnv("sf-docs", "SF_DOCS_MCP_ENDPOINT", file)).toBe(
+    expect(readPiAuthProviderEnv("sf-docs", "SF_DOCS_MCP_ENDPOINT")).toBe(
       "https://docs.example.test/",
     );
-    expect(readPiAuthProviderEnv("sf-docs", "key", file)).toBeUndefined();
+    expect(readPiAuthProviderEnv("sf-docs", "key")).toBeUndefined();
   });
 });

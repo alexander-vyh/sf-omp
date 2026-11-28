@@ -8,8 +8,8 @@
  *   - cross-reference edges (→ uses @actions.X / @variables.X / @subagent.X)
  */
 
-import { Text } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionRows, ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
+import { textRows } from "../../../../lib/common/ui-rows.ts";
 import { padRightVisible, visibleWidth, clipLine } from "./shared.ts";
 
 interface ComponentSummary {
@@ -118,14 +118,14 @@ interface InspectArgs {
 
 // ─── renderCall ───────────────────────────────────────────────────────────────
 
-export function renderInspectCall(args: InspectArgs, theme: Theme): Text {
+export function renderInspectCall(args: InspectArgs, theme: Theme): ExtensionRows {
   const label = theme.fg("toolTitle", theme.bold("🔍 Agent Script inspect "));
   const action = args.action ?? "structure";
   const summary =
     action === "structure"
       ? `${action} · ${args.path ?? "?"}`
       : `${action} · ${args.symbol ?? "?"} in ${args.path ?? "?"}`;
-  return new Text(label + theme.fg("muted", summary), 0, 0);
+  return textRows(label + theme.fg("muted", summary));
 }
 
 // ─── renderResult ─────────────────────────────────────────────────────────────
@@ -134,22 +134,18 @@ export function renderInspectResult(
   result: { details?: InspectStructureDetails | unknown; content?: unknown[] },
   opts: { isPartial?: boolean; expanded?: boolean },
   theme: Theme,
-): Text {
-  if (opts.isPartial) return new Text(theme.fg("warning", "🔍 inspect · running…"), 0, 0);
+): ExtensionRows {
+  if (opts.isPartial) return textRows(theme.fg("warning", "🔍 inspect · running…"));
   const details = (result.details ?? {}) as InspectStructureDetails;
   if (!details.ok) {
-    return new Text(
-      theme.fg("error", `✗ ${getFirstText(result.content) || "inspect failed"}`),
-      0,
-      0,
-    );
+    return textRows(theme.fg("error", `✗ ${getFirstText(result.content) || "inspect failed"}`));
   }
   if (details.action !== "structure") {
     // find_references / definition keep their existing summary rendering;
     // only structure gets the tree view in Phase 2.
-    return new Text(getFirstText(result.content), 0, 0);
+    return textRows(getFirstText(result.content));
   }
-  return new Text(formatStructureBody(details, theme, /*ansi=*/ true), 0, 0);
+  return textRows(formatStructureBody(details, theme, /*ansi=*/ true));
 }
 
 // ─── Markdown emitter ─────────────────────────────────────────────────────────

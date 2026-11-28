@@ -6,7 +6,7 @@ import { createReadStream } from "node:fs";
 import { cp, mkdir, readdir, readFile, readlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import { ROOT, localOmpCommand, runtimeEnvironment } from "./omp-runtime.ts";
+import { ROOT, proofOmpCommand, runtimeEnvironment } from "./omp-runtime.ts";
 
 const runRoot = path.join(
   ROOT,
@@ -86,7 +86,7 @@ env.SF_OMP_LSP_WORKSPACE = workspace;
 env.SF_DISABLE_TELEMETRY = "true";
 env.SFDX_DISABLE_TELEMETRY = "true";
 const command = [
-  ...localOmpCommand(),
+  ...proofOmpCommand(env),
   "--mode",
   "rpc",
   "--no-ui",

@@ -33,7 +33,7 @@ Open its Manager detail or change its package state with:
 - slack_send requires user confirmation in interactive mode and refuses headless unless SLACK_ALLOW_HEADLESS_SEND=1.
 - slack_schedule schedule/delete require user confirmation in interactive mode and refuse headless unless SLACK_ALLOW_HEADLESS_SEND=1.
 - Read-only by default; only canvas create/edit, slack_send, and slack_schedule schedule/delete mutate.
-- Interactive login uses SF Pi's shared fixed-mask component; Pi alone persists and removes API-key or OAuth-compatible credentials.
+- Interactive login uses masked credential entry; OMP alone persists and removes API-key or OAuth-compatible credentials.
 - Tokens are never displayed unmasked.
 
 ## Exact reference

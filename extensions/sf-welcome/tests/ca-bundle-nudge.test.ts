@@ -8,10 +8,9 @@
  *   3. probe state doesn't match macOS-no-bundle pattern \u2192 no nudge
  *   4. all three gates pass \u2192 nudge surfaces with stable command + message
  *
- * Each test uses pathOverrides for the two state files so we don't
- * depend on PI_CODING_AGENT_DIR redirects \u2014 the welcome extension's
- * isSfPiExtensionEnabled gate still reads global settings, so we redirect
- * that via PI_CODING_AGENT_DIR (matches the privacy + brain test pattern).
+ * Each test uses pathOverrides for the two state files. The
+ * isSfPiExtensionEnabled gate reads OMP's `disabledExtensions` config, so
+ * PI_CODING_AGENT_DIR is redirected to keep the user's global config.yml out.
  */
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -38,23 +37,10 @@ function writeEnvelope(filePath: string, state: unknown): void {
   writeFileSync(filePath, `${JSON.stringify({ schemaVersion: 1, state }, null, 2)}\n`, "utf8");
 }
 
-/**
- * Mark the internal-only gateway extension as enabled in the global
- * settings file under the redirected agent dir. Without this every
- * test would early-out on the "extension disabled" gate.
- */
-function enableGatewayExtension(): void {
-  const settingsPath = path.join(tmpDir, "settings.json");
-  writeFileSync(settingsPath, "{}", "utf8");
-  // The default for sf-llm-gateway is "enabled when settings
-  // doesn't list it as disabled". An empty settings.json suffices.
-}
-
 beforeEach(() => {
   tmpDir = mkdtempSync(path.join(os.tmpdir(), "sf-pi-ca-nudge-"));
   prevAgentDir = process.env[PI_AGENT_ENV];
   process.env[PI_AGENT_ENV] = tmpDir;
-  enableGatewayExtension();
 });
 
 afterEach(() => {
@@ -84,22 +70,13 @@ describe("collectCaBundleNudge", () => {
     expect(nudge?.message).toContain("~/.zshenv");
   });
 
-  it("hides when the gateway extension is disabled in pi settings", () => {
-    // pi's disable mechanism: add a `packages[]` entry sourced at sf-pi
-    // with an `extensions: ["!<file>"]` exclusion. This mirrors how the
-    // sf-pi-manager actually writes disables; using the wrong shape would
-    // make this test silently pass even if the gate broke.
-    const settingsPath = path.join(tmpDir, "settings.json");
+  it("hides when the gateway extension is disabled in OMP config", () => {
+    // OMP's disable mechanism, as the sf-pi-manager writes it: an
+    // `extension-module:<id>` entry in the project `.omp/config.yml`.
+    mkdirSync(path.join(tmpDir, ".omp"), { recursive: true });
     writeFileSync(
-      settingsPath,
-      JSON.stringify({
-        packages: [
-          {
-            source: "npm:sf-pi@latest",
-            extensions: ["!extensions/sf-llm-gateway/index.ts"],
-          },
-        ],
-      }),
+      path.join(tmpDir, ".omp", "config.yml"),
+      "disabledExtensions:\n  - extension-module:sf-llm-gateway\n",
       "utf8",
     );
     writeEnvelope(probeStatePath(), {

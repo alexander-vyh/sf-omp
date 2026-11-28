@@ -6,8 +6,9 @@
  * OMP widgets present the latest check; diagnostic previews are always visible.
  * The tool-result feedback remains the model-facing diagnostics channel.
  */
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Box, Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { nativeUi, textRows } from "../../../lib/common/ui-rows.ts";
 import { languageLongLabel, statusColor, type LspActivityStatus } from "./activity.ts";
 import type { SupportedLanguage } from "./types.ts";
 
@@ -18,7 +19,7 @@ const presentationContexts = new WeakMap<ExtensionAPI, ExtensionContext>();
 export function registerLspTranscriptPresentation(pi: ExtensionAPI): void {
   pi.on("session_start", (_event, ctx) => {
     presentationContexts.set(pi, ctx);
-    if (ctx.hasUI) ctx.ui.setWidget(LSP_TRANSCRIPT_CUSTOM_TYPE, undefined);
+    if (ctx.hasUI) nativeUi(ctx.ui).setWidget(LSP_TRANSCRIPT_CUSTOM_TYPE, undefined);
   });
   pi.on("session_shutdown", () => {
     presentationContexts.delete(pi);
@@ -62,18 +63,12 @@ export function shouldEmitTranscriptRow(
 }
 
 export function emitTranscriptRow(pi: ExtensionAPI, details: LspTranscriptDetails): void {
-  pi.appendEntry<LspTranscriptEntry>(LSP_TRANSCRIPT_CUSTOM_TYPE, {
-    content: buildPlainContent(details),
-    details,
-  });
+  const entry = { content: buildPlainContent(details), details };
+  pi.appendEntry<LspTranscriptEntry>(LSP_TRANSCRIPT_CUSTOM_TYPE, entry);
   const ctx = presentationContexts.get(pi);
   if (ctx?.hasUI) {
-    ctx.ui.setWidget(LSP_TRANSCRIPT_CUSTOM_TYPE, (_tui, theme) =>
-      createTranscriptRenderer()(
-        { data: { content: buildPlainContent(details), details } },
-        { expanded: true },
-        theme,
-      ),
+    nativeUi(ctx.ui).setWidget(LSP_TRANSCRIPT_CUSTOM_TYPE, (_ui, theme) =>
+      createTranscriptRenderer()({ data: entry }, { expanded: true }, theme),
     );
   }
 }
@@ -98,13 +93,13 @@ function buildPlainContent(details: LspTranscriptDetails): string {
   }
 }
 
-/**
- * Renderer callback. Must return a pi-tui Component. Stays pure — all theme
- * colors are reapplied via `theme.fg` at render time so theme changes pick
- * up correctly (see tui.md "Invalidation and Theme Changes").
- */
+/** Styled rows for the human-only diagnostic widget. */
 export function createTranscriptRenderer() {
-  return (entry: { data?: LspTranscriptEntry }, options: { expanded: boolean }, theme: Theme) => {
+  return (
+    entry: { data?: LspTranscriptEntry },
+    options: { expanded: boolean },
+    theme: ExtensionTheme,
+  ) => {
     const details = entry.data?.details;
     const status = details?.status ?? "idle";
     const color = statusColor(status);
@@ -126,9 +121,10 @@ export function createTranscriptRenderer() {
       text += theme.fg("dim", "\n  ▸ ctrl+e to expand");
     }
 
-    const box = new Box(1, 0, (s) => theme.bg("customMessageBg", s));
-    box.addChild(new Text(text, 0, 0));
-    return box;
+    const rows = textRows(text, 1);
+    return {
+      render: (width: number) => rows.render(width).map((row) => theme.bg("customMessageBg", row)),
+    };
   };
 }
 
@@ -137,7 +133,10 @@ function formatDurationForRow(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function renderExpandedBody(details: LspTranscriptDetails | undefined, theme: Theme): string {
+function renderExpandedBody(
+  details: LspTranscriptDetails | undefined,
+  theme: ExtensionTheme,
+): string {
   if (!details) return "";
   const lines: string[] = [];
 

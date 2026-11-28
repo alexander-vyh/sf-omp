@@ -29,13 +29,11 @@ import {
   buildAnnouncementsSync,
   refreshAnnouncements,
 } from "../../../lib/common/catalog-state/announcements-orchestrator.ts";
-import { collectRecommendationsStatus } from "./recommendations-status.ts";
 import { collectCaBundleNudge } from "./ca-bundle-nudge.ts";
 import { readCachedNodeCertStatus } from "./node-cert-cache.ts";
 import { detectSfPiReleaseStatus } from "./release-status.ts";
 import { summarizeAvailableSkillSources } from "../../../lib/common/skill-sources/skill-sources.ts";
 import { readCodeAnalyzerReadiness } from "../../../lib/common/code-analyzer-status/store.ts";
-import { getTelemetryState } from "../../../lib/common/privacy/state.ts";
 import { isNodeRuntimeSupported, NODE_RUNTIME_FLOOR } from "../../../lib/common/runtime-floor.ts";
 import {
   readAutoUpdateEnabled,
@@ -52,7 +50,6 @@ import {
   readCachedPlannotatorRuntime,
 } from "../../../lib/common/plannotator-runtime.ts";
 import { defaultHomebrewStatus, readCachedHomebrewStatus } from "./homebrew-status.ts";
-import { collectHerdrRuntimeStatus } from "./herdr-runtime-status.ts";
 import {
   runDoctorDiagnostics,
   summarizeStartupDoctorNudge,
@@ -66,7 +63,6 @@ import type {
   LoadedCounts,
   NodeRuntimeStatusInfo,
   AutoUpdateStatusInfo,
-  PrivacyStatusSummary,
   SplashData,
 } from "./types.ts";
 
@@ -84,7 +80,6 @@ export type {
   NodeCertStatusKind,
   NodeCertStatusSource,
   NodeRuntimeStatusInfo,
-  HerdrRuntimeStatusInfo,
   FontRuntimeStatusInfo,
   HunkStatusInfo,
   HomebrewStatusInfo,
@@ -92,9 +87,6 @@ export type {
   SplashData,
   RecentSession,
   ExtensionHealthItem,
-  RecommendationsStatusSummary,
-  RecommendationStatusItem,
-  RecommendationDisplayStatus,
 } from "./types.ts";
 export { discoverExtensionHealth } from "./extension-health.ts";
 export {
@@ -348,8 +340,6 @@ export function resolveMonthlyUsage(
 
 interface SplashRuntimeOptions {
   doctor?: DoctorNudgeSummary;
-  activeToolNames?: string[];
-  allToolNames?: string[];
 }
 
 export function collectInitialSplashData(
@@ -404,27 +394,20 @@ export function collectInitialSplashData(
     lspEnabled,
     lspHealth: getSfLspHealth(),
     nodeRuntime: collectNodeRuntimeStatus(),
-    herdrRuntime: collectHerdrRuntimeStatus(cwd, {
-      activeToolNames: options.activeToolNames,
-      allToolNames: options.allToolNames,
-    }),
     fontRuntime: readCachedFontRuntimeStatus() ?? defaultFontRuntimeStatus(),
     hunk: readCachedHunkStatus() ?? defaultHunkStatus(),
     plannotator: readCachedPlannotatorRuntime() ?? defaultPlannotatorRuntime(),
     homebrew: readCachedHomebrewStatus() ?? defaultHomebrewStatus(),
     autoUpdate: collectAutoUpdateStatus(),
     browserRuntime: readCachedBrowserRuntimeStatus() ?? defaultBrowserRuntimeStatus(),
-    sfPiRelease: detectSfPiReleaseStatus(cwd),
+    sfPiRelease: detectSfPiReleaseStatus(),
     codeAnalyzer:
       cwd && isSfPiExtensionEnabled(cwd, "sf-code-analyzer")
         ? readCodeAnalyzerReadiness()
         : undefined,
     nodeCert: { kind: "checking", loading: true },
     doctor:
-      options.doctor ??
-      summarizeStartupDoctorNudge(runDoctorDiagnostics({ cwd, runtime: "cached" })) ??
-      undefined,
-    privacy: collectPrivacyStatus(),
+      options.doctor ?? summarizeStartupDoctorNudge(runDoctorDiagnostics({ cwd })) ?? undefined,
   };
 }
 
@@ -437,8 +420,6 @@ export function collectSplashData(
     includeLoadedCounts?: boolean;
     includeSessionCostFallback?: boolean;
     doctor?: DoctorNudgeSummary;
-    activeToolNames?: string[];
-    allToolNames?: string[];
   } = {},
 ): SplashData {
   const includeLoadedCounts = options.includeLoadedCounts !== false;
@@ -478,10 +459,7 @@ export function collectSplashData(
       : undefined;
 
   const doctor =
-    options.doctor ??
-    summarizeStartupDoctorNudge(runDoctorDiagnostics({ cwd, runtime: "cached" })) ??
-    undefined;
-  const privacy = collectPrivacyStatus();
+    options.doctor ?? summarizeStartupDoctorNudge(runDoctorDiagnostics({ cwd })) ?? undefined;
   const nodeCert = readCachedNodeCertStatus() ?? { kind: "checking" as const, loading: true };
   // Cache-first read: collectCaBundleNudge only inspects pre-persisted
   // state files written by the gateway extension's deferred doctor /
@@ -514,26 +492,20 @@ export function collectSplashData(
     gatewayLoading: gatewayVisible && gatewayState.connectionStatus?.kind === "checking",
     compactionVisible,
     compactionStatus: compactionVisible ? getCompactionStatus() : undefined,
-    recommendations: collectRecommendationsStatus(cwd),
     skillSources: summarizeAvailableSkillSources() ?? undefined,
     doctor,
     caBundleNudge,
-    privacy,
     sfCli: undefined,
     lspEnabled,
     lspHealth: getSfLspHealth(),
     nodeRuntime: collectNodeRuntimeStatus(),
-    herdrRuntime: collectHerdrRuntimeStatus(cwd, {
-      activeToolNames: options.activeToolNames,
-      allToolNames: options.allToolNames,
-    }),
     fontRuntime: readCachedFontRuntimeStatus() ?? defaultFontRuntimeStatus(),
     hunk: readCachedHunkStatus() ?? defaultHunkStatus(),
     plannotator: readCachedPlannotatorRuntime() ?? defaultPlannotatorRuntime(),
     homebrew: readCachedHomebrewStatus() ?? defaultHomebrewStatus(),
     autoUpdate: collectAutoUpdateStatus(),
     browserRuntime: readCachedBrowserRuntimeStatus() ?? defaultBrowserRuntimeStatus(),
-    sfPiRelease: detectSfPiReleaseStatus(cwd),
+    sfPiRelease: detectSfPiReleaseStatus(),
     codeAnalyzer: isSfPiExtensionEnabled(cwd, "sf-code-analyzer")
       ? readCodeAnalyzerReadiness()
       : undefined,
@@ -573,21 +545,6 @@ export async function refreshAnnouncementsSummary(
   } catch {
     return undefined;
   }
-}
-
-/**
- * Snapshot the live telemetry posture for the splash row.
- *
- * Pure read: combines pi's `enableInstallTelemetry` setting with sf-pi's
- * own assertion record (see lib/common/privacy/state.ts) into a stable
- * shape the splash component can render without touching the FS again.
- */
-export function collectPrivacyStatus(): PrivacyStatusSummary {
-  const state = getTelemetryState();
-  return {
-    telemetryEnabled: state.effectivelyEnabled,
-    source: state.source,
-  };
 }
 
 export function collectNodeRuntimeStatus(version: string = process.version): NodeRuntimeStatusInfo {

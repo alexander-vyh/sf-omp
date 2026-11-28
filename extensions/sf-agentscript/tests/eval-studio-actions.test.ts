@@ -8,8 +8,7 @@ const { copyToClipboardMock } = vi.hoisted(() => ({
   copyToClipboardMock: vi.fn(),
 }));
 
-vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@earendil-works/pi-coding-agent")>()),
+vi.mock("@oh-my-pi/pi-coding-agent/utils/clipboard", () => ({
   copyToClipboard: copyToClipboardMock,
 }));
 
@@ -42,7 +41,7 @@ async function projectWithRun(): Promise<{ cwd: string; runDir: string }> {
 }
 
 describe("Eval Studio actions", () => {
-  it("copies the selected Eval Run summary through Pi's clipboard interface", async () => {
+  it("copies the selected Eval Run summary through OMP's clipboard", async () => {
     const { cwd, runDir } = await projectWithRun();
     const notify = vi.fn();
 
@@ -63,7 +62,7 @@ describe("Eval Studio actions", () => {
     expect(notify).toHaveBeenCalledWith("Run summary copied.", "info");
   });
 
-  it("does not report success when Pi cannot copy the Eval Run summary", async () => {
+  it("does not report success when OMP cannot copy the Eval Run summary", async () => {
     const { cwd } = await projectWithRun();
     const notify = vi.fn();
     copyToClipboardMock.mockRejectedValue(new Error("clipboard unavailable"));

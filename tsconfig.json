@@ -13,9 +13,8 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
-    // Pi loads extensions with its pi-ai extension view (TypeBox StringEnum,
-    // Type, Static); every supported Pi release ships it, so type-check
-    // against that view only. A moved view fails loudly in CI.
+    // Legacy SF Pi business schemas use the extension StringEnum/TypeBox
+    // view. OMP's native UI APIs resolve through their own package exports.
     "paths": {
       "@earendil-works/pi-ai": [
         "./node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/pi-ai-extension-view.d.ts"

@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Human-card and compact LLM-repair presentation for Agent Script quality. */
 import path from "node:path";
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { Box, Text, type Component } from "@earendil-works/pi-tui";
+import type { ExtensionRows, ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
+import { textRows } from "../../../../lib/common/ui-rows.ts";
 import type { AgentScriptQualityFinding, AgentScriptQualityResult } from "./types.ts";
 
 export type AgentScriptQualityCardState =
@@ -124,12 +124,14 @@ export function createQualityCardComponent(
   expanded: boolean,
   theme: Theme,
   boxed = true,
-): Component {
-  const text = new Text(renderQualityCardText(card, expanded, theme), 0, 0);
-  if (!boxed) return text;
-  const box = new Box(1, 1, (value) => theme.bg(cardBackground(card.state), value));
-  box.addChild(text);
-  return box;
+): ExtensionRows {
+  const text = renderQualityCardText(card, expanded, theme);
+  if (!boxed) return textRows(text);
+  const padded = textRows(text, 1, 1);
+  const background = cardBackground(card.state);
+  return {
+    render: (width) => padded.render(width).map((row) => theme.bg(background, row)),
+  };
 }
 
 export function renderQualityCardText(

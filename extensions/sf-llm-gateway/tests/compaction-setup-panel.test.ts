@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import { readEffectiveCompactionSettings } from "../lib/compaction-settings.ts";
 import {
   GatewayCompactionSetupComponent,

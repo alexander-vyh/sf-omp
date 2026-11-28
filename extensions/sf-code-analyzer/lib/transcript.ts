@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Human-only Code Analyzer evidence, persisted as entries and presented in an OMP widget. */
 import path from "node:path";
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionRows, ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
 import {
   renderSfPiNoticeCardText,
   renderSfPiNoticePanel,
@@ -14,6 +14,7 @@ import {
   type SfPiNoticeCard,
   type SfPiResultCard,
 } from "../../../lib/common/display/result-card.ts";
+import { nativeUi, textRows } from "../../../lib/common/ui-rows.ts";
 
 export const CODE_ANALYZER_TRANSCRIPT_TYPE = "sf-code-analyzer";
 
@@ -37,7 +38,7 @@ export interface CodeAnalyzerTranscriptEntry {
 export function registerCodeAnalyzerTranscriptRenderer(pi: ExtensionAPI): void {
   pi.on("session_start", (_event, ctx) => {
     presentationContexts.set(pi, ctx);
-    if (ctx.hasUI) ctx.ui.setWidget(CODE_ANALYZER_TRANSCRIPT_TYPE, undefined);
+    if (ctx.hasUI) nativeUi(ctx.ui).setWidget(CODE_ANALYZER_TRANSCRIPT_TYPE, undefined);
   });
   pi.on("session_shutdown", () => {
     presentationContexts.delete(pi);
@@ -49,12 +50,12 @@ export function createCodeAnalyzerTranscriptRenderer() {
     entry: { data?: CodeAnalyzerTranscriptEntry },
     _options: { expanded: boolean },
     theme: Theme,
-  ) => {
+  ): ExtensionRows => {
     const content = entry.data?.content ?? "[sf-code-analyzer]";
     const details = entry.data?.details;
     const notice = transcriptNotice(content, details);
     if (notice) return renderSfPiNoticePanel(notice, theme);
-    return new Text(renderCodeAnalyzerTranscript(content, details, theme), 0, 0);
+    return textRows(renderCodeAnalyzerTranscript(content, details, theme));
   };
 }
 
@@ -82,7 +83,7 @@ export function emitCodeAnalyzerTranscript(
   pi.appendEntry<CodeAnalyzerTranscriptEntry>(CODE_ANALYZER_TRANSCRIPT_TYPE, { content, details });
   const ctx = presentationContexts.get(pi);
   if (ctx?.hasUI) {
-    ctx.ui.setWidget(CODE_ANALYZER_TRANSCRIPT_TYPE, (_tui, theme) =>
+    nativeUi(ctx.ui).setWidget(CODE_ANALYZER_TRANSCRIPT_TYPE, (_ui, theme) =>
       createCodeAnalyzerTranscriptRenderer()(
         { data: { content, details } },
         { expanded: true },

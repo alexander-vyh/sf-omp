@@ -106,14 +106,6 @@ _Lean Salesforce Flow lifecycle workflows for pi: core-five plus queue, direct-a
 - Commands: `/sf-flow`
 - Tools: `sf_flow`
 
-### [SF Herdr](./extensions/sf-herdr)
-
-_Non-mutating Salesforce workflow plans for the current split Herdr tools._
-
-- Default: **on**
-- Commands: `/sf-herdr`
-- Tools: `sf_herdr_plan`
-
 ### [SF Integrate](./extensions/sf-integrate)
 
 _Plan-bound Salesforce integration setup with hosted MCP activation and org-bound handoff, External Client App OAuth, outbound modern credentials, guarded apply, and resulting-state proof._
@@ -132,7 +124,7 @@ _Local-native Lightning Web Component lifecycle workflows for pi: project scan, 
 
 ### [SF MCP](./extensions/sf-mcp)
 
-_Conflict-aware Salesforce MCP preset catalog and org-bound connection-instance configuration for Pi's native MCP runtime_
+_Conflict-aware Salesforce MCP preset catalog and org-bound connection-instance configuration for OMP's native MCP runtime_
 
 - Default: **on**
 - Commands: `/sf-mcp`

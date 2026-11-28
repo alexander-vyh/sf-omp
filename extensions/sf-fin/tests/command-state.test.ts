@@ -2,6 +2,7 @@
 /** /sf-fin sdk publish|pause: plan first, change only after explicit confirmation. */
 import { describe, expect, it, vi } from "vitest";
 import { handleCommand } from "../index.ts";
+import { createFinConfirmPanel } from "../lib/manager-action-panels.ts";
 import type { FinService, ProcedureRequest } from "../lib/service.ts";
 
 function fakeService() {
@@ -85,4 +86,33 @@ describe("/sf-fin connect|disconnect agent", () => {
     expect(setEditorText).not.toHaveBeenCalled();
     expect(notify).toHaveBeenCalledWith("No Fin Agent API key is saved.", "info");
   });
+});
+
+it("redraws the Fin install plan and result once async work settles", async () => {
+  const done = vi.fn();
+  const requestRender = vi.fn();
+  const confirm = vi.fn(async () => "Installed Fin CLI.");
+  const panel = createFinConfirmPanel({
+    theme: { fg: (_color, text) => text, bold: (text) => text },
+    title: "Install or update Fin CLI",
+    confirmLabel: "Install",
+    loadDetail: async () => ({
+      detail: "This runs:\nnpm install -g @intercom/cli",
+      canConfirm: true,
+      confirm,
+    }),
+    done,
+    requestRender,
+  });
+
+  expect(panel.renderContent(80).join("\n")).toContain("Checking…");
+  await vi.waitFor(() => expect(requestRender).toHaveBeenCalledTimes(1));
+  expect(panel.renderContent(80)).toContain(" npm install -g @intercom/cli");
+  expect(confirm).not.toHaveBeenCalled();
+  panel.handleInput?.("\x1b[13u");
+  await vi.waitFor(() => expect(requestRender).toHaveBeenCalledTimes(2));
+  expect(panel.renderContent(80).join("\n")).toContain("Installed Fin CLI.");
+  expect(confirm).toHaveBeenCalledTimes(1);
+  panel.handleInput?.("\x1b");
+  expect(done).toHaveBeenCalledWith(undefined);
 });

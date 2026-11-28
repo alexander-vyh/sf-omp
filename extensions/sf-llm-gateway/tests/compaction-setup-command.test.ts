@@ -27,6 +27,7 @@ afterEach(() => {
 function context(options: { hasUI: boolean; trusted: boolean }): ExtensionCommandContext {
   return {
     cwd,
+    mode: options.hasUI ? "tui" : "print",
     hasUI: options.hasUI,
     isProjectTrusted: () => options.trusted,
     modelRegistry: { getAvailable: () => [] },

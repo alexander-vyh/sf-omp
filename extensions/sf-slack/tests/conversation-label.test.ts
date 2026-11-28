@@ -15,7 +15,7 @@ import {
 } from "../lib/api.ts";
 import { registerSlackTool } from "../lib/tools.ts";
 import { renderResult } from "../lib/render.ts";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 
 type Payload = Record<string, unknown>;
 
@@ -268,7 +268,7 @@ describe("conversation label rendering", () => {
       bold: (text: string) => text,
       italic: (text: string) => text,
       strikethrough: (text: string) => text,
-    } as unknown as Theme;
+    } as ExtensionTheme;
     const render = (action: "thread" | "history") =>
       renderResult(
         {
@@ -283,9 +283,7 @@ describe("conversation label rendering", () => {
         },
         { expanded: false, isPartial: false },
         theme,
-      )
-        .render(120)
-        .join("\n");
+      ).props().text;
 
     expect(render("thread")).toContain("DM with alice");
     expect(render("history")).toContain("DM with alice");

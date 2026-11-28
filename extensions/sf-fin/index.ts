@@ -92,7 +92,7 @@ export default function sfFin(pi: ExtensionAPI) {
       registerAuthOnlyProvider(pi, controller.provider);
       if (binding) controller.bind(binding.ui, binding.mode);
     }
-    // Fin admin browser sign-in: Pi stores Fin's sign-in cookies like the
+    // Fin admin browser sign-in: OMP stores Fin's sign-in cookies like the
     // other credentials; the login is the human signing in in a window.
     registerAuthOnlyProvider(
       pi,
@@ -163,7 +163,7 @@ function buildManagerActions(service: FinService): ManagerDetailAction[] {
     ...(action.value === "install"
       ? {
           // Same plan → confirm → run → verify path as `/sf-fin install`, inside the Manager.
-          createPanel: (theme, _cwd, _scope, done) =>
+          createPanel: (theme, _cwd, _scope, done, _ctx, ui) =>
             createFinConfirmPanel({
               theme,
               title: "Install or update Fin CLI",
@@ -185,6 +185,7 @@ function buildManagerActions(service: FinService): ManagerDetailAction[] {
               },
               confirmLabel: "Install",
               done,
+              requestRender: ui.requestRender,
             }),
         }
       : {}),
@@ -248,7 +249,7 @@ export async function handleCommand(
         ctx.mode === "tui"
           ? `Prefilled /login ${loginId}. Submit it; a browser window opens on Fin's sign-in page.`
           : `Run /login ${loginId} in interactive TUI mode; a browser window opens on Fin's sign-in page.`,
-        "Sign in there yourself. Pi saves the sign-in like your other Fin credentials; /logout " +
+        "Sign in there yourself. OMP saves the sign-in like your other Fin credentials; /logout " +
           loginId +
           " removes it.",
       ].join("\n"),
@@ -464,7 +465,7 @@ async function connect(ctx: ExtensionCommandContext, fromPanel: boolean): Promis
     return emit(
       ctx,
       "SF Fin interactive login requires TUI mode",
-      `Run /login ${PROVIDER_NAME} in interactive TUI mode, or set ${ENV_TOKEN} (and optionally ${ENV_REGION}) before starting Pi.`,
+      `Run /login ${PROVIDER_NAME} in interactive TUI mode, or set ${ENV_TOKEN} (and optionally ${ENV_REGION}) before starting OMP.`,
       "warning",
       fromPanel,
     );
@@ -475,7 +476,7 @@ async function connect(ctx: ExtensionCommandContext, fromPanel: boolean): Promis
     "SF Fin native login prepared",
     [
       `Prefilled /login ${PROVIDER_NAME}. Submit it and paste the personal API token into the masked prompt; SF Fin detects the region.`,
-      "Create the token in Fin under Settings → Personal → API tokens. Pi owns persistence.",
+      "Create the token in Fin under Settings → Personal → API tokens. OMP owns persistence.",
     ].join("\n"),
     "info",
     fromPanel,
@@ -486,7 +487,7 @@ async function disconnect(ctx: ExtensionCommandContext, fromPanel: boolean): Pro
   if (!hasStoredFinCredential()) {
     const message =
       detectTokenSource() === "env"
-        ? `${ENV_TOKEN} is active. Native logout does not modify environment variables; unset it outside Pi and restart the session.`
+        ? `${ENV_TOKEN} is active. Native logout does not modify environment variables; unset it outside OMP and restart the session.`
         : "No SF Fin credential is saved.";
     return emit(ctx, "SF Fin disconnect", message, "info", fromPanel);
   }
@@ -494,7 +495,7 @@ async function disconnect(ctx: ExtensionCommandContext, fromPanel: boolean): Pro
     return emit(
       ctx,
       "SF Fin disconnect",
-      `Run \`/logout ${PROVIDER_NAME}\` in an interactive Pi session.`,
+      `Run \`/logout ${PROVIDER_NAME}\` in an interactive OMP session.`,
       "info",
       fromPanel,
     );
@@ -514,7 +515,7 @@ async function connectAgent(ctx: ExtensionCommandContext, fromPanel: boolean): P
     return emit(
       ctx,
       "Fin Agent API login requires TUI mode",
-      `Run /login ${AGENT_API_PROVIDER} in interactive TUI mode, or set ${AGENT_API_ENV_KEY} before starting Pi.`,
+      `Run /login ${AGENT_API_PROVIDER} in interactive TUI mode, or set ${AGENT_API_ENV_KEY} before starting OMP.`,
       "warning",
       fromPanel,
     );
@@ -537,7 +538,7 @@ async function disconnectAgent(ctx: ExtensionCommandContext, fromPanel: boolean)
   if (source !== "pi-auth") {
     const message =
       source === "env"
-        ? `${AGENT_API_ENV_KEY} is active. Native logout does not modify environment variables; unset it outside Pi and restart the session.`
+        ? `${AGENT_API_ENV_KEY} is active. Native logout does not modify environment variables; unset it outside OMP and restart the session.`
         : "No Fin Agent API key is saved.";
     return emit(ctx, "Fin Agent API disconnect", message, "info", fromPanel);
   }
@@ -545,7 +546,7 @@ async function disconnectAgent(ctx: ExtensionCommandContext, fromPanel: boolean)
     return emit(
       ctx,
       "Fin Agent API disconnect",
-      `Run \`/logout ${AGENT_API_PROVIDER}\` in an interactive Pi session.`,
+      `Run \`/logout ${AGENT_API_PROVIDER}\` in an interactive OMP session.`,
       "info",
       fromPanel,
     );

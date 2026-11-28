@@ -22,6 +22,8 @@ jobs:
     timeout-minutes: 45
     env:
       PI_NATIVES_DIR: ${{ github.workspace }}/.runtime/ci/natives
+      # CI always exercises the exact npm fixture; local proofs prefer native OMP.
+      SF_OMP_PROOF_NPM: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,7 +55,7 @@ jobs:
         run: npm run check:lifecycle-scripts
       - name: Unit tests
         run: npm test
-      - name: Native OMP smoke
+      - name: OMP smoke (pinned npm host)
         run: npm run smoke:omp
       - name: Shared auth smoke
         run: npm run smoke:auth

@@ -11,7 +11,7 @@ fail-closed behavior, session approval memory, and audit path:
 
 - **Policies** protect files as no-access, read-only, or explicit no-op.
 - **Command gate** structurally matches dangerous commands, including commands
-  later in simple shell chains and `herdr_pane.run` calls.
+  later in simple shell chains.
 - **Org-aware gate** applies production-level policy after resolving the target
   org type; unresolved targets fail closed.
 - **Native-tool gate** classifies known durable mutations from Agent Script,

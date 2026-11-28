@@ -33,10 +33,8 @@ only when intentionally requested. `code_analyzer action="recipes"` describes
 security, AppExchange, duplication, dependency, exhaustive, and SFGE profiles;
 recipes never execute by themselves.
 
-Long-running recipes can recommend a visible `sf_herdr_plan` handoff. SF Code
-Analyzer does not create Herdr panes internally. ApexGuru is a separate org
-service rather than a local engine; setup guidance opens Salesforce UI only
-after user approval.
+ApexGuru is a separate org service rather than a local engine; setup guidance
+opens Salesforce UI only after user approval.
 
 ## Commands
 

@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Config panel for the Ohana spinner mode preference. */
-import { type Focusable, matchesKey } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import {
   describeOhanaSpinnerSettingsSource,
   OHANA_SPINNER_MODES,
@@ -13,7 +13,7 @@ import {
   type OhanaSpinnerSettingsScope,
 } from "./settings.ts";
 
-class OhanaSpinnerConfigPanel implements Focusable {
+class OhanaSpinnerConfigPanel implements RowsPanel {
   focused = false;
 
   private mode: OhanaSpinnerMode;
@@ -91,8 +91,6 @@ class OhanaSpinnerConfigPanel implements Focusable {
   render(): string[] {
     return this.renderContent();
   }
-
-  invalidate(): void {}
 
   private cycleMode(direction: -1 | 1): void {
     const currentIndex = OHANA_SPINNER_MODES.indexOf(this.mode);

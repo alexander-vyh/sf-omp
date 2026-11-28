@@ -1,15 +1,17 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Inline preset setup form hosted inside the SF Pi Manager panel. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { Input, matchesKey, visibleWidth } from "@earendil-works/pi-tui";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import { SF_MCP_HEADLESS_360_REQUIREMENT } from "../../../lib/common/sf-mcp-oauth-requirements.ts";
+import { RowsTextField } from "../../../lib/common/ui-field.ts";
+import { matchesKey } from "../../../lib/common/ui-rows.ts";
 import type { McpPreset, PresetSetup } from "./presets.ts";
 
 type ChoiceKey = "environment" | "region";
 type TextKey = "oauthClientId" | "tenantId" | "marketingClientId" | "serverUrl" | "customUrl";
 type Control =
   | { kind: "choice"; key: ChoiceKey; label: string; help: string; options: ChoiceOption[] }
-  | { kind: "text"; key: TextKey; label: string; help: string; input: Input }
+  | { kind: "text"; key: TextKey; label: string; help: string; input: RowsTextField }
   | { kind: "action"; action: "review" | "cancel" };
 
 type ChoiceOption = { label: string; value: NonNullable<PresetSetup[ChoiceKey]> };
@@ -108,7 +110,7 @@ export class PresetSetupForm {
         lines.push(`     ${values}`);
       } else {
         control.input.focused = focused && selected;
-        for (const inputLine of control.input.render(Math.max(20, width - 6))) {
+        for (const inputLine of control.input.render(Math.max(1, width - 6))) {
           lines.push(`     ${inputLine}`);
         }
       }
@@ -145,9 +147,13 @@ export class PresetSetupForm {
     return lines;
   }
 
-  invalidate(): void {
+  capturesNavigation(): boolean {
+    return this.currentControl().kind === "text";
+  }
+
+  dispose(): void {
     for (const control of this.controls) {
-      if (control.kind === "text") control.input.invalidate();
+      if (control.kind === "text") control.input.dispose();
     }
   }
 
@@ -268,7 +274,7 @@ function setupControls(theme: Theme, preset: McpPreset): Control[] {
       kind: "choice",
       key: "region",
       label: "Workspace region",
-      help: "app.intercom.com is US; app.eu.intercom.com is EU. AU-hosted workspaces are not supported by Intercom MCP. Sign in afterwards with /mcp login on Pi or /mcp reauth on OMP; the host registers its own OAuth client.",
+      help: "app.intercom.com is US; app.eu.intercom.com is EU. AU-hosted workspaces are not supported by Intercom MCP. Sign in afterwards with /mcp reauth; OMP registers its own OAuth client.",
       options: [
         { label: "United States", value: "US" },
         { label: "European Union", value: "EU" },
@@ -360,7 +366,7 @@ function textControl(
     key,
     label,
     help,
-    input: new Input({
+    input: new RowsTextField({
       placeholder,
       placeholderStyle: (value) => theme.fg("dim", value),
     }),

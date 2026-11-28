@@ -4,7 +4,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { markLatestBrowserSnapshotStale } from "../../../lib/common/sf-browser-snapshot-state.ts";
 import { runAgentBrowser } from "./agent-browser.ts";
-import { renderBrowserToolCall, renderBrowserToolResult } from "./browser-render.ts";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
+import { browserToolRenderers } from "./browser-render.ts";
 import { evidenceLabelForMutationBefore, shouldCaptureMutationBefore } from "./evidence-policy.ts";
 import { throwWithFailureDiagnostics } from "./failure-diagnostics.ts";
 import { STALE_REF_HINT } from "./guidance.ts";
@@ -15,7 +16,7 @@ import { okText } from "./tool-support.ts";
 export const SF_BROWSER_PRESS_TOOL_NAME = "sf_browser_press";
 
 export function registerSfBrowserPressTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool(pi, {
     name: SF_BROWSER_PRESS_TOOL_NAME,
     label: "SF Browser Press",
     description:
@@ -24,9 +25,7 @@ export function registerSfBrowserPressTool(pi: ExtensionAPI): void {
     promptGuidelines: [
       "Use sf_browser_press after focusing/filling when Salesforce expects keyboard confirmation, such as Enter in search boxes or Escape for modals.",
     ],
-    renderCall: (args, theme) => renderBrowserToolCall(SF_BROWSER_PRESS_TOOL_NAME, args, theme),
-    renderResult: (result, options, theme, context) =>
-      renderBrowserToolResult(SF_BROWSER_PRESS_TOOL_NAME, result, options, theme, context),
+    ...browserToolRenderers(SF_BROWSER_PRESS_TOOL_NAME),
     parameters: Type.Object({
       key: Type.String({ description: "Key or chord, for example Enter, Escape, Tab, Control+a." }),
       reason: Type.Optional(

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
 
 const state = vi.hoisted(() => ({ settingsPath: "" }));
 vi.mock("../../../lib/common/sf-pi-settings.ts", async () => {
@@ -74,7 +74,7 @@ describe("Agent Script quality settings panel", () => {
 
     p.handleInput(" ");
     expect(p.renderContent(120).join("\n")).toContain("unsaved changes");
-    p.handleInput("s");
+    p.handleInput("\x1b[115u"); // Kitty-encoded 's'
 
     expect(readEffectiveAgentScriptQualitySettings().rules["unconditional-transition-cycle"]).toBe(
       false,

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** State and persistence for the Gateway compaction-model field in Manager settings. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import {
   ACTIVE_COMPACTION_MODEL,
   readScopedCompactionModel,

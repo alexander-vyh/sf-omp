@@ -2,12 +2,14 @@
 /**
  * LLM-facing Code Analyzer family tool.
  */
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { Text, type Component } from "@earendil-works/pi-tui";
+import type { ExtensionRows, ExtensionTheme } from "@oh-my-pi/pi-coding-agent";
 import { renderSfPiProgressText } from "../../../lib/common/display/result-card.ts";
 import { Type } from "typebox";
 import { buildExecFn } from "../../../lib/common/exec-adapter.ts";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
+import { textRows } from "../../../lib/common/ui-rows.ts";
 import { nextReportPath } from "./artifacts.ts";
 import { DEFAULT_APEXGURU_TIMEOUT_MS, runApexGuru, validateApexGuru } from "./apexguru.ts";
 import {
@@ -145,7 +147,7 @@ type CodeAnalyzerToolInput = {
 
 export function registerCodeAnalyzerTool(pi: ExtensionAPI): void {
   const exec = buildExecFn(pi);
-  pi.registerTool({
+  registerNativeUiTool<typeof CodeAnalyzerParams, unknown>(pi, {
     name: CODE_ANALYZER_TOOL_NAME,
     label: "Code Analyzer",
     description:
@@ -158,11 +160,9 @@ export function registerCodeAnalyzerTool(pi: ExtensionAPI): void {
       "Use the installed Code Analyzer guide path declared in <sf_engineering_constitution> for recipes, rules, output modes, and lifecycle handoffs.",
     ],
     parameters: CodeAnalyzerParams,
-    renderShell: "self",
-    renderCall: (args, theme) =>
-      new Text(renderCodeAnalyzerCallLine(args as CodeAnalyzerToolInput, theme), 0, 0),
-    renderResult: (result, opts, theme, context) =>
-      renderResult(result, opts, theme, outputPadFrom(context)),
+    renderCall: (args, _opts, theme) =>
+      textRows(renderCodeAnalyzerCallLine(args as CodeAnalyzerToolInput, theme)),
+    renderResult,
     async execute(_toolCallId, params, _signal, onUpdate, ctx) {
       const input = params as CodeAnalyzerToolInput;
       onUpdate?.({
@@ -212,7 +212,6 @@ export function registerCodeAnalyzerTool(pi: ExtensionAPI): void {
               action: input.action,
               recipes: guidance.recipes,
               suggestions: guidance.suggestions,
-              herdrHandoff: guidance.herdrHandoffs,
             },
           },
         };
@@ -257,17 +256,15 @@ export function registerCodeAnalyzerTool(pi: ExtensionAPI): void {
 function renderResult(
   result: { content?: unknown; details?: unknown },
   opts: { isPartial?: boolean; expanded?: boolean },
-  theme: Theme,
-  outputPad: number,
-): Component {
+  theme: ExtensionTheme,
+): ExtensionRows {
   if (opts.isPartial) {
-    return new Text(
+    return textRows(
       renderSfPiProgressText(
         { phase: "Code Analyzer running", current: firstText(result) || undefined },
         theme,
       ),
-      outputPad,
-      0,
+      1,
     );
   }
 
@@ -282,10 +279,10 @@ function renderResult(
       }
     | undefined;
   if (envelope?.report) {
-    return renderCodeAnalyzerReportPanel(envelope.report, opts, theme, outputPad);
+    return renderCodeAnalyzerReportPanel(envelope.report, opts, theme);
   }
   if (envelope?.doctor) {
-    return renderCodeAnalyzerDoctorPanel(envelope.doctor, theme, outputPad);
+    return renderCodeAnalyzerDoctorPanel(envelope.doctor, theme);
   }
   if (envelope?.action === "recipes") {
     return renderCodeAnalyzerRecipesPanel(
@@ -295,23 +292,13 @@ function renderResult(
       },
       opts,
       theme,
-      outputPad,
     );
   }
   return renderCodeAnalyzerPlainPanel(
     "Code Analyzer",
     firstText(result) || "Code Analyzer completed.",
     theme,
-    outputPad,
   );
-}
-
-function outputPadFrom(context: unknown): number {
-  // Pi 1.1 adds `outputPad`; the structural fallback keeps Pi 1.0 rendering unchanged.
-  const outputPad = (context as { outputPad?: unknown } | undefined)?.outputPad;
-  return typeof outputPad === "number" && Number.isFinite(outputPad)
-    ? Math.max(0, Math.floor(outputPad))
-    : 1;
 }
 
 function asRecipeItems(value: unknown): Array<{
@@ -320,7 +307,6 @@ function asRecipeItems(value: unknown): Array<{
   label?: string;
   when?: string;
   ruleSelector?: string[];
-  herdrRecommended?: boolean;
 }> {
   if (!Array.isArray(value)) return [];
   return value
@@ -336,8 +322,6 @@ function asRecipeItems(value: unknown): Array<{
       ruleSelector: Array.isArray(item.ruleSelector)
         ? item.ruleSelector.filter((selector): selector is string => typeof selector === "string")
         : undefined,
-      herdrRecommended:
-        typeof item.herdrRecommended === "boolean" ? item.herdrRecommended : undefined,
     }));
 }
 

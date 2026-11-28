@@ -73,7 +73,7 @@
     "entry": "extensions/sf-agentscript/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 38649
+    "srcLoc": 38651
   },
   {
     "id": "sf-apex",
@@ -122,7 +122,7 @@
     "entry": "extensions/sf-apex/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 4707
+    "srcLoc": 4713
   },
   {
     "id": "sf-brain",
@@ -175,7 +175,7 @@
     "entry": "extensions/sf-brain/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 1775
+    "srcLoc": 1784
   },
   {
     "id": "sf-browser",
@@ -256,7 +256,7 @@
     "entry": "extensions/sf-browser/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 9552
+    "srcLoc": 9528
   },
   {
     "id": "sf-code-analyzer",
@@ -304,7 +304,7 @@
     "entry": "extensions/sf-code-analyzer/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 4516
+    "srcLoc": 4435
   },
   {
     "id": "sf-data-explorer",
@@ -346,7 +346,7 @@
     "entry": "extensions/sf-data-explorer/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 2916
+    "srcLoc": 2910
   },
   {
     "id": "sf-data360",
@@ -410,7 +410,7 @@
     "entry": "extensions/sf-data360/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 11174
+    "srcLoc": 11179
   },
   {
     "id": "sf-devbar",
@@ -450,7 +450,7 @@
     "entry": "extensions/sf-devbar/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 2436
+    "srcLoc": 2319
   },
   {
     "id": "sf-docs",
@@ -515,7 +515,7 @@
     "entry": "extensions/sf-docs/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 4863
+    "srcLoc": 4833
   },
   {
     "id": "sf-feedback",
@@ -555,7 +555,7 @@
     "entry": "extensions/sf-feedback/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 1551
+    "srcLoc": 1534
   },
   {
     "id": "sf-fin",
@@ -633,7 +633,7 @@
     "entry": "extensions/sf-fin/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 7984
+    "srcLoc": 7976
   },
   {
     "id": "sf-flow",
@@ -702,7 +702,7 @@
     "entry": "extensions/sf-flow/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 10595
+    "srcLoc": 10583
   },
   {
     "id": "sf-guardrail",
@@ -759,58 +759,7 @@
     "entry": "extensions/sf-guardrail/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 6930
-  },
-  {
-    "id": "sf-herdr",
-    "name": "SF Herdr",
-    "description": "Non-mutating Salesforce workflow plans for the current split Herdr tools.",
-    "category": "agent-tool",
-    "maturity": "experimental",
-    "defaultEnabled": true,
-    "alwaysActive": false,
-    "configurable": true,
-    "commands": [
-      "/sf-herdr"
-    ],
-    "providers": [],
-    "tools": [
-      "sf_herdr_plan"
-    ],
-    "events": [
-      "session_start",
-      "session_switch",
-      "session_tree",
-      "tool_result"
-    ],
-    "docs": {
-      "intentGroup": "Work safely",
-      "agentGuide": "AGENT_GUIDE.md",
-      "summary": "Provides command/status/settings surfaces everywhere it loads and conditionally registers a minimal non-mutating planner for the current herdr_layout, herdr_pane, and herdr_agent tool set.",
-      "primaryFiles": [
-        "index.ts",
-        "lib/sf_herdr_plan-tool.ts",
-        "lib/settings.ts",
-        "lib/status.ts"
-      ],
-      "stateFiles": [
-        "<globalAgentDir>/settings.json → sfPi.herdr"
-      ],
-      "env": [
-        "HERDR_ENV",
-        "HERDR_PANE_ID"
-      ],
-      "safety": [
-        "sf_herdr_plan is non-mutating and never generates shell commands.",
-        "Planner steps use only herdr_layout, herdr_pane, and herdr_agent and pass the opaque pane ID returned by pane_split.",
-        "The exact current successful-empty-body pane-run result is normalized without retrying the command.",
-        "sf-guardrail mediates herdr_pane action=run commands when dangerous-command or org-aware rules match."
-      ]
-    },
-    "entry": "extensions/sf-herdr/index.ts",
-    "hasReadme": true,
-    "hasTests": true,
-    "srcLoc": 656
+    "srcLoc": 6951
   },
   {
     "id": "sf-integrate",
@@ -868,7 +817,7 @@
     "entry": "extensions/sf-integrate/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 4934
+    "srcLoc": 4940
   },
   {
     "id": "sf-llm-gateway",
@@ -915,8 +864,8 @@
         "~/.pi/agent/auth.json (Pi-owned API-key credential + default non-secret URL)",
         "<globalAgentDir>/sf-llm-gateway.json (non-secret settings)",
         "<globalAgentDir>/sf-llm-gateway/* (monthly usage and diagnostic state)",
-        "Pi settings.json sfPi.compaction.model (global/project compaction model preference)",
-        "Pi settings.json sfPi.llmGateway.priority (trusted project/global priority preference)"
+        "SF Pi settings.json sfPi.compaction.model (global/project compaction model preference)",
+        "SF Pi settings.json sfPi.llmGateway.priority (trusted project/global priority preference)"
       ],
       "safety": [
         "API-key input uses SF Pi's shared fixed-mask component and never enters Pi's visible stock prompt.",
@@ -940,7 +889,7 @@
     "entry": "extensions/sf-llm-gateway/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 12334
+    "srcLoc": 12324
   },
   {
     "id": "sf-lsp",
@@ -979,7 +928,7 @@
     "entry": "extensions/sf-lsp/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 4185
+    "srcLoc": 4220
   },
   {
     "id": "sf-lwc",
@@ -1029,12 +978,12 @@
     "entry": "extensions/sf-lwc/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 2427
+    "srcLoc": 2433
   },
   {
     "id": "sf-mcp",
     "name": "SF MCP",
-    "description": "Conflict-aware Salesforce MCP preset catalog and org-bound connection-instance configuration for Pi's native MCP runtime",
+    "description": "Conflict-aware Salesforce MCP preset catalog and org-bound connection-instance configuration for OMP's native MCP runtime",
     "category": "agent-tool",
     "maturity": "experimental",
     "defaultEnabled": true,
@@ -1057,7 +1006,7 @@
     "docs": {
       "intentGroup": "Personalize pi",
       "agentGuide": "AGENT_GUIDE.md",
-      "summary": "Provides an opt-in, product-grouped Salesforce MCP preset catalog over Pi's built-in MCP runtime. One reviewed preset can own several independently authenticated MCP Connection Instances. For Headless 360, the plan-bound sf_mcp family tool resolves an explicit Salesforce org, proves an org-pinned My Domain OAuth issuer, derives a deterministic server name, applies the exact native entry through Guardrail, and can compare post-login read-only userinfo with the planned org identity. Connection/authentication remains separate from reviewed tool exposure, unchanged entries can be disabled, and human OAuth remains a Pi-native handoff. The Manager stays preset-first and shows org-bound instances beneath each preset. Conflict, drift, adoption, and apply workflows stay fail-closed and preserve user-owned configuration.",
+      "summary": "Provides an opt-in, product-grouped Salesforce MCP preset catalog over OMP's built-in MCP runtime. One reviewed preset can own several independently authenticated MCP Connection Instances. For Headless 360, the plan-bound sf_mcp family tool resolves an explicit Salesforce org, proves an org-pinned My Domain OAuth issuer, derives a deterministic server name, applies the exact native entry through Guardrail, and hands back the exact post-login read-only userinfo call for comparison with the planned org identity. Connection/authentication remains separate from reviewed tool exposure, unchanged entries can be disabled, and human OAuth remains an OMP-native handoff. The Manager stays preset-first and shows org-bound instances beneath each preset. Conflict, drift, adoption, and apply workflows stay fail-closed and preserve user-owned configuration.",
       "primaryFiles": [
         "index.ts",
         "lib/sf-mcp-tool.ts",
@@ -1069,7 +1018,7 @@
         "lib/native-exposure.ts"
       ],
       "stateFiles": [
-        "<globalAgentDir>/mcp.json or <cwd>/.omp/mcp.json (host-native MCP configuration; .pi/mcp.json on Pi)",
+        "<globalAgentDir>/mcp.json or <cwd>/.omp/mcp.json (OMP-native MCP configuration)",
         "<globalAgentDir>/sf-pi/sf-mcp/managed-presets.json",
         "<cwd>/.pi/sf-mcp/managed-presets.json"
       ],
@@ -1082,32 +1031,32 @@
       "safety": [
         "No Salesforce MCP server is configured, connected, launched, or exposed by default; status and plan actions are non-mutating.",
         "configure.apply and disable.apply require an exact session-bound plan id/hash, unchanged source state, explicit scope, allow_mutation=true, and SF Guardrail approval.",
-        "Pi's built-in MCP extension owns transport, OAuth, tokens, connections, exposure, resources, and readiness; login.handoff never performs human OAuth consent.",
+        "OMP's built-in MCP runtime owns transport, OAuth, tokens, connections, resources, and readiness; login.handoff never performs human OAuth consent.",
         "Direct capability overlaps default to native SF Pi owners; complementary profiles use hidden-by-default server exposure with exact approved tools.",
         "Manual or externally modified native MCP entries are adopted or reset only after an explicit review; malformed configuration is never overwritten.",
-        "Pi-native project overrides preserve the matching global transport and credentials, remain editable through /mcp, and are replaced with full project presets only after an explicit reviewed reset.",
-        "Pi-normalized server-name collisions require the user to choose the one entry to keep.",
+        "Native project overrides preserve the matching global transport and credentials, remain editable through /mcp, and are replaced with full project presets only after an explicit reviewed reset.",
+        "Server-name collisions after OMP normalizes hyphens and underscores require the user to choose the one entry to keep.",
         "Governed presets, including Salesforce DX, Tableau, Tableau Next, Trailhead, Marketing Cloud Engagement, and MuleSoft DX, use hidden server exposure with exact reviewed per-tool policies; newly observed unapproved tools remain unreachable.",
         "Connection and authentication are configured separately from Tool Access; risky Direct choices still warn and every save retains explicit diff review before persistence.",
         "Headless 360 target_org planning succeeds only when protected-resource and OpenID discovery resolve to the explicit org's trusted My Domain. The org identity, endpoint proof, and per-org server name are source-bound and privately persisted with the managed fingerprint.",
-        "Multiple instances can share one reviewed preset without sharing Pi OAuth credentials. Ambiguous instance actions require connection_name and legacy singleton entries remain unbound until explicitly verified.",
+        "Multiple instances can share one reviewed preset without sharing OMP OAuth credentials. Ambiguous instance actions require connection_name and legacy singleton entries remain unbound until explicitly verified.",
         "Exact tool conflict recommendations change only MCP exposure; SF MCP never disables an SF Pi capability owner automatically.",
-        "OMP loads native mcp.json entries but ignores Pi exposure fields, so SF MCP itself removes policy-hidden MCP tools from the active set and blocks their tool calls.",
+        "OMP loads native mcp.json entries but ignores their exposure fields, so SF MCP itself removes policy-hidden MCP tools from the active set and blocks their tool calls.",
         "Observed additions remain locked hidden until a reviewed preset revision approves them; removed documented tools are unavailable and can be repaired to Hidden on unchanged managed entries.",
         "Agentforce Sales is sandbox-only and experimental in SF Pi; its secret is an environment reference and every operation remains Guardrail-mediated and fail-closed without exact OAuth-org identity.",
-        "Standalone Tableau uses Pi-native OAuth against Tableau's managed endpoint; Trailhead uses its published no-auth, read-only public-content endpoint.",
+        "Standalone Tableau uses OMP-native OAuth against Tableau's managed endpoint; Trailhead uses its published no-auth, read-only public-content endpoint.",
         "Custom MCP URLs start with no callable tools.",
         "Legacy SObject MCP entries are not managed by SF MCP; if manually configured, their mutation tools remain Guardrail-mediated and fail closed.",
         "Agentforce Sales, Slack, and MuleSoft secrets are referenced through environment variables and are never stored in SF MCP managed state.",
         "Slack and Informatica connections start quarantined because their public references do not publish stable exact tool-name contracts; observed tools remain Hidden pending a reviewed preset revision.",
         "B2C Commerce uses the GA @salesforce/b2c-dx-mcp package with a versioned reviewed tool contract and hidden-by-default exposure.",
-        "Intercom MCP (Fin) uses Pi-native OAuth with dynamic client registration and the mcp and operator scopes. It is the one preset whose new connections expose every reviewed tool by default; Fin Operator apply_proposals requires exact non-session SF Guardrail approval and Operator turns are Guardrail-confirmed, both auto-approved by Power Tool Mode."
+        "Intercom MCP (Fin) uses OMP-native OAuth with dynamic client registration and the mcp and operator scopes. It is the one preset whose new connections expose every reviewed tool by default; Fin Operator apply_proposals requires exact non-session SF Guardrail approval and Operator turns are Guardrail-confirmed, both auto-approved by Power Tool Mode."
       ]
     },
     "entry": "extensions/sf-mcp/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 10553
+    "srcLoc": 10494
   },
   {
     "id": "sf-ohana-spinner",
@@ -1141,7 +1090,7 @@
     "entry": "extensions/sf-ohana-spinner/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 382
+    "srcLoc": 370
   },
   {
     "id": "sf-pi-manager",
@@ -1167,37 +1116,32 @@
     ],
     "docs": {
       "intentGroup": "Personalize pi",
-      "summary": "Core manager for the sf-pi package. Provides /sf-pi list/enable/disable/status/display/recommended/announcements/skills/doctor/auto-update commands plus the interactive TUI overlay and settings panel. Doctor includes a bounded, read-only synthetic-DNS compatibility check for the recommended pi-web-access package without changing third-party security configuration. Pi runtime updates remain user-managed, with newer stable 1.x releases loading in forward-compatibility mode. Opt-in Auto Update waits for a non-aborted terminal agent_end (settled turn), updates only declared-compatible unpinned global npm Pi packages through Pi, and runs the independent Salesforce CLI stable update. Under OMP it instead fast-forwards the sf-omp git checkout (git pull --ff-only + npm ci, only when cleanly behind its upstream) and reports recommended Pi packages as unsupported because the launcher loads extensions explicit-only. alwaysActive: enable/disable is mediated through this extension only; under OMP it is stored as native disabledExtensions in OMP YAML config and applies on the next OMP start.",
+      "summary": "Core manager for the sf-pi package on OMP. Provides /sf-pi list/enable/disable/status/display/recommended/announcements/skills/doctor/auto-update commands plus the interactive TUI overlay and settings panel. The OMP runtime is the native omp on PATH and stays with omp update. Opt-in Auto Update waits for a non-aborted terminal agent_end (settled turn), fast-forwards the sf-omp git checkout (git pull --ff-only + npm ci, only when cleanly behind its upstream), and runs the independent Salesforce CLI stable update. /sf-pi recommended reports recommended packages as unsupported because the launcher loads extensions explicit-only. alwaysActive: enable/disable is mediated through this extension only; it is stored as native disabledExtensions in OMP YAML config and applies on the next OMP start.",
       "primaryFiles": [
         "index.ts",
         "lib/overlay.ts",
         "lib/extension-details.ts",
         "lib/doctor-command.ts",
-        "lib/pi-web-access-doctor.ts",
         "lib/auto-update-coordinator.ts",
         "lib/config-panel.ts"
       ],
       "stateFiles": [
-        "~/.pi/agent/settings.json (sf-pi package filter list, Pi host)",
-        "<agentDir>/config.yml or <cwd>/.omp/config.yml disabledExtensions (OMP host)",
-        "<globalAgentDir>/state/sf-pi/recommendations.json",
+        "<agentDir>/config.yml or <cwd>/.omp/config.yml disabledExtensions",
         "<globalAgentDir>/state/sf-pi/announcements.json",
         "<globalAgentDir>/sf-pi/auto-update/status.json",
         "<globalAgentDir>/sf-pi/auto-update/run.lock (ephemeral)"
       ],
       "safety": [
-        "Owns the WRITE side of pi's package filter list via lib/common/sf-pi-package-state.ts.",
-        "Auto Update is opt-in, interactive-session only, deferred after aborted settlements, machine-locked, abortable, and output-redacted; it never performs an unbounded Pi self-update.",
-        "Recommended-package compatibility diagnostics are explicit-command, bounded, and read-only; they never weaken or rewrite third-party security settings.",
-        "Package automation is limited to outdated unpinned global npm packages with declared active Pi/Node compatibility; pinned, local, git, project, incompatible, and unverifiable packages are skipped.",
-        "On OMP, checkout automation only fast-forwards a clean, attached branch strictly behind its upstream; dirty, detached, ahead, diverged, and upstream-less checkouts are left untouched, and no pi or plugin installer runs.",
+        "Owns the WRITE side of OMP's disabledExtensions for bundled extensions via lib/common/omp-extension-state.ts.",
+        "Auto Update is opt-in, interactive-session only, deferred after aborted settlements, machine-locked, abortable, and output-redacted; it never updates the OMP runtime.",
+        "Checkout automation only fast-forwards a clean, attached branch strictly behind its upstream; dirty, detached, ahead, diverged, and upstream-less checkouts are left untouched, and no package or plugin installer runs.",
         "alwaysActive cannot be disabled through the standard toggle action."
       ]
     },
     "entry": "extensions/sf-pi-manager/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 5450
+    "srcLoc": 3624
   },
   {
     "id": "sf-planreview",
@@ -1245,7 +1189,7 @@
     "entry": "extensions/sf-planreview/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 976
+    "srcLoc": 973
   },
   {
     "id": "sf-skills",
@@ -1285,7 +1229,7 @@
     "entry": "extensions/sf-skills/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 6107
+    "srcLoc": 6021
   },
   {
     "id": "sf-slack",
@@ -1346,14 +1290,14 @@
         "slack_send requires user confirmation in interactive mode and refuses headless unless SLACK_ALLOW_HEADLESS_SEND=1.",
         "slack_schedule schedule/delete require user confirmation in interactive mode and refuse headless unless SLACK_ALLOW_HEADLESS_SEND=1.",
         "Read-only by default; only canvas create/edit, slack_send, and slack_schedule schedule/delete mutate.",
-        "Interactive login uses SF Pi's shared fixed-mask component; Pi alone persists and removes API-key or OAuth-compatible credentials.",
+        "Interactive login uses masked credential entry; OMP alone persists and removes API-key or OAuth-compatible credentials.",
         "Tokens are never displayed unmasked."
       ]
     },
     "entry": "extensions/sf-slack/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 12697
+    "srcLoc": 12633
   },
   {
     "id": "sf-soql",
@@ -1408,7 +1352,7 @@
     "entry": "extensions/sf-soql/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 5442
+    "srcLoc": 5448
   },
   {
     "id": "sf-tldraw",
@@ -1502,7 +1446,7 @@
     ],
     "docs": {
       "intentGroup": "Personalize pi",
-      "summary": "Non-blocking startup header with model/environment status, cache-only dedicated-compaction readiness, one-line LSP and Herdr readiness, optional gateway usage, SF Pi package freshness, announcements, recommended extensions, and recent sessions. Pi owns Pi Runtime release checks and updates. SF Welcome mode is independent from Pi's native quietStartup setting; /sf-welcome and /sf-setup-fonts remain available on demand.",
+      "summary": "Non-blocking startup header with model/environment status, cache-only dedicated-compaction readiness, one-line LSP readiness, optional gateway usage, SF Pi package freshness, announcements, skill sources, and recent sessions. OMP itself updates with omp update. SF_PI_SAFE_START=1 keeps the non-blocking header for recovery launches; /sf-welcome and /sf-setup-fonts remain available on demand.",
       "primaryFiles": [
         "index.ts",
         "lib/splash-component.ts",
@@ -1523,6 +1467,6 @@
     "entry": "extensions/sf-welcome/index.ts",
     "hasReadme": true,
     "hasTests": true,
-    "srcLoc": 6475
+    "srcLoc": 5752
   }
 ]

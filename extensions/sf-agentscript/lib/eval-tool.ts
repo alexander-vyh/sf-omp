@@ -2,6 +2,7 @@
 /** Public agentscript_eval registration and dispatch. */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
 import { renderEvalCall, renderEvalGetFailureResult, renderEvalRunResult } from "./render/eval.ts";
 import { createTimingCollector, withTimings } from "./timings.ts";
 import { toolError } from "./tool-types.ts";
@@ -283,30 +284,22 @@ function checkRequired(p: ParamsAny): { ok: true } | { ok: false; error: string 
 // -------------------------------------------------------------------------------------------------
 
 export function registerEvalTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool<typeof Params, unknown>(pi, {
     name: EVAL_TOOL_NAME,
     label: "Agent Script eval",
     description:
       "Multi-action Agent Script eval surface: run specs, run the exact-version release contract, drill into failures, fetch traces, generate specs, or resolve BotVersion ids.",
-    renderCall: renderEvalCall,
-    renderResult: (result, opts, theme) => {
-      // Dispatch on action recovered from the parameters slot. The pi-tui
-      // renderResult signature receives the merged tool row but not the
-      // call args directly; we use the embedded `details.action` (which we
-      // set in actionRun/actionGetFailure) for routing.
-      const details =
-        (result as { details?: { action?: string; run_id?: string; failure?: unknown } }).details ??
-        {};
-      // Run results carry run_id at the top level; failure results carry
-      // either a single `failure` or a `failures[]` array.
-      if (details.failure || (details as { failures?: unknown[] }).failures) {
+    renderCall: (args, _opts, theme) => renderEvalCall(args, theme),
+    renderResult: (result, opts, theme, args) => {
+      const details = result.details as
+        { ok?: boolean; failure?: unknown; failures?: unknown[] } | undefined;
+      if (
+        (args?.action === "get_failure" && (opts.isPartial || details?.ok === true)) ||
+        details?.failure ||
+        details?.failures
+      ) {
         return renderEvalGetFailureResult(result, opts, theme);
       }
-      if (details.run_id) {
-        return renderEvalRunResult(result, opts, theme);
-      }
-      // resolve_active / trace fall through to the default text rendering
-      // (their single-line summaries already read well).
       return renderEvalRunResult(result, opts, theme);
     },
     promptSnippet:

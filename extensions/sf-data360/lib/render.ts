@@ -1,17 +1,22 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Rich Data 360 Run Card rendering for the single sf_data360 tool. */
-import { Text } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionRows,
+  ExtensionTheme,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { Data360Namespace, SfData360Input } from "./actions/action-types.ts";
 import { buildData360Digest, namespacePresentation } from "./digest.ts";
 import {
   normalizeSfPiDisplayProfile,
   type SfPiDisplayProfile,
 } from "../../../lib/common/display/types.ts";
+import { textRows } from "../../../lib/common/ui-rows.ts";
 import type { Data360RunDigest, Data360RunSection } from "./types.ts";
 
+type Theme = Pick<ExtensionTheme, "fg" | "bold">;
+
 interface ToolResult {
-  content?: Array<{ type?: string; text?: string }>;
+  content?: readonly { type?: string; text?: string }[];
   details?: Record<string, unknown> & { digest?: Data360RunDigest };
 }
 
@@ -19,18 +24,16 @@ export function namespaceIcon(namespace: Data360Namespace): string {
   return namespacePresentation(namespace).icon;
 }
 
-export function renderSfData360Call(input: SfData360Input, theme: Theme): Text {
-  const namespace = namespaceForAction(input.action);
-  const presentation = namespacePresentation(namespace);
+export function renderSfData360Call(input: Partial<SfData360Input>, theme: Theme): ExtensionRows {
+  const action = typeof input.action === "string" ? input.action : undefined;
+  const presentation = namespacePresentation(action ? namespaceForAction(action) : "api");
   const scope = subject(input.params) ?? input.target_org;
   const mode = input.dry_run ? " · dry-run" : input.output_mode ? ` · ${input.output_mode}` : "";
-  return new Text(
+  return textRows(
     theme.fg("toolTitle", theme.bold(`${presentation.icon} SF Data 360 `)) +
-      theme.fg("muted", input.action) +
+      (action ? theme.fg("muted", action) : "") +
       (scope ? theme.fg("dim", ` · ${scope}`) : "") +
       (mode ? theme.fg(input.dry_run ? "warning" : "dim", mode) : ""),
-    0,
-    0,
   );
 }
 
@@ -38,15 +41,15 @@ export function renderSfData360Result(
   result: ToolResult,
   options: { isPartial?: boolean; expanded?: boolean },
   theme: Theme,
-): Text {
-  if (options.isPartial) return new Text(theme.fg("warning", "☁️ SF Data 360 running…"), 0, 0);
+): ExtensionRows {
+  if (options.isPartial) return textRows(theme.fg("warning", "☁️ SF Data 360 running…"));
   const digest = result.details?.digest ?? digestFromLegacyDetails(result.details);
   if (!digest) {
     const text =
       result.content?.find((item) => item.type === "text")?.text ?? "SF Data 360 completed";
-    return new Text(text, 0, 0);
+    return textRows(text);
   }
-  return new Text(
+  return textRows(
     styleCard(
       renderData360DigestMarkdown(digest, {
         ...options,
@@ -58,8 +61,6 @@ export function renderSfData360Result(
       digest,
       theme,
     ),
-    0,
-    0,
   );
 }
 

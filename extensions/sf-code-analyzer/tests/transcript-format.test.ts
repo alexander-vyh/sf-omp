@@ -70,6 +70,8 @@ describe("sf-code-analyzer auto-scan transcript", () => {
     start?.({}, { hasUI: true, ui: { setWidget } } as never);
     emitCodeAnalyzerTranscript(pi as never, "Clean", { status: "clean" });
     expect(setWidget).toHaveBeenLastCalledWith(CODE_ANALYZER_TRANSCRIPT_TYPE, expect.any(Function));
+    const widget = setWidget.mock.lastCall?.[1]({}, theme);
+    expect(widget.render(80).join("\n")).toContain("Clean");
     expect(pi.sendMessage).not.toHaveBeenCalled();
   });
 

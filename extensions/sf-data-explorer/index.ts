@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { BorderedLoader } from "@earendil-works/pi-coding-agent";
+import { type KeyEvent, UiNode } from "@oh-my-pi/pi-tui";
 import { requirePiVersion } from "../../lib/common/pi-compat.ts";
 import { beginSalesforceConnectionSession } from "../../lib/common/sf-conn/index.ts";
 import {
@@ -19,6 +19,7 @@ import {
 } from "../../lib/common/command-actions.ts";
 import { openInfoPanel } from "../../lib/common/info-panel.ts";
 import { withSafeCommandHandler } from "../../lib/common/safe-command-handler.ts";
+import { nativeUi } from "../../lib/common/ui-rows.ts";
 import { clearExplorerCache, cacheStatus } from "./lib/cache.ts";
 import { buildHelpText, parseCommandArgs, type ParsedCommandArgs } from "./lib/command.ts";
 import { readEffectiveDataExplorerSettings } from "./lib/settings.ts";
@@ -209,21 +210,22 @@ async function launchExplorer(
   const transport = await getSfDataExplorerTransport(pi, ctx.cwd);
   const strategy = await buildInitialStrategy(pi, ctx, transport, parsed);
   if (!strategy) return undefined;
-  const result = await ctx.ui.custom<ExplorerSpaResult>((tui, theme, _keybindings, done) => {
-    const spa = new ExplorerSpa({
-      org: parsed.org,
-      cwd: ctx.cwd,
-      theme,
-      strategy,
-      transportInfo: transport.info,
-      setEditorText: (text) => ctx.ui.setEditorText(text),
-      notify: (message, level) => ctx.ui.notify(message, level),
-      done: (result) => done(result),
-      requestRender: () => tui.requestRender(),
-    });
-    if (parsed.object) void spa.selectObjectByName(parsed.object, parsed.forceRefresh);
-    return spa;
-  });
+  const result = await nativeUi(ctx.ui).custom<ExplorerSpaResult>(
+    (ui, theme, _keybindings, done) => {
+      const spa = new ExplorerSpa({
+        org: parsed.org,
+        cwd: ctx.cwd,
+        theme,
+        strategy,
+        transportInfo: transport.info,
+        notify: (message, level) => ctx.ui.notify(message, level),
+        done,
+        requestRender: ui.requestRender,
+      });
+      if (parsed.object) void spa.selectObjectByName(parsed.object, parsed.forceRefresh);
+      return spa;
+    },
+  );
   if (result?.kind === "copyToEditor") {
     ctx.ui.setEditorText(result.text);
     ctx.ui.notify(`Copied ${result.label} to editor.`, "info");
@@ -304,16 +306,31 @@ async function runWithLoader<T>(
   label: string,
   work: (signal: AbortSignal) => Promise<T>,
 ): Promise<T | undefined> {
-  const result = await ctx.ui.custom<T | { error: string } | null>((tui, theme, _kb, done) => {
-    const loader = new BorderedLoader(tui as never, theme, label);
-    loader.onAbort = () => done(null);
-    work(loader.signal)
-      .then(done)
-      .catch((error: unknown) =>
+  const result = await nativeUi(ctx.ui).custom<T | { error: string } | null>(
+    (_ui, _theme, keybindings, done) => {
+      const controller = new AbortController();
+      work(controller.signal).then(done, (error: unknown) =>
         done({ error: error instanceof Error ? error.message : String(error) }),
       );
-    return loader;
-  });
+      return new UiNode("col", {
+        gap: "xs",
+        onKey: (key: KeyEvent) => {
+          if (!keybindings.matches(key, "tui.select.cancel")) return false;
+          controller.abort();
+          done(null);
+          return true;
+        },
+        children: [
+          new UiNode("spinner", { label }),
+          new UiNode("text", {
+            spans: [
+              { t: `${keybindings.keysFor("tui.select.cancel").join("/")} cancel`, s: "dim" },
+            ],
+          }),
+        ],
+      });
+    },
+  );
   if (result === null) {
     ctx.ui.notify("Cancelled", "info");
     return undefined;

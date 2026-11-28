@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager Settings panel for the five sf-tldraw presentation preferences. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { type Focusable, matchesKey, visibleWidth } from "@earendil-works/pi-tui";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import {
   clearTldrawPreference,
   preferenceSourceLabel,
@@ -19,7 +20,7 @@ type DraftValue = TldrawPreferences[TldrawPreferenceKey] | typeof INHERIT | type
 
 const ROWS = TLDRAW_PREFERENCE_DESCRIPTORS;
 
-class SfTldrawConfigPanel implements Focusable {
+class SfTldrawConfigPanel implements RowsPanel {
   focused = false;
   private cursor = 0;
   private draft: Record<TldrawPreferenceKey, DraftValue>;
@@ -27,7 +28,7 @@ class SfTldrawConfigPanel implements Focusable {
   private message = "";
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: Pick<ExtensionTheme, "fg" | "bold">,
     private readonly cwd: string,
     private readonly scope: SettingsScope,
     private readonly done: (result: ConfigPanelResult | undefined) => void,
@@ -37,12 +38,12 @@ class SfTldrawConfigPanel implements Focusable {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") return this.done(undefined);
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) return this.done(undefined);
     if (matchesKey(data, "up")) return this.move(-1);
     if (matchesKey(data, "down")) return this.move(1);
     if (matchesKey(data, "left")) return this.cycle(-1);
     if (matchesKey(data, "right") || matchesKey(data, "space")) return this.cycle(1);
-    if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "s") this.save();
+    if (matchesKey(data, "enter") || matchesKey(data, "s")) this.save();
   }
 
   render(width: number): string[] {
@@ -75,8 +76,6 @@ class SfTldrawConfigPanel implements Focusable {
     lines.push(` ${t.fg("dim", "↑/↓ move · ←/→ change · S/Enter save · Esc back")}`);
     return lines.map((line) => pad(line, width));
   }
-
-  invalidate(): void {}
 
   private readDraft(): Record<TldrawPreferenceKey, DraftValue> {
     const scoped = readScopedTldrawPreferences(this.cwd, this.scope);

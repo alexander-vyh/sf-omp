@@ -2,8 +2,8 @@
 /**
  * slack_resolve tool — fuzzy Slack entity resolution.
  */
-import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { callLabel, registerSlackUiTool, slackText } from "./render.ts";
 import {
   SlackResolveParams,
   type ResolveResult,
@@ -32,16 +32,8 @@ interface ResolveToolRenderResult {
 
 const AUTO_SELECT_THRESHOLD = 0.85;
 
-function callLabel(label: string, summary: string, theme: Theme): Text {
-  return new Text(
-    theme.fg("toolTitle", theme.bold(label + " ")) + theme.fg("muted", summary),
-    0,
-    0,
-  );
-}
-
 export function registerResolveTool(pi: ExtensionAPI): void {
-  pi.registerTool<typeof SlackResolveParams>({
+  registerSlackUiTool<typeof SlackResolveParams>(pi, {
     name: "slack_resolve",
     label: "Slack Resolve",
     description:
@@ -58,22 +50,20 @@ export function registerResolveTool(pi: ExtensionAPI): void {
     ],
     parameters: SlackResolveParams,
 
-    renderCall(args: ResolveToolCallArgs, theme: Theme) {
+    renderCall(args: ResolveToolCallArgs, _options, theme) {
       return callLabel("Slack Resolve", `${args.type || "entity"}: ${args.text || "?"}`, theme);
     },
 
-    renderResult(result: ResolveToolRenderResult, _opts, theme: Theme) {
+    renderResult(result: ResolveToolRenderResult, _opts, theme) {
       const details = result.details || {};
       if (!details.ok) {
-        return new Text(
+        return slackText(
           theme.fg("error", "✗ " + (getFirstText(result.content) || "Could not resolve")),
-          0,
-          0,
         );
       }
 
       const best = details.best;
-      if (!best) return new Text(theme.fg("warning", "No candidates found"), 0, 0);
+      if (!best) return slackText(theme.fg("warning", "No candidates found"));
 
       const confidence = details.confidence ?? 0;
       const color = confidence >= AUTO_SELECT_THRESHOLD ? "success" : "warning";
@@ -81,7 +71,7 @@ export function registerResolveTool(pi: ExtensionAPI): void {
       text += "  " + theme.fg("accent", formatBest(best));
       const count = details.candidates?.length || 0;
       if (count > 1) text += theme.fg("dim", `  (${count - 1} alternate${count === 2 ? "" : "s"})`);
-      return new Text(text, 0, 0);
+      return slackText(text);
     },
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {

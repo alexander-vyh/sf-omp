@@ -13,21 +13,35 @@ const specs = (text: string) =>
   runtimeSpecifiers(text).map((s: { specifier: string }) => s.specifier);
 
 describe("runtime import check", () => {
-  it("allows built-ins, production deps (and subpaths), and exact Pi loader aliases", () => {
+  it("allows built-ins, production deps (and subpaths), and exact OMP loader aliases", () => {
     expect(isAllowed("node:fs", PROD)).toBe(true);
     expect(isAllowed("path", PROD)).toBe(true);
     expect(isAllowed("yaml", PROD)).toBe(true);
     expect(isAllowed("@salesforce/core/lib/org", PROD)).toBe(true);
     expect(isAllowed("typebox", PROD)).toBe(true);
-    expect(isAllowed("typebox/value", PROD)).toBe(true);
+    expect(isAllowed("typebox/value")).toBe(true);
     expect(isAllowed("@earendil-works/pi-ai/compat", PROD)).toBe(true);
+    expect(isAllowed("@oh-my-pi/pi-tui/text/width", PROD)).toBe(true);
+    expect(isAllowed("@oh-my-pi/pi-coding-agent/config/keybindings/key-id", PROD)).toBe(true);
+    expect(isAllowed("@oh-my-pi/pi-coding-agent/tools/file-mutation-queue", PROD)).toBe(true);
+    expect(isAllowed("@oh-my-pi/pi-coding-agent/utils/clipboard", PROD)).toBe(true);
+    expect(isAllowed("@oh-my-pi/pi-tui/native/blobs", PROD)).toBe(true);
   });
 
   it("rejects unaliased host subpaths and dev-only packages", () => {
     expect(isAllowed("typebox/schema", PROD)).toBe(false);
+    expect(isAllowed("typebox/value", PROD)).toBe(false);
+    expect(isAllowed("@oh-my-pi/pi-tui/missing-export", PROD)).toBe(false);
     expect(isAllowed("vitest", PROD)).toBe(false);
     expect(isAllowed("typescript", PROD)).toBe(false);
     expect(HOST_ALIASES.has("typebox/schema")).toBe(false);
+  });
+
+  it("rejects legacy TUI imports even when the dependency exists", () => {
+    const prodWithLegacy = new Set([...PROD, "@earendil-works/pi-tui"]);
+    expect(isAllowed("@earendil-works/pi-tui", prodWithLegacy)).toBe(false);
+    expect(isAllowed("@earendil-works/pi-tui/keybindings", prodWithLegacy)).toBe(false);
+    expect(isAllowed("@mariozechner/pi-tui", PROD)).toBe(false);
   });
 
   it("finds static, re-export, dynamic import, and require specifiers from the AST", () => {

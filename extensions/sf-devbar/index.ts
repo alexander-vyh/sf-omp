@@ -4,8 +4,7 @@
  *
  * Bespoke Salesforce developer status bar with two rendering surfaces:
  *   - Top bar (widget above editor): model, thinking, folder, git, context window
- *   - Bottom bar (custom footer on Pi; widget below the editor on OMP, whose
- *     setFooter is a no-op and which renders extension statuses natively)
+ *   - Bottom bar (widget below editor): Salesforce org facts
  *
  * All data sources are async and non-blocking. Bars render immediately with
  * cached/partial data and fill in as results arrive. The top bar re-reads the
@@ -18,7 +17,7 @@
  *   Event/Trigger         | Result
  *   ----------------------|------------------------------------------------------------
  *   session_start         | Activate both bars, load cached org, start async checks
- *   session_shutdown      | Clear custom footer + widgets
+ *   session_shutdown      | Clear both widgets
  *   session_compact       | Repaint context usage from the post-compaction state
  *   turn_end              | Refresh git changes, update context bar, trigger footer repaint
  *   agent_end             | Final git refresh + footer repaint
@@ -27,14 +26,13 @@
  *   Ctrl+Shift+B          | Keyboard toggle for bars
  *   --no-devbar flag      | Launch pi without the status bar
  *
- * Pi SDK features used:
- *   setWidget, setFooter, setTitle
+ * OMP SDK features used:
+ *   setWidget, setTitle
  *   session_start, session_shutdown, session_compact, turn_end, agent_end
  *   before_agent_start (with systemPromptOptions)
  *   registerCommand, registerShortcut, registerFlag
  *   getThinkingLevel, getSessionName, getContextUsage, ctx.model, ctx.cwd, ctx.hasUI
  *   pi.exec()
- *   footerData (getGitBranch, onBranchChange, getExtensionStatuses) on Pi
  *   theme.fg, theme.bold
  */
 import type {
@@ -42,7 +40,7 @@ import type {
   ExtensionCommandContext,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import { markBootStep } from "../../lib/common/boot-timing.ts";
 import { registerLatestContextProjection } from "../../lib/common/session/active-branch-context.ts";
 import { shouldInjectOnce } from "../../lib/common/session/inject-once.ts";
@@ -72,8 +70,8 @@ import { formatImageWidthPill, readDevbarRuntimeSettings } from "./lib/settings-
 import { DEFAULT_DEVBAR_COLORS, type DevbarColors } from "./lib/colors.ts";
 import { buildExecFn } from "../../lib/common/exec-adapter.ts";
 import { basename } from "node:path";
-import { isOmpHost, requirePiVersion } from "../../lib/common/pi-compat.ts";
-import { filterEnabledExtensionStatuses } from "../../lib/common/sf-pi-extension-state.ts";
+import { requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { nativeUi } from "../../lib/common/ui-rows.ts";
 
 import { getFirstTokenCompletions } from "../../lib/common/command-actions.ts";
 import { withSafeCommandHandler } from "../../lib/common/safe-command-handler.ts";
@@ -125,7 +123,7 @@ export default function sfDevBar(pi: ExtensionAPI) {
   let imageWidthPill = "";
   let devbarColors: DevbarColors = DEFAULT_DEVBAR_COLORS;
 
-  // Reference to footer's tui.requestRender for reactive updates.
+  // Reference to the bottom widget's requestRender for reactive updates.
   // The wrapper installed below includes a session-generation guard so stale
   // async callbacks from a pre-/reload context cannot render into a new session.
   let requestFooterRender: (() => void) | null = null;
@@ -136,7 +134,6 @@ export default function sfDevBar(pi: ExtensionAPI) {
   let activeSessionGeneration = 0;
   let activeSessionKey: string | null = null;
 
-  // Track the latest git branch from footerData for use in async callbacks
   let latestGitBranch: string | null = null;
 
   // Reference to the top-bar component's requestRender. The factory keeps
@@ -145,10 +142,6 @@ export default function sfDevBar(pi: ExtensionAPI) {
   // Mount the top bar once per session: re-mounting on every update would
   // reorder it against other extensions' above-editor widgets on OMP.
   let topBarMounted = false;
-
-  // OMP's setFooter is a no-op and it has no footerData branch feed: the
-  // bottom bar mounts as a below-editor widget and git supplies the branch.
-  const ompHost = isOmpHost(pi);
 
   // Use the shared exec adapter instead of a per-extension wrapper
   const exec = buildExecFn(pi);
@@ -206,7 +199,7 @@ export default function sfDevBar(pi: ExtensionAPI) {
       ...runtimeFacts,
       thinkingLevel,
       folderName: basename(ctx.cwd),
-      gitBranch: latestGitBranch, // Use the latest known branch from footerData
+      gitBranch: latestGitBranch,
       gitChanges,
       imageWidthPill,
       colors: devbarColors,
@@ -241,16 +234,9 @@ export default function sfDevBar(pi: ExtensionAPI) {
     };
   }
 
-  // Latest gitBranch passed to the component (resolved on every render).
-  // Using the same model as the footer — the component pulls fresh state
-  // each render cycle so we only need to call tui.requestRender() on
-  // change.
-  let topBarBranchHint: string | null | undefined = undefined;
-
   // --- Helper: update the top-bar widget ---
-  function updateTopBar(ctx: ExtensionContext, gitBranch?: string | null) {
+  function updateTopBar(ctx: ExtensionContext) {
     if (!enabled || !ctx.hasUI || !isActiveSession(ctx)) return;
-    if (gitBranch !== undefined) topBarBranchHint = gitBranch;
     if (!topBarMounted) mountTopBarWidget(ctx);
     requestTopBarRender?.();
   }
@@ -259,23 +245,24 @@ export default function sfDevBar(pi: ExtensionAPI) {
   function mountTopBarWidget(ctx: ExtensionContext): void {
     if (!ctx.hasUI) return;
     topBarMounted = true;
-    ctx.ui.setWidget(WIDGET_KEY, (tui, theme) => {
-      requestTopBarRender = () => tui.requestRender();
+    nativeUi(ctx.ui).setWidget(
+      WIDGET_KEY,
+      (ui, theme) => {
+        requestTopBarRender = () => ui.requestRender();
 
-      return {
-        render: (width: number): string[] => {
-          if (!enabled || !isActiveSession(ctx)) return [];
-          const state = buildTopBarState(ctx);
-          if (topBarBranchHint !== undefined) state.gitBranch = topBarBranchHint;
-          return renderTopBarLine(state, theme, width);
-        },
-        invalidate() {},
-        dispose() {
-          requestTopBarRender = null;
-          topBarMounted = false;
-        },
-      };
-    });
+        return {
+          render: (width: number): string[] => {
+            if (!enabled || !isActiveSession(ctx)) return [];
+            return renderTopBarLine(buildTopBarState(ctx), theme, width);
+          },
+          dispose() {
+            requestTopBarRender = null;
+            topBarMounted = false;
+          },
+        };
+      },
+      { placement: "aboveEditor" },
+    );
   }
 
   // --- Helper: update terminal title ---
@@ -297,23 +284,17 @@ export default function sfDevBar(pi: ExtensionAPI) {
   // --- Helper: refresh git changes (async, non-blocking) ---
   async function refreshGitChanges(
     ctx: ExtensionContext,
-    gitBranch?: string | null,
     generation: number = activeSessionGeneration,
   ): Promise<void> {
     try {
       const [changes, branch] = await Promise.all([
         getGitChanges(exec, ctx.cwd),
-        ompHost ? getGitBranch(exec) : undefined,
+        getGitBranch(exec),
       ]);
       if (!isActiveSession(ctx, generation)) return;
       gitChanges = changes;
-      // Use the explicitly passed branch, or fall back to the latest known branch
-      let resolvedBranch = gitBranch !== undefined ? gitBranch : latestGitBranch;
-      if (branch !== undefined) {
-        latestGitBranch = branch;
-        resolvedBranch = branch;
-      }
-      updateTopBar(ctx, resolvedBranch);
+      latestGitBranch = branch;
+      updateTopBar(ctx);
       requestFooterRender?.();
     } catch {
       // Silently ignore — git may not be available
@@ -393,96 +374,39 @@ export default function sfDevBar(pi: ExtensionAPI) {
 
     // Reset per-session state
     gitChanges = null;
+    latestGitBranch = null;
     topBarMounted = false;
     refreshDevbarSettings(ctx.cwd);
 
     // Set terminal title
     updateTitle(ctx);
 
-    // Render initial top bar (without git branch — footer callback or git read provides it)
+    // Render the top bar immediately; the deferred git read fills in the branch.
     updateTopBar(ctx);
     scheduleGitRefresh(ctx, generation);
 
-    if (ompHost) {
-      // OMP lists extension statuses natively, so its bar carries only DevBar-owned facts.
-      ctx.ui.setWidget(
-        FOOTER_WIDGET_KEY,
-        (tui, theme) => {
-          requestFooterRender = () => {
-            if (isActiveSession(ctx, generation)) tui.requestRender();
-          };
-          return {
-            dispose: () => {
-              if (isActiveSession(ctx, generation)) requestFooterRender = null;
-            },
-            invalidate() {},
-            render(width: number): string[] {
-              if (!enabled || !isActiveSession(ctx, generation)) return [];
-              const { left, right } = renderBottomBarParts(buildBottomBarState(ctx), theme);
-              if (!left && !right) return [];
-              const pad = " ".repeat(Math.max(1, width - visibleWidth(left) - visibleWidth(right)));
-              return [truncateToWidth(left + pad + right, width)];
-            },
-          };
-        },
-        { placement: "belowEditor" },
-      );
-      return;
-    }
-
-    // Activate the custom footer
-    ctx.ui.setFooter((tui, theme, footerData) => {
-      // Subscribe to reactive git branch changes
-      const unsub = footerData.onBranchChange(() => {
-        if (!isActiveSession(ctx, generation)) return;
-        const branch = footerData.getGitBranch();
-        latestGitBranch = branch ?? null;
-        updateTopBar(ctx, branch);
-        tui.requestRender();
-      });
-
-      // Store requestRender so async updates can trigger re-renders
-      requestFooterRender = () => {
-        if (isActiveSession(ctx, generation)) tui.requestRender();
-      };
-
-      // Kick off initial git branch-aware top bar render
-      if (isActiveSession(ctx, generation)) {
-        const initialBranch = footerData.getGitBranch();
-        latestGitBranch = initialBranch ?? null;
-        updateTopBar(ctx, initialBranch);
-      }
-
-      return {
-        dispose: () => {
-          unsub();
-          if (isActiveSession(ctx, generation)) {
-            requestFooterRender = null;
-          }
-        },
-        // Footer content uses theme.fg() during render, so no cached themed
-        // strings need rebuilding. If we ever cache themed content in variables,
-        // invalidate() must rebuild them here. See tui.md "Invalidation and
-        // Theme Changes" for the rebuild-on-invalidate pattern.
-        invalidate() {},
-        render(width: number): string[] {
-          if (!enabled || !isActiveSession(ctx, generation)) return [];
-
-          const state = buildBottomBarState(ctx);
-          const statuses = footerData.getExtensionStatuses();
-          state.extensionStatuses = filterEnabledExtensionStatuses(ctx.cwd, statuses);
-
-          const { left, right } = renderBottomBarParts(state, theme);
-
-          const leftW = visibleWidth(left);
-          const rightW = visibleWidth(right);
-          const pad = " ".repeat(Math.max(1, width - leftW - rightW));
-
-          // No top border line — matches the top bar's clean style
-          return [truncateToWidth(left + pad + right, width)];
-        },
-      };
-    });
+    // The host renders extension statuses separately from DevBar-owned facts.
+    nativeUi(ctx.ui).setWidget(
+      FOOTER_WIDGET_KEY,
+      (ui, theme) => {
+        requestFooterRender = () => {
+          if (isActiveSession(ctx, generation)) ui.requestRender();
+        };
+        return {
+          dispose: () => {
+            if (isActiveSession(ctx, generation)) requestFooterRender = null;
+          },
+          render(width: number): string[] {
+            if (!enabled || !isActiveSession(ctx, generation)) return [];
+            const { left, right } = renderBottomBarParts(buildBottomBarState(ctx), theme);
+            if (!left && !right) return [];
+            const gap = " ".repeat(Math.max(1, width - visibleWidth(left) - visibleWidth(right)));
+            return [truncate(left + gap + right, width)];
+          },
+        };
+      },
+      { placement: "belowEditor" },
+    );
   });
 
   /** Fire-and-forget git refresh, delayed so `git status` does not join the first-paint boot storm. */
@@ -490,7 +414,7 @@ export default function sfDevBar(pi: ExtensionAPI) {
     const gitTimer = setTimeout(() => {
       if (!isActiveSession(ctx, generation)) return;
       void markBootStep("sf-devbar.git-status (deferred)", () =>
-        refreshGitChanges(ctx, null, generation),
+        refreshGitChanges(ctx, generation),
       ).catch(() => undefined);
     }, 1_500);
     gitTimer.unref?.();
@@ -505,9 +429,9 @@ export default function sfDevBar(pi: ExtensionAPI) {
     displayEnv = null;
     displayOrgStale = false;
     topBarMounted = false;
-    if (ompHost) ctx.ui.setWidget(FOOTER_WIDGET_KEY, undefined);
-    else ctx.ui.setFooter(undefined);
-    ctx.ui.setWidget(WIDGET_KEY, undefined);
+    const ui = nativeUi(ctx.ui);
+    ui.setWidget(FOOTER_WIDGET_KEY, undefined);
+    ui.setWidget(WIDGET_KEY, undefined);
   });
 
   // --- Successful compaction: replace stale pre-compaction usage immediately ---
@@ -697,7 +621,7 @@ export default function sfDevBar(pi: ExtensionAPI) {
         fromPanel,
       );
     } else {
-      ctx.ui.setWidget(WIDGET_KEY, undefined);
+      nativeUi(ctx.ui).setWidget(WIDGET_KEY, undefined);
       requestFooterRender?.();
       await emitDevbarOutput(
         ctx,
@@ -860,7 +784,7 @@ export default function sfDevBar(pi: ExtensionAPI) {
         requestFooterRender?.();
         ctx.ui.notify("SF DevBar enabled", "info");
       } else {
-        ctx.ui.setWidget(WIDGET_KEY, undefined);
+        nativeUi(ctx.ui).setWidget(WIDGET_KEY, undefined);
         requestFooterRender?.();
         ctx.ui.notify("SF DevBar disabled", "info");
       }

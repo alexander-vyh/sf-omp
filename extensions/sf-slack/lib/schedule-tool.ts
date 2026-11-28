@@ -15,8 +15,8 @@
  *   - dry-run via SLACK_SEND_DRY_RUN=1 for action=schedule
  *   - audit trail via pi.appendEntry(SCHEDULE_ENTRY_TYPE, ...)
  */
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { callLabel, registerSlackUiTool, slackText } from "./render.ts";
 import {
   ENV_ALLOW_HEADLESS_SEND,
   ENV_SEND_DRY_RUN,
@@ -69,14 +69,6 @@ interface ScheduleToolRenderResult {
   };
 }
 
-function callLabel(label: string, summary: string, theme: Theme): Text {
-  return new Text(
-    theme.fg("toolTitle", theme.bold(label + " ")) + theme.fg("muted", summary),
-    0,
-    0,
-  );
-}
-
 function getFirstText(content: unknown[] | undefined): string {
   const first = content?.[0];
   if (typeof first !== "object" || first === null || !("text" in first)) return "";
@@ -91,7 +83,7 @@ function previewBody(text: string | undefined, limit = 80): string {
 }
 
 export function registerScheduleTool(pi: ExtensionAPI): void {
-  pi.registerTool<typeof SlackScheduleParams>({
+  registerSlackUiTool<typeof SlackScheduleParams>(pi, {
     name: "slack_schedule",
     label: "Slack Schedule",
     description:
@@ -137,7 +129,7 @@ export function registerScheduleTool(pi: ExtensionAPI): void {
       } as never;
     },
 
-    renderCall(args: ScheduleToolCallArgs, theme: Theme) {
+    renderCall(args: ScheduleToolCallArgs, _options, theme) {
       const action = args.action || "schedule";
       if (action === "list") return callLabel("Slack Schedule", "list pending", theme);
       if (action === "delete") {
@@ -155,31 +147,27 @@ export function registerScheduleTool(pi: ExtensionAPI): void {
       );
     },
 
-    renderResult(
-      result: ScheduleToolRenderResult,
-      opts: { expanded: boolean; isPartial: boolean },
-      theme: Theme,
-    ) {
+    renderResult(result: ScheduleToolRenderResult, opts, theme) {
       if (opts.isPartial) {
-        return new Text(theme.fg("warning", "Slack schedule awaiting confirmation…"), 0, 0);
+        return slackText(theme.fg("warning", "Slack schedule awaiting confirmation…"));
       }
       const details = result.details || {};
       if (!details.ok) {
         const line = getFirstText(result.content) || "Slack schedule failed";
         if (details.reason === "user_cancelled") {
-          return new Text(theme.fg("muted", "✗ Slack schedule cancelled by user"), 0, 0);
+          return slackText(theme.fg("muted", "✗ Slack schedule cancelled by user"));
         }
-        return new Text(theme.fg("error", `✗ ${line}`), 0, 0);
+        return slackText(theme.fg("error", `✗ ${line}`));
       }
       if (details.action === "list") {
-        return new Text(theme.fg("success", "✓ Listed scheduled messages"), 0, 0);
+        return slackText(theme.fg("success", "✓ Listed scheduled messages"));
       }
       const dest = details.channel_name ? `#${details.channel_name}` : details.channel || "?";
       if (details.action === "delete") {
-        return new Text(theme.fg("success", `✓ Cancelled scheduled message in ${dest}`), 0, 0);
+        return slackText(theme.fg("success", `✓ Cancelled scheduled message in ${dest}`));
       }
       const prefix = details.dry_run ? "✓ [dry-run] " : "✓ ";
-      return new Text(
+      return slackText(
         theme.fg("success", prefix) +
           theme.fg("text", `Scheduled for `) +
           theme.fg("accent", dest) +
@@ -187,8 +175,6 @@ export function registerScheduleTool(pi: ExtensionAPI): void {
           (details.scheduled_message_id
             ? theme.fg("dim", `\n  ${details.scheduled_message_id}`)
             : ""),
-        0,
-        0,
       );
     },
 

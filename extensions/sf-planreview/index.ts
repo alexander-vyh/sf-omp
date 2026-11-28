@@ -17,6 +17,7 @@ import {
   type PlannotatorRuntimeStatus,
 } from "../../lib/common/plannotator-runtime.ts";
 import { withSafeCommandHandler } from "../../lib/common/safe-command-handler.ts";
+import { nativeUi } from "../../lib/common/ui-rows.ts";
 import {
   cleanupReviewSnapshot,
   createReviewSnapshot,
@@ -348,17 +349,13 @@ async function handleAction(
   if (!runtime.binaryPath) throw new Error("No standalone Plannotator TUI is available.");
   const binary = runtime.binaryPath;
   const environment = { ...process.env, PLANNOTATOR_DATA_DIR: source.dataDir };
-  const exitCode = await ctx.ui.custom<number | null>((tui, _theme, _keys, done) => {
-    let code: number | null = null;
-    tui.stop();
-    try {
-      code = spawnSync(binary, [source.file], { stdio: "inherit", env: environment }).status;
-    } finally {
-      tui.start();
-      tui.requestRender(true);
-      done(code);
-    }
-    return { render: () => [], invalidate: () => {} };
+  const exitCode = await nativeUi(ctx.ui).custom<number | null>(async (ui, _theme, _keys, done) => {
+    done(
+      await ui.suspend(
+        async () => spawnSync(binary, [source.file], { stdio: "inherit", env: environment }).status,
+      ),
+    );
+    return undefined;
   });
   if (exitCode !== 0) throw new Error("Plannotator TUI exited without completing the review.");
   const exported = spawnSync(binary, ["--export", source.file], {

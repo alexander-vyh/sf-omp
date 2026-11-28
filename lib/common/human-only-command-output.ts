@@ -1,14 +1,17 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Mode-aware command output that never enters model context. */
 import type {
-  Theme,
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Text, type Component } from "@earendil-works/pi-tui";
+import type {
+  ExtensionRows,
+  ExtensionTheme,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import { openInfoPanel, type InfoPanelSeverity } from "./info-panel.ts";
 import { redactDisplayText } from "./redaction.ts";
+import { nativeUi, textRows } from "./ui-rows.ts";
 
 export interface HumanOnlyCommandOutput {
   title: string;
@@ -35,12 +38,12 @@ export function registerHumanOnlyCommandOutput(pi: ExtensionAPI, customType: str
             ? data.severity
             : "info",
       };
-      ctx.ui.setWidget(customType, (_tui, theme) =>
+      nativeUi(ctx.ui).setWidget(customType, (_ui, theme) =>
         createHumanOnlyCommandOutputRenderer()({ data: output }, { expanded: false }, theme),
       );
       return;
     }
-    ctx.ui.setWidget(customType, undefined);
+    nativeUi(ctx.ui).setWidget(customType, undefined);
   };
   pi.on("session_start", restore);
   const native = pi as unknown as { on(event: "session_switch", handler: typeof restore): void };
@@ -51,8 +54,8 @@ export function registerHumanOnlyCommandOutput(pi: ExtensionAPI, customType: str
 export function createHumanOnlyCommandOutputRenderer(): (
   entry: { data?: HumanOnlyCommandOutput },
   options: { expanded: boolean },
-  theme: Theme,
-) => Component {
+  theme: Pick<ExtensionTheme, "fg" | "bold">,
+) => ExtensionRows {
   return (entry, _options, theme) => {
     const title = entry.data?.title ?? "Status";
     const body = entry.data?.body ?? title;
@@ -65,7 +68,7 @@ export function createHumanOnlyCommandOutputRenderer(): (
           : severity === "error"
             ? "error"
             : "accent";
-    return new Text(`${theme.fg(color, theme.bold(title))}\n${theme.fg("text", body)}`, 0, 0);
+    return textRows(`${theme.fg(color, theme.bold(title))}\n${theme.fg("text", body)}`);
   };
 }
 

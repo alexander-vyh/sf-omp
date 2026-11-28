@@ -4,7 +4,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { writeLatestBrowserSnapshotRefs } from "../../../lib/common/sf-browser-snapshot-state.ts";
-import { renderBrowserToolCall, renderBrowserToolResult } from "./browser-render.ts";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
+import { browserToolRenderers } from "./browser-render.ts";
 import { runAgentBrowser } from "./agent-browser.ts";
 import { RAW_AGENT_BROWSER_ESCAPE_HATCH, STALE_REF_HINT } from "./guidance.ts";
 import { expandMissingIframeSnapshots } from "./in-frame-actions.ts";
@@ -23,7 +24,7 @@ const SnapshotOutputMode = StringEnum(["summary", "artifact", "full"] as const, 
 });
 
 export function registerSfBrowserSnapshotTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool(pi, {
     name: SF_BROWSER_SNAPSHOT_TOOL_NAME,
     label: "SF Browser Snapshot",
     description:
@@ -34,9 +35,7 @@ export function registerSfBrowserSnapshotTool(pi: ExtensionAPI): void {
       "When the effective dismissOverlays setting is enabled, snapshots close only recognized ambient Salesforce overlays before publishing refs.",
       "sf_browser_snapshot defaults to outputMode=summary to avoid context dumps; request outputMode=full only when the summary misses needed refs.",
     ],
-    renderCall: (args, theme) => renderBrowserToolCall(SF_BROWSER_SNAPSHOT_TOOL_NAME, args, theme),
-    renderResult: (result, options, theme, context) =>
-      renderBrowserToolResult(SF_BROWSER_SNAPSHOT_TOOL_NAME, result, options, theme, context),
+    ...browserToolRenderers(SF_BROWSER_SNAPSHOT_TOOL_NAME),
     parameters: Type.Object({
       interactive: Type.Optional(
         Type.Boolean({ description: "Only include interactive elements. Defaults to true." }),

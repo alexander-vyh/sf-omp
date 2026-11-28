@@ -1,6 +1,6 @@
 # SF MCP Agent Guide
 
-Use `sf_mcp` to inspect and author reviewed Salesforce MCP entries in Pi's native MCP configuration. Pi remains the runtime authority for transport, connections, OAuth, token storage, tools, resources, and readiness.
+Use `sf_mcp` to inspect and author reviewed Salesforce MCP entries in OMP's native MCP configuration. OMP remains the runtime authority for transport, connections, OAuth, token storage, tools, resources, and readiness.
 
 ## Hosted OAuth lifecycle
 
@@ -10,14 +10,14 @@ Use `sf_mcp` to inspect and author reviewed Salesforce MCP entries in Pi's nativ
 4. Review the redacted connection diff, warnings, `plan_id`, and `plan_hash`.
 5. Run `connection.apply` with the exact plan identity and `allow_mutation=true`.
 6. Run `login.handoff` after exact resulting-state verification for HTTP presets.
-7. Reload Pi when the apply result says it is required, run the returned `/mcp login <server>` command, and complete human OAuth consent.
+7. Run `/mcp reload` when the apply result says a reload is required, run the returned `/mcp reauth <server>` command, and complete human OAuth consent.
 8. Run `tools.plan` with the recommended or read-only profile and optional exact `tool_overrides`, then `tools.apply` with its exact plan identity.
-9. Run `identity.verify` with the exact `connection_name`; it invokes bounded `dispatch_readonly` userinfo and compares the authenticated organization id with the source-bound org binding.
+9. Run `identity.verify` with the exact `connection_name`. OMP extensions cannot delegate tool calls, so it returns the exact bounded `dispatch_readonly` userinfo call and the expected organization id; make that call and compare the result with the source-bound org binding. The identity is not verified until you do.
 10. Use `/mcp` to inspect connection state, errors, tools, resources, reconnects, and logout.
 
 `configure.plan` and `configure.apply` remain available as a combined compatibility workflow.
 
-For Headless 360, pass the public External Client App consumer key as `oauth_client_id` plus an explicit `target_org`. The proved org-pinned endpoint is preferred over the generic environment family. One preset can have several org-bound connection instances; pass `connection_name` for tool access, disable, or login actions when more than one exists. For Slack, pass the approved app client ID and set `SLACK_MCP_CLIENT_SECRET` outside the tool call. For Informatica, pass the IDMC Public OAuth 2.1 client ID plus the pod-specific `server_url`. Never pass a client secret or OAuth token. For Intercom MCP (Fin), pass `region` `US` (default) or `EU`; no client id is needed because Pi registers its own OAuth client during `/mcp login intercom`.
+For Headless 360, pass the public External Client App consumer key as `oauth_client_id` plus an explicit `target_org`. The proved org-pinned endpoint is preferred over the generic environment family. One preset can have several org-bound connection instances; pass `connection_name` for tool access, disable, or login actions when more than one exists. For Slack, pass the approved app client ID and set `SLACK_MCP_CLIENT_SECRET` outside the tool call. For Informatica, pass the IDMC Public OAuth 2.1 client ID plus the pod-specific `server_url`. Never pass a client secret or OAuth token. For Intercom MCP (Fin), pass `region` `US` (default) or `EU`; no client id is needed because OMP registers its own OAuth client during `/mcp reauth intercom`.
 
 ## Actions
 
@@ -28,16 +28,16 @@ For Headless 360, pass the public External Client App consumer key as `oauth_cli
 - `configure.plan` / `configure.apply`: Combined compatibility workflow for callers that intentionally want connection and reviewed profile in one plan.
 - `disable.plan`: Plan disabling one unchanged SF MCP-managed entry.
 - `disable.apply`: Apply the exact disable plan with explicit mutation intent and Guardrail approval.
-- `login.handoff`: Return the exact Pi-native login command. It never performs browser consent or stores tokens.
-- `identity.verify`: After login and reviewed read-only exposure, call bounded Headless 360 userinfo and require the authenticated organization id to match the planned connection binding.
+- `login.handoff`: Return the exact OMP-native `/mcp reauth` command. It never performs browser consent or stores tokens.
+- `identity.verify`: After login and reviewed read-only exposure, return the exact bounded Headless 360 userinfo call and the organization id it must match. It never reports the identity as verified itself.
 
 ## Scope and ownership
 
 - Use `global` for user-level configuration across workspaces.
 - Use `project` only in a trusted project. Project entries override global entries with the same normalized server name.
 - Manual, modified, outdated, invalid, and canonically colliding entries fail closed. Set `replace_existing=true` only after reviewing status and the proposed diff.
-- A project entry containing only `enabled`, `exposure`, or `toolExposure` is a Pi-native override of the matching global server, not a complete manual server. Use `/mcp` for ordinary override changes; replace it with a full project preset only after explicit review.
-- The plan is bound to the current Pi session, workspace, scope, preset revision, exact connection name, optional Salesforce org identity and issuer proof, current target entry, proposed configuration, and managed-state record. Any target drift requires a new plan.
+- A project entry containing only `enabled`, `exposure`, or `toolExposure` is a native override of the matching global server, not a complete manual server. Use `/mcp` for ordinary override changes; replace it with a full project preset only after explicit review.
+- The plan is bound to the current OMP session, workspace, scope, preset revision, exact connection name, optional Salesforce org identity and issuer proof, current target entry, proposed configuration, and managed-state record. Any target drift requires a new plan.
 - Existing singleton entries remain compatible but unbound. SF MCP never guesses their Salesforce org identity.
 
 ## Tool exposure
@@ -57,6 +57,6 @@ Slack and Informatica Catalog Discovery/Data Exploration publish connection guid
 
 - `status` proves only the current local native configuration and SF MCP managed-state view.
 - `configure.plan` proves a deterministic proposed configuration against that source view; it doesn't write or connect.
-- `configure.apply` proves exact local readback after the native configuration and managed record are written. Reload is still required before the running Pi MCP runtime sees an external file change.
+- `configure.apply` proves exact local readback after the native configuration and managed record are written. `/mcp reload` is still required before the running OMP MCP runtime sees an external file change.
 - `login.handoff` proves that an unchanged enabled managed entry exists. It doesn't prove OAuth completion or server connectivity.
 - `/mcp` owns connection and OAuth evidence after reload.

@@ -25,18 +25,23 @@ import { pathToFileURL } from "node:url";
 import { PROJECT_CONFIG_DIR_NAME, globalAgentPath } from "../../../lib/common/pi-paths.ts";
 import {
   createMessageConnection,
-  DidChangeTextDocumentNotification,
-  DidCloseTextDocumentNotification,
-  DidOpenTextDocumentNotification,
-  DidSaveTextDocumentNotification,
-  DocumentDiagnosticRequest,
-  InitializeRequest,
-  InitializedNotification,
-  PublishDiagnosticsNotification,
+  NotificationType,
+  ParameterStructures,
+  RequestType,
   StreamMessageReader,
   StreamMessageWriter,
   type MessageConnection,
-} from "vscode-languageserver-protocol/node";
+} from "vscode-jsonrpc/node";
+import type {
+  DidChangeTextDocumentParams,
+  DidCloseTextDocumentParams,
+  DidOpenTextDocumentParams,
+  DidSaveTextDocumentParams,
+  DocumentDiagnosticParams,
+  DocumentDiagnosticReport,
+  InitializedParams,
+  PublishDiagnosticsParams,
+} from "vscode-languageserver-protocol";
 import type { LspDiagnostic, LspDoctorStatus, LspResult, SupportedLanguage } from "./types.ts";
 import { findJavaBinary, findNodeBinary, which } from "./binary-discovery.ts";
 import { getLspLanguageId } from "./file-classify.ts";
@@ -52,6 +57,38 @@ const IDLE_SERVER_TIMEOUT_MS = 2 * 60_000;
 const MAX_OPEN_FILES = 30;
 const MAX_STDERR_LINES = 20;
 const CLEANUP_INTERVAL_MS = 30_000;
+
+// The protocol runtime barrel eagerly loads transitive CommonJS dependencies
+// that compiled OMP cannot resolve. Keep its payload types and use the same
+// JSON-RPC Node transport and named-parameter methods directly.
+const initialized = new NotificationType<InitializedParams>(
+  "initialized",
+  ParameterStructures.byName,
+);
+const didOpen = new NotificationType<DidOpenTextDocumentParams>(
+  "textDocument/didOpen",
+  ParameterStructures.byName,
+);
+const didChange = new NotificationType<DidChangeTextDocumentParams>(
+  "textDocument/didChange",
+  ParameterStructures.byName,
+);
+const didClose = new NotificationType<DidCloseTextDocumentParams>(
+  "textDocument/didClose",
+  ParameterStructures.byName,
+);
+const didSave = new NotificationType<DidSaveTextDocumentParams>(
+  "textDocument/didSave",
+  ParameterStructures.byName,
+);
+const publishDiagnostics = new NotificationType<PublishDiagnosticsParams>(
+  "textDocument/publishDiagnostics",
+  ParameterStructures.byName,
+);
+const pullDiagnostics = new RequestType<DocumentDiagnosticParams, DocumentDiagnosticReport, void>(
+  "textDocument/diagnostic",
+  ParameterStructures.byName,
+);
 
 // -------------------------------------------------------------------------------------------------
 // Internal types
@@ -515,7 +552,7 @@ function closeDocument(client: ManagedClient, uri: string): void {
   if (!client.openDocuments.has(uri)) return;
   client.openDocuments.delete(uri);
   try {
-    client.connection.sendNotification(DidCloseTextDocumentNotification.type, {
+    client.connection.sendNotification(didClose, {
       textDocument: { uri },
     });
   } catch {
@@ -568,7 +605,7 @@ async function closeClient(client: ManagedClient): Promise<void> {
 
   for (const [uri] of client.openDocuments) {
     try {
-      client.connection.sendNotification(DidCloseTextDocumentNotification.type, {
+      client.connection.sendNotification(didClose, {
         textDocument: { uri },
       });
     } catch {
@@ -626,7 +663,7 @@ function wireDiagnostics(client: ManagedClient): void {
     trimStderrBuffer(client);
   });
 
-  client.connection.onNotification(PublishDiagnosticsNotification.type, (params) => {
+  client.connection.onNotification(publishDiagnostics, (params) => {
     const uri = params.uri;
     const diagnostics = params.diagnostics as LspDiagnostic[];
     client.diagnostics.set(uri, diagnostics);
@@ -732,7 +769,7 @@ async function createClient(
   connection.listen();
 
   const initializePromise = connection.sendRequest(
-    InitializeRequest.method,
+    "initialize",
     buildInitializeParams(root, process.pid),
   );
 
@@ -743,7 +780,7 @@ async function createClient(
     ),
   ]);
 
-  connection.sendNotification(InitializedNotification.type, {});
+  connection.sendNotification(initialized, {});
   clientPool.set(getClientKey(language, root), client);
   scheduleIdleCleanup();
   return client;
@@ -799,7 +836,7 @@ async function requestDocumentDiagnostics(
   uri: string,
 ): Promise<LspDiagnostic[] | undefined> {
   try {
-    const result = await client.connection.sendRequest(DocumentDiagnosticRequest.type, {
+    const result = await client.connection.sendRequest(pullDiagnostics, {
       textDocument: { uri },
     });
     if (!result || typeof result !== "object") return undefined;
@@ -829,7 +866,7 @@ async function diagnoseWithClient(
   const diagnosticsPromise = waitForDiagnostics(client, uri, timeoutMs);
 
   if (nextVersion === 1) {
-    client.connection.sendNotification(DidOpenTextDocumentNotification.type, {
+    client.connection.sendNotification(didOpen, {
       textDocument: {
         uri,
         languageId,
@@ -838,13 +875,13 @@ async function diagnoseWithClient(
       },
     });
   } else {
-    client.connection.sendNotification(DidChangeTextDocumentNotification.type, {
+    client.connection.sendNotification(didChange, {
       textDocument: { uri, version: nextVersion },
       contentChanges: [{ text: content }],
     });
   }
 
-  client.connection.sendNotification(DidSaveTextDocumentNotification.type, {
+  client.connection.sendNotification(didSave, {
     textDocument: { uri },
     text: content,
   });

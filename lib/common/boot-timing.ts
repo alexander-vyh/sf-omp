@@ -219,8 +219,8 @@ export function flushBootTiming(): void {
   // total-tracked above is the sum of parallel work, which is misleading.
   const wallClockMs = now - collector.startedAt;
   // Time between collector init and the FIRST step landing. Approximates
-  // "how long pi takes before any sf-pi extension session_start fires":
-  // module loading, jiti compile, native bindings, etc.
+  // "how long OMP takes before any sf-pi extension session_start fires":
+  // module loading, transpilation, native bindings, etc.
   const preSessionMs = collector.firstStepAt ? collector.firstStepAt - collector.startedAt : 0;
 
   // Loop-lag stats give us the smoking gun: if individual steps look
@@ -238,7 +238,7 @@ export function flushBootTiming(): void {
     "[sf-pi boot timing]",
     `  ${new Date(now).toISOString()}`,
     `  wall-clock: ${wallClockMs} ms (collector init → last step)`,
-    `  pre-session: ~${preSessionMs} ms (collector init → first step) — pi load + extension factories`,
+    `  pre-session: ~${preSessionMs} ms (collector init → first step) — OMP load + extension factories`,
     `  total tracked: ${totalMs} ms across ${collector.steps.length} steps (sum of parallel durations)`,
     `  loop lag: ${stallSummary} (sampled every ${LOOP_LAG_INTERVAL_MS} ms)`,
     "",

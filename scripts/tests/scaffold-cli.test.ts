@@ -53,7 +53,7 @@ function createFixture(): void {
 }
 
 function runScaffold(args: string[]) {
-  return spawnSync(process.execPath, [SCAFFOLD_PATH, ...args], {
+  return spawnSync("node", [SCAFFOLD_PATH, ...args], {
     cwd: ROOT,
     encoding: "utf8",
     timeout: 120_000,

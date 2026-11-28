@@ -21,15 +21,14 @@ This is a selected interface guide, not a hand-maintained complete file map:
 | `sf-environment/`             | Cache-first Salesforce environment detection and display state              |
 | `state-store.ts`              | Versioned, atomic per-user/project SF Pi state                              |
 | `sf-pi-settings.ts`           | Tolerant global/project Pi settings access                                  |
-| `sf-pi-package-state.ts`      | SF Pi package-filter enablement updates                                     |
+| `omp-extension-state.ts`      | OMP-native bundled-extension enablement (`disabledExtensions`)              |
 | `command-actions.ts`          | Shared command metadata for panels, completion, and help                    |
 | `manager-deep-link.ts`        | Manager-first extension navigation                                          |
 | `display/`                    | Shared result details, diagnostics, profiles, and width-safe rendering      |
 | `doctor/`                     | Read-only diagnostics and explicitly confirmed repairs                      |
-| `secure-credential-prompt.ts` | Fixed-mask credential entry while Pi owns persistence/logout                |
-| `privacy/`                    | Telemetry-default assertion and state                                       |
+| `secure-credential-prompt.ts` | Fixed-mask credential entry while OMP owns persistence/logout               |
 | `session/`                    | Active-branch session projection helpers                                    |
-| `windows-spawn.ts`            | Shell-free launch of `.cmd`-wrapped CLIs (sf, npm, pi, …) on Windows        |
+| `windows-spawn.ts`            | Shell-free launch of `.cmd`-wrapped CLIs (sf, npm, …) on Windows            |
 | `open-external.ts`            | Shell-free URL and folder opening on macOS, Windows, and Linux              |
 
 ## Complete top-level inventory
@@ -44,7 +43,7 @@ This complete top-level inventory is generated from `lib/common/`. Directory cou
 | `auto-update/`                 | directory |                     2 |               0 |
 | `boot-timing.ts`               | module    |                     1 |               0 |
 | `browser-runtime-status/`      | directory |                     1 |               0 |
-| `catalog-state/`               | directory |                     8 |               0 |
+| `catalog-state/`               | directory |                     7 |               0 |
 | `code-analyzer-status/`        | directory |                     1 |               0 |
 | `color-policy.ts`              | module    |                     1 |               0 |
 | `command-actions.ts`           | module    |                     1 |               0 |
@@ -52,21 +51,19 @@ This complete top-level inventory is generated from `lib/common/`. Directory cou
 | `compaction-status/`           | directory |                     1 |               0 |
 | `display/`                     | directory |                     4 |               5 |
 | `docs-status/`                 | directory |                     1 |               0 |
-| `doctor/`                      | directory |                     5 |               2 |
+| `doctor/`                      | directory |                     4 |               2 |
 | `exec-adapter.ts`              | module    |                     1 |               0 |
 | `extension-toggle.ts`          | module    |                     1 |               0 |
 | `fin-admin-surface.ts`         | module    |                     1 |               0 |
 | `fin-sdk-state.ts`             | module    |                     1 |               0 |
 | `fin-workspaces-state.ts`      | module    |                     1 |               0 |
 | `glyph-policy.ts`              | module    |                     1 |               0 |
-| `herdr-package-sources.ts`     | module    |                     1 |               0 |
-| `herdr-runtime.ts`             | module    |                     1 |               0 |
-| `herdr.ts`                     | module    |                     1 |               0 |
 | `human-only-command-output.ts` | module    |                     1 |               0 |
 | `info-panel.ts`                | module    |                     1 |               0 |
 | `manager-actions.ts`           | module    |                     1 |               0 |
 | `manager-deep-link.ts`         | module    |                     1 |               0 |
 | `monthly-usage/`               | directory |                     2 |               0 |
+| `native-ui-tool.ts`            | module    |                     1 |               0 |
 | `npm-release-age-policy.ts`    | module    |                     1 |               0 |
 | `omp-extension-state.ts`       | module    |                     1 |               0 |
 | `open-external.ts`             | module    |                     1 |               0 |
@@ -75,7 +72,6 @@ This complete top-level inventory is generated from `lib/common/`. Directory cou
 | `pi-paths.ts`                  | module    |                     1 |               0 |
 | `plannotator-release.ts`       | module    |                     1 |               0 |
 | `plannotator-runtime.ts`       | module    |                     1 |               0 |
-| `privacy/`                     | directory |                     2 |               2 |
 | `redaction.ts`                 | module    |                     1 |               0 |
 | `runtime-floor.ts`             | module    |                     1 |               0 |
 | `safe-command-handler.ts`      | module    |                     1 |               0 |
@@ -88,9 +84,7 @@ This complete top-level inventory is generated from `lib/common/`. Directory cou
 | `sf-lsp-health/`               | directory |                     2 |               1 |
 | `sf-mcp-oauth-requirements.ts` | module    |                     1 |               0 |
 | `sf-pi-extension-state.ts`     | module    |                     1 |               0 |
-| `sf-pi-package-resolution.ts`  | module    |                     1 |               0 |
 | `sf-pi-package-root.ts`        | module    |                     1 |               0 |
-| `sf-pi-package-state.ts`       | module    |                     1 |               0 |
 | `sf-pi-settings.ts`            | module    |                     1 |               0 |
 | `sf-schema/`                   | directory |                     1 |               1 |
 | `skill-detection/`             | directory |                     2 |               0 |
@@ -98,9 +92,11 @@ This complete top-level inventory is generated from `lib/common/`. Directory cou
 | `slack-status/`                | directory |                     1 |               0 |
 | `state-store.ts`               | module    |                     1 |               0 |
 | `test-fixtures.ts`             | module    |                     1 |               0 |
-| `tests/`                       | directory |                     0 |              52 |
+| `tests/`                       | directory |                     0 |              54 |
 | `tldraw-status/`               | directory |                     1 |               0 |
+| `ui-field.ts`                  | module    |                     1 |               0 |
 | `ui-glyphs.ts`                 | module    |                     1 |               0 |
+| `ui-rows.ts`                   | module    |                     1 |               0 |
 | `windows-spawn.ts`             | module    |                     1 |               0 |
 
 <!-- GENERATED:common-modules:end -->
@@ -123,7 +119,7 @@ Q2. Is the state read by 2+ extensions in the same process?
 Q3. Is the state a user-facing pi setting they'd hand-edit?
     YES → mutate pi settings.json via lib/common/sf-pi-settings.ts helpers
           Project > global precedence; never write opaque blobs there.
-          Examples: package filter list, display profile, extension preferences
+          Examples: display profile, extension preferences
 
 Q4. Otherwise (per-user/project persisted state, sf-pi only) →
     use the shared lib/common/state-store.ts helper.
@@ -136,9 +132,8 @@ Q4. Otherwise (per-user/project persisted state, sf-pi only) →
 The `npm run check:architecture` lint refuses any `state-store.ts` inside an
 extension that does not delegate to `lib/common/state-store.ts`. Existing
 Q4 callers (`extensions/sf-welcome/lib/state-store.ts`,
-`lib/common/catalog-state/announcements-state.ts`,
-`lib/common/catalog-state/recommendations-state.ts`) keep their on-disk
-locations via `pathOverride` so existing dismissals and decisions survive.
+`lib/common/catalog-state/announcements-state.ts`) keep their on-disk
+locations via `pathOverride` so existing dismissals survive.
 
 ## When to add code here
 

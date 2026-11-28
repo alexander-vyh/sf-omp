@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager Settings panel for SF Data Explorer defaults. */
-import { Input, type Focusable, matchesKey } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
+import { RowsTextField } from "../../../lib/common/ui-field.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import {
   EXPLORER_MODES,
   readEffectiveDataExplorerSettings,
@@ -11,8 +12,8 @@ import {
 } from "./settings.ts";
 import type { ExplorerMode } from "./types.ts";
 
-class DataExplorerConfigPanel implements Focusable {
-  private input = new Input();
+class DataExplorerConfigPanel implements RowsPanel {
+  private readonly input = new RowsTextField();
   private selected = 0;
   private defaultMode: ExplorerMode;
   private defaultOrg: string;
@@ -30,7 +31,7 @@ class DataExplorerConfigPanel implements Focusable {
   }
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: Pick<ExtensionTheme, "fg" | "bold">,
     private readonly cwd: string,
     private readonly scope: DataExplorerSettingsScope,
     private readonly done: (result: ConfigPanelResult | undefined) => void,
@@ -43,16 +44,16 @@ class DataExplorerConfigPanel implements Focusable {
     this.savedSource =
       effective.source === "default" ? "default" : `${effective.source} (${effective.path})`;
     this.input.setValue(this.defaultOrg);
-    this.input.onSubmit = (value) => this.commitOrg(value);
-    this.input.onEscape = () => this.cancelOrgEdit();
   }
 
   handleInput(data: string): void {
     if (this.editingOrg) {
-      this.input.handleInput(data);
+      if (matchesKey(data, "enter")) this.commitOrg(this.input.getValue());
+      else if (matchesKey(data, "escape")) this.cancelOrgEdit();
+      else this.input.handleInput(data);
       return;
     }
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.done(undefined);
       return;
     }
@@ -68,12 +69,12 @@ class DataExplorerConfigPanel implements Focusable {
       this.cycleMode(matchesKey(data, "left") ? -1 : 1);
       return;
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+    if (matchesKey(data, "enter")) {
       if (this.selected === 1) this.startOrgEdit();
       else this.save();
       return;
     }
-    if (data === "s") this.save();
+    if (matchesKey(data, "s")) this.save();
   }
 
   renderContent(width: number): string[] {
@@ -84,7 +85,7 @@ class DataExplorerConfigPanel implements Focusable {
         "",
         ` ${t.fg("dim", "Enter a default target org alias or 'default'.")}`,
         "",
-        ...this.input.render(Math.max(20, width - 4)).map((line) => ` ${line}`),
+        ...this.input.render(Math.max(1, width - 4)).map((line) => ` ${line}`),
         "",
         ` ${t.fg("dim", "Enter save field · Esc cancel edit")}`,
       ];
@@ -111,8 +112,12 @@ class DataExplorerConfigPanel implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {
-    this.input.invalidate();
+  capturesNavigation(): boolean {
+    return this.editingOrg;
+  }
+
+  dispose(): void {
+    this.input.dispose();
   }
 
   private cycleMode(direction: -1 | 1): void {
@@ -125,7 +130,6 @@ class DataExplorerConfigPanel implements Focusable {
 
   private startOrgEdit(): void {
     this.input.setValue(this.defaultOrg);
-    this.input.focused = this.focused;
     this.editingOrg = true;
     this.message = "";
   }

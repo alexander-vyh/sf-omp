@@ -13,7 +13,7 @@
  */
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { OMP_VERSION, ROOT, localOmpCommand, runtimeEnvironment } from "./omp-runtime.ts";
+import { OMP_VERSION, ROOT, proofOmpCommand, runtimeEnvironment } from "./omp-runtime.ts";
 import type { RuntimeSurfaceScenarioModule } from "./runtime-surface/types.ts";
 
 const BASELINE_PATH = path.join(ROOT, "scripts", "omp-parity-baseline.json");
@@ -50,6 +50,7 @@ const runRoot = path.join(
   "parity",
   `${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}`,
 );
+let ompCommand: string[] | undefined;
 
 async function supportedEvents(): Promise<Set<string>> {
   const source = await readFile(OMP_TYPES, "utf8");
@@ -138,7 +139,7 @@ async function probe(
   }
   const child = Bun.spawn(
     [
-      ...localOmpCommand(),
+      ...(ompCommand ??= proofOmpCommand(env)),
       "--mode",
       "rpc",
       "--no-ui",
@@ -327,6 +328,7 @@ for (const [id, result] of Object.entries(ordered)) {
   console.log(`[${result.status}] ${id}${detail ? ` — ${detail}` : ""}`);
 }
 console.log(`Logs: ${runRoot}`);
+console.log(`OMP ${OMP_VERSION} host: ${ompCommand?.join(" ") ?? "not launched"}`);
 
 if (update) {
   const previous = only

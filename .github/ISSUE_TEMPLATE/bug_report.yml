@@ -31,7 +31,7 @@ body:
     id: pi_version
     attributes:
       label: OMP runtime version
-      description: Output of `bun scripts/omp.ts --version` in your sf-omp checkout.
+      description: Output of `tools/bin/omp --version` in your sf-omp checkout.
     validations:
       required: true
 

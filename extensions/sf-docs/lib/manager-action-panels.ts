@@ -1,46 +1,50 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager action pages for SF Docs detail actions. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { type Component, type Focusable, matchesKey } from "@earendil-works/pi-tui";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { wrap } from "@oh-my-pi/pi-tui/text/width";
 import type { ConfigPanelResult } from "../../../catalog/registry.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 
-type Done = (result: ConfigPanelResult | undefined) => void;
+interface PanelOptions {
+  theme: Pick<ExtensionTheme, "fg" | "bold">;
+  done: (result: ConfigPanelResult | undefined) => void;
+  requestRender?: () => void;
+}
 
-export function createSfDocsConnectPanel(args: {
-  theme: Theme;
-  done: Done;
+interface ConnectOptions extends PanelOptions {
   prepareLogin: () => Promise<string> | string;
-}): Component & Focusable & { renderContent(width: number): string[] } {
+}
+
+interface DisconnectOptions extends PanelOptions {
+  endpointSourceLabel: string;
+  disconnect: () => Promise<string> | string;
+}
+
+type ActionRows = RowsPanel & {
+  renderContent(width: number): string[];
+  handleInput(data: string): void;
+};
+
+export function createSfDocsConnectPanel(args: ConnectOptions): ActionRows {
   return new SfDocsConnectPanel(args);
 }
 
-export function createSfDocsDisconnectPanel(args: {
-  theme: Theme;
-  endpointSourceLabel: string;
-  done: Done;
-  disconnect: () => Promise<string> | string;
-}): Component & Focusable & { renderContent(width: number): string[] } {
+export function createSfDocsDisconnectPanel(args: DisconnectOptions): ActionRows {
   return new SfDocsDisconnectPanel(args);
 }
 
-class SfDocsConnectPanel implements Focusable {
+class SfDocsConnectPanel implements ActionRows {
   focused = false;
   private result = "";
 
-  constructor(
-    private readonly args: {
-      theme: Theme;
-      done: Done;
-      prepareLogin: () => Promise<string> | string;
-    },
-  ) {}
+  constructor(private readonly args: ConnectOptions) {}
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.args.done(undefined);
       return;
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+    if (matchesKey(data, "enter")) {
       if (this.result) {
         this.args.done(undefined);
         return;
@@ -55,7 +59,7 @@ class SfDocsConnectPanel implements Focusable {
       return [
         ` ${t.fg("accent", t.bold("Connect to SF Docs"))}`,
         "",
-        ...wrap(this.result, width - 3).map((line) => ` ${t.fg("success", line)}`),
+        ...wrap(this.result, Math.max(1, width - 3)).map((line) => ` ${t.fg("success", line)}`),
         "",
         ` ${t.fg("dim", "Enter/Esc back")}`,
       ];
@@ -68,7 +72,9 @@ class SfDocsConnectPanel implements Focusable {
     return [
       ` ${t.fg("accent", t.bold("Connect to SF Docs"))}`,
       "",
-      ...guidance.flatMap((text) => wrap(text, width - 3).map((line) => ` ${t.fg("muted", line)}`)),
+      ...guidance.flatMap((text) =>
+        wrap(text, Math.max(1, width - 3)).map((line) => ` ${t.fg("muted", line)}`),
+      ),
       "",
       ` ${t.fg("accent", "→ Prepare native login")}`,
       "",
@@ -80,29 +86,21 @@ class SfDocsConnectPanel implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {}
-
   private async prepare(): Promise<void> {
     this.result = await this.args.prepareLogin();
+    this.args.requestRender?.();
   }
 }
 
-class SfDocsDisconnectPanel implements Focusable {
+class SfDocsDisconnectPanel implements ActionRows {
   focused = false;
   private selected = 0;
   private result = "";
 
-  constructor(
-    private readonly args: {
-      theme: Theme;
-      endpointSourceLabel: string;
-      done: Done;
-      disconnect: () => Promise<string> | string;
-    },
-  ) {}
+  constructor(private readonly args: DisconnectOptions) {}
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.args.done(undefined);
       return;
     }
@@ -110,7 +108,7 @@ class SfDocsDisconnectPanel implements Focusable {
       this.selected = this.selected === 0 ? 1 : 0;
       return;
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+    if (matchesKey(data, "enter")) {
       if (this.result) {
         this.args.done(undefined);
         return;
@@ -129,7 +127,7 @@ class SfDocsDisconnectPanel implements Focusable {
       return [
         ` ${t.fg("accent", t.bold("Disconnect SF Docs"))}`,
         "",
-        ...wrap(this.result, width - 3).map((line) => ` ${t.fg("success", line)}`),
+        ...wrap(this.result, Math.max(1, width - 3)).map((line) => ` ${t.fg("success", line)}`),
         "",
         ` ${t.fg("dim", "Enter/Esc back")}`,
       ];
@@ -138,7 +136,7 @@ class SfDocsDisconnectPanel implements Focusable {
     const confirm = this.selected === 0;
     return [
       ` ${t.fg("accent", t.bold("Disconnect SF Docs"))}`,
-      ` ${t.fg("dim", "Prepare /logout sf-docs in Pi's editor for your review.")}`,
+      ` ${t.fg("dim", "Prepare /logout sf-docs in OMP's editor for your review.")}`,
       ` ${t.fg("dim", "No credential changes occur until you submit it; environment variables are untouched.")}`,
       ` ${t.fg("muted", `Current source: ${this.args.endpointSourceLabel}`)}`,
       "",
@@ -153,26 +151,8 @@ class SfDocsDisconnectPanel implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {}
-
   private async confirm(): Promise<void> {
     this.result = await this.args.disconnect();
+    this.args.requestRender?.();
   }
-}
-
-function wrap(text: string, width: number): string[] {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = "";
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length <= width) {
-      current = next;
-      continue;
-    }
-    if (current) lines.push(current);
-    current = word;
-  }
-  if (current) lines.push(current);
-  return lines.length > 0 ? lines : [""];
 }

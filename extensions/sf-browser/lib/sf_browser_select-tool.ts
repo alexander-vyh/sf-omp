@@ -3,7 +3,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { runAgentBrowser } from "./agent-browser.ts";
-import { renderBrowserToolCall, renderBrowserToolResult } from "./browser-render.ts";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
+import { browserToolRenderers } from "./browser-render.ts";
 import { throwWithFailureDiagnostics } from "./failure-diagnostics.ts";
 import { STALE_REF_HINT } from "./guidance.ts";
 import { requireFreshBrowserRef } from "./ref-freshness.ts";
@@ -15,7 +16,7 @@ import { okText } from "./tool-support.ts";
 export const SF_BROWSER_SELECT_TOOL_NAME = "sf_browser_select";
 
 export function registerSfBrowserSelectTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool(pi, {
     name: SF_BROWSER_SELECT_TOOL_NAME,
     label: "SF Browser Select",
     description:
@@ -25,9 +26,7 @@ export function registerSfBrowserSelectTool(pi: ExtensionAPI): void {
     promptGuidelines: [
       "Use sf_browser_select for Salesforce select boxes, multi-selects, and Classic Setup dual-list controls; then click Add or Remove and snapshot before saving.",
     ],
-    renderCall: (args, theme) => renderBrowserToolCall(SF_BROWSER_SELECT_TOOL_NAME, args, theme),
-    renderResult: (result, options, theme, context) =>
-      renderBrowserToolResult(SF_BROWSER_SELECT_TOOL_NAME, result, options, theme, context),
+    ...browserToolRenderers(SF_BROWSER_SELECT_TOOL_NAME),
     parameters: Type.Object({
       ref: Type.String({
         description: "Select/listbox ref from sf_browser_snapshot, for example @e171.",

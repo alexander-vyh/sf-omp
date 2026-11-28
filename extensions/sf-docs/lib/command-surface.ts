@@ -67,7 +67,7 @@ export function renderHelp(): string {
     "",
     "Credential setup:",
     "- `/login sf-docs` collects the docs endpoint URL, then masks the access token.",
-    "- Pi owns credential persistence and `/logout sf-docs` owns removal.",
+    "- OMP owns credential persistence and `/logout sf-docs` owns removal.",
     "- `SF_DOCS_MCP_TOKEN` and `SF_DOCS_MCP_ENDPOINT` remain automation fallbacks.",
     "- SF Docs ships with no default endpoint.",
   ].join("\n");

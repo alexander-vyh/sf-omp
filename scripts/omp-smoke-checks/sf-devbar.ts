@@ -2,11 +2,19 @@
 /**
  * sf-devbar offline behavior in native OMP: real /sf-devbar and /sf-org command
  * handlers, the real before_agent_start environment injection, and the OMP bar
- * mounting path (OMP's setFooter is a no-op, so the bottom bar must be a
- * below-editor widget). The workspace is the smoke SFDX fixture with no default
+ * mounting path (a below-editor widget keeps the native footer intact).
+ * The workspace is the smoke SFDX fixture with no default
  * org, so detection runs only the local `sf --version` and file reads.
  */
+import type {
+  ExtensionRows,
+  ExtensionUIContext,
+  ExtensionWidgetContent,
+  ExtensionWidgetOptions,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { stripEscapes } from "@oh-my-pi/pi-tui/text/ansi";
 import type { SmokeApi } from "../omp-smoke-extension.ts";
+import { mountWidgetRows } from "./widget-rows.ts";
 
 const ID = "sf-devbar";
 
@@ -14,30 +22,29 @@ interface Note {
   message: string;
   level?: string;
 }
-type Component = { render(width: number): string[] };
-type WidgetFactory = (tui: unknown, theme: unknown) => Component;
-
-const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
+type Widget = { view: ExtensionRows; placement?: ExtensionWidgetOptions["placement"] };
 
 /** The genuine host ctx with notify (and optionally widget/footer calls) captured. */
-function captureCtx(
-  api: SmokeApi,
-  options: { hasUI: boolean; widgets?: Map<string, { component: Component; placement?: string }> },
-) {
+function captureCtx(api: SmokeApi, options: { hasUI: boolean; widgets?: Map<string, Widget> }) {
   const notes: Note[] = [];
   const footerCalls: unknown[] = [];
   const base = api.ctx as object;
-  const baseUi = Reflect.get(base, "ui") as object;
+  const baseUi = Reflect.get(base, "ui") as ExtensionUIContext;
   const ui = new Proxy(baseUi, {
     get: (target, key) => {
       if (key === "notify")
         return (message: string, level?: string) => notes.push({ message, level });
       if (options.widgets && key === "setWidget")
-        return (name: string, content: unknown, widgetOptions?: { placement?: string }) => {
+        return (
+          name: string,
+          content: ExtensionWidgetContent,
+          widgetOptions?: ExtensionWidgetOptions,
+        ) => {
+          options.widgets?.get(name)?.view.dispose?.();
           options.widgets?.delete(name);
-          if (typeof content === "function")
+          if (content !== undefined)
             options.widgets?.set(name, {
-              component: (content as WidgetFactory)({ requestRender() {} }, theme),
+              view: mountWidgetRows(content, baseUi.theme, name === "sf-devbar-footer" ? 160 : 200),
               placement: widgetOptions?.placement,
             });
         };
@@ -124,20 +131,20 @@ export default async function devbarChecks(api: SmokeApi): Promise<void> {
     });
 
     await api.run("devbar.omp.bars-mount-as-widgets", ID, async () => {
-      const widgets = new Map<string, { component: Component; placement?: string }>();
+      const widgets = new Map<string, Widget>();
       const { ctx, footerCalls } = captureCtx(api, { hasUI: true, widgets });
       for (const handler of api.handlers(ID, "session_start"))
         await handler({ type: "session_start" }, ctx);
       try {
         const footer = widgets.get("sf-devbar-footer");
         const top = widgets.get("sf-devbar");
-        requireTrue(footerCalls.length === 0, "sf-devbar used OMP's no-op setFooter.");
+        requireTrue(footerCalls.length === 0, "sf-devbar replaced the native OMP footer.");
         requireTrue(
           footer?.placement === "belowEditor",
           "Bottom bar is not a below-editor widget.",
         );
-        const bottom = footer.component.render(160).join("\n");
-        const topLine = top?.component.render(200).join("\n") ?? "";
+        const bottom = stripEscapes(footer.view.render(160).join("\n"));
+        const topLine = stripEscapes(top?.view.render(200).join("\n") ?? "");
         requireTrue(
           bottom.includes("SFDX Project │ Default →") && bottom.includes("No org configured"),
           `Unexpected bottom bar: ${bottom}`,

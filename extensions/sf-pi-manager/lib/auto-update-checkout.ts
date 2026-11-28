@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
- * sf-omp self-update: the package is a git checkout launched through
- * repository-local OMP, so "update" means fast-forwarding the checkout to its
- * upstream branch and reinstalling the locked dependencies (which also pin the
- * OMP runtime). Never `pi update`.
+ * sf-omp self-update: the package is a git checkout that the launcher loads
+ * into the native omp on PATH, so "update" means fast-forwarding the checkout
+ * to its upstream branch and reinstalling the locked dependencies. The OMP
+ * runtime itself is updated separately with `omp update`.
  *
  * Planning fetches the upstream and counts ahead/behind. Applying refuses
  * anything but a clean, attached branch that is strictly behind its upstream,

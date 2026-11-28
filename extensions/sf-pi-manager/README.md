@@ -3,19 +3,18 @@
 ## What It Does
 
 SF Pi Manager is the package home base. `/sf-pi` lets users browse extensions,
-open human-facing detail pages, edit low-risk settings, run diagnostics, manage
-recommended packages and external skill roots, and enable or disable bundled
-extensions through Pi's native package filters.
+open human-facing detail pages, edit low-risk settings, run diagnostics, review
+recommended-package coverage and external skill roots, and enable or disable
+bundled extensions through OMP's native `disabledExtensions` config.
 
-The Manager is always active. On Pi, extension state changes update
-`settings.json` and reload Pi because package filters are evaluated at startup.
+The Manager is always active.
 
-### Enable/disable on OMP
+### Enable/disable
 
-OMP ignores Pi `settings.json` for loading; its native switch is
-`disabledExtensions` in OMP YAML config. On the OMP host, `/sf-pi enable|disable`,
-`enable-all|disable-all`, the Manager list toggles, and every extension's
-"Disable this extension" action write `extension-module:<id>` entries there:
+OMP's native switch is `disabledExtensions` in OMP YAML config.
+`/sf-pi enable|disable`, `enable-all|disable-all`, the Manager list toggles, and
+every extension's "Disable this extension" action write `extension-module:<id>`
+entries there:
 
 - global: `<agentDir>/config.yml` (the repository-local `.runtime/omp/agent`);
 - project: `<cwd>/.omp/config.yml`, which replaces the global list when it
@@ -50,57 +49,57 @@ Common commands are:
 The Manager detail page is the primary no-args destination for bundled extension
 commands. Explicit subcommands remain direct and scriptable.
 
+In the OMP terminal, the Manager opens as an overlay. Use the arrow keys to
+move, Enter to open an extension or action, and Esc to go back. PageUp and
+PageDown scroll long settings pages without changing a field's value. While
+editing a field, Home and End move its caret.
+
 ## Configuration
 
-Manager-owned settings include package filters, shared display profile, privacy
-preference controls, announcements/recommendations state, doctor repairs, and
-opt-in Native Auto Update. Project settings override global settings where a
-surface supports both scopes.
-
-SF Pi sets Pi's anonymous install/update telemetry preference to `false` only
-when the user has never chosen a value. Explicit `true` or `false` choices are
-preserved and `/sf-pi telemetry` reports whether the value is an SF Pi default or
-user override.
+Manager-owned settings include extension enablement, shared display profile,
+announcements state, doctor repairs, and opt-in Native Auto Update. Project
+settings override global settings where a surface supports both scopes.
 
 Native Auto Update is off by default. When enabled, due work waits for a
 non-aborted, terminal `agent_end` (OMP marks retry, compaction, and follow-up
-ends with `willContinue`), then for the host to be idle; it uses an atomic machine lock,
-and handles eligible package and Salesforce CLI targets independently. It never
-updates the Pi Runtime itself. Package automation is limited to outdated, unpinned global
-npm packages whose metadata declares compatibility with the active Pi and Node
-versions.
+ends with `willContinue`), then for the host to be idle; it uses an atomic
+machine lock and handles the sf-omp checkout and Salesforce CLI targets
+independently. It never updates OMP itself.
 
-### Updates and recommended packages on OMP
+### Updates
 
-sf-omp is a git checkout launched through repository-local OMP, so on the OMP
-host Auto Update (and `/sf-pi auto-update run`) never calls `pi update`:
+sf-omp is a git checkout launched through the native `omp` on PATH, so Auto
+Update (and `/sf-pi auto-update run`) runs no package or plugin installer:
 
-1. The OMP runtime is pinned by the checkout's lockfile and only changes with it.
+1. OMP itself is left to `omp update`.
 2. sf-omp checkout: `git fetch` the branch's upstream and count ahead/behind.
    Only a clean, attached branch that is strictly behind is updated, with
    `git pull --ff-only` followed by `npm ci`; dirty, detached, ahead, diverged,
    upstream-less, and unreachable checkouts are reported and left untouched.
-3. `sf update stable`, as on Pi.
+3. `sf update stable` for the Salesforce CLI.
 
 A successful pull recommends restarting OMP. The same consent, settled-turn,
 idle, lock, and abort rules apply.
 
+### Recommended packages
+
 Recommended packages cannot run under sf-omp: the launcher starts OMP
 explicit-only (`--no-extensions -e <checkout>`), a mode in which OMP loads
-neither Pi packages nor plugins installed with `omp plugin install`. On OMP,
+neither Pi packages nor plugins installed with `omp plugin install`.
 `/sf-pi recommended` and `recommended status` list every item as unsupported with
 that reason and the OMP-native or bundled capability that covers it (for
-example OMP's web search/fetch tools for `pi-web-access`, the bundled sf-herdr
-extension for `pi-herdr`); `recommended install|remove` are refused without
+example OMP's web search/fetch tools for `pi-web-access`); `recommended install|remove` are refused without
 running any installer, and the startup recommendations nudge is suppressed.
 
 ## Safety and Data Boundaries
 
-- Only SF Pi Manager writes the package-filter enable/disable state.
+- Only SF Pi Manager writes bundled `extension-module:<id>` entries in OMP's
+  `disabledExtensions`.
 - Native Auto Update is opt-in, interactive-only, abortable, output-redacted,
-  and bounded to eligible unpinned npm packages plus the Salesforce CLI step.
-- Pinned, local, Git, project-scoped, incompatible, and unverifiable packages
-  are skipped rather than rewritten.
+  and bounded to fast-forwarding a cleanly-behind sf-omp checkout plus the
+  Salesforce CLI step.
+- Dirty, detached, ahead, diverged, and upstream-less checkouts are reported
+  rather than rewritten.
 - `/sf-pi doctor fix` performs only named safe repairs after confirmation and
   quarantines duplicate skills instead of deleting them.
 - Extensions marked `alwaysActive` cannot be disabled through the standard
@@ -108,52 +107,31 @@ running any installer, and the startup recommendations nudge is suppressed.
 
 ## Troubleshooting
 
-**The Manager cannot find SF Pi in settings:** Install with `pi install .` from
-the repository or `pi install git:github.com/salesforce/sf-pi` so Pi records the
-package source.
+**SF Pi commands are missing:** Start OMP through the sf-omp launcher
+(`<checkout>/tools/bin/omp`). It loads this checkout explicit-only; the plain
+native `omp` binary, `pi install`, and `omp plugin install` do not load SF Pi.
 
-**A toggle does not take effect:** On Pi, allow the requested reload. On OMP,
-restart OMP; enablement is read when extensions load.
+**A toggle does not take effect:** Restart OMP; enablement is read when
+extensions load.
 
-**A newer stable Pi version is outside the audited window:** Run
-`/sf-pi doctor runtime`. Supported 0.x versions can load in forward-compatibility
-mode; do not downgrade without a concrete failure.
+**The host runtime looks wrong:** Run `/sf-pi doctor runtime` to see the OMP
+and Node.js details SF Pi detected. Update OMP itself with `omp update`.
 
-**Auto Update skipped a package:** Run `/sf-pi auto-update status`. Pinned,
-project, local, Git, current, incompatible, and unverifiable installations are
-intentionally outside the automatic path. On OMP the status names why the
-checkout was not updated (for example local changes or a diverged branch).
+**Auto Update did not update the checkout:** Run `/sf-pi auto-update status`.
+The status names why the checkout was not updated (for example local changes,
+a detached HEAD, or a diverged branch).
 
 **Auto Update waits for a settled turn:** This is expected. An aborted turn,
 new turn, reload, shutdown, or settings change cancels or defers pending
 automatic work.
 
-**Project changes do not stick:** Project settings live under
-`<cwd>/.pi/settings.json` and win over global settings. Pass the intended scope
-explicitly when changing extension state.
+**Project changes do not stick:** Project extension state lives in
+`<cwd>/.omp/config.yml`, and its `disabledExtensions` list replaces the global
+one. Pass the intended scope explicitly when changing extension state.
 
-**Recommended items or skill roots look stale:** Announcements, recommendations,
-and skill-source decisions are revision/state based. Use their Manager pages and
-`/sf-pi doctor` before editing state files manually.
-
-**`pi-web-access` reports `Blocked internal address` for a public site:** A VPN or
-TUN client can map public hostnames into a reserved synthetic address range such
-as `100.64.0.0/10` or `198.18.0.0/15`. `pi-web-access` blocks those ranges by
-default to prevent server-side request forgery. Run `/sf-pi doctor` to check the
-active DNS result. If the reported mapping is verified as tunnel-owned, add only
-the narrowest working subnet to `ssrf.allowRanges` in the reported
-`web-search.json` path, for example:
-
-```json
-{
-  "ssrf": {
-    "allowRanges": ["100.64.1.0/24"]
-  }
-}
-```
-
-Do not exempt the complete `100.64.0.0/10` range. SF Pi reports this condition
-and guidance but never changes third-party security configuration automatically.
+**Announcements or skill roots look stale:** Announcements and skill-source
+decisions are revision/state based. Use their Manager pages and `/sf-pi doctor`
+before editing state files manually.
 
 ## File Structure
 

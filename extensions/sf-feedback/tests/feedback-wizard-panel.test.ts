@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Tests for the SF Feedback Manager form panel. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionTheme as Theme,
+  ExtensionUiHost,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import { describe, expect, it, vi } from "vitest";
 import { createFeedbackWizardPanel } from "../lib/feedback-wizard-panel.ts";
 
@@ -9,38 +12,44 @@ const theme: Theme = {
   bold: (text: string) => text,
 } as Theme;
 
-const tui = {
-  terminal: { rows: 40, cols: 120 },
+const ui = {
+  size: () => ({ rows: 40, columns: 120 }),
   requestRender: vi.fn(),
-} as never;
+  suspend: (run) => run(),
+} satisfies ExtensionUiHost;
 
 describe("FeedbackWizardPanel", () => {
   it("opens a native field editor from the form overview and saves the field", () => {
-    const panel = createFeedbackWizardPanel(theme, tui, "bug", vi.fn(), vi.fn(), vi.fn());
+    const panel = createFeedbackWizardPanel(theme, ui, "bug", vi.fn(), vi.fn(), vi.fn());
+    panel.focused = true;
 
     expect(panel.renderContent(120).join("\n")).toContain("Enter edit field");
 
     panel.handleInput("\r");
     const editing = panel.renderContent(120).join("\n");
+    expect(panel.capturesNavigation()).toBe(true);
     expect(editing).toContain("Enter save field");
     expect(editing).toContain("Title");
 
-    for (const char of "Broken help") panel.handleInput(char);
+    panel.handleInput("roken help");
+    panel.handleInput("\u001b[H"); // The field owns Home while it has focus.
+    panel.handleInput("\u001b[98;2u"); // Kitty Shift+B
     panel.handleInput("\r");
 
     const overview = panel.renderContent(120).join("\n");
+    expect(panel.capturesNavigation()).toBe(false);
     expect(overview).toContain("Broken help");
     expect(overview).toContain("✓");
   });
 
   it("saves multiline field edits with ctrl+s without closing the form", () => {
-    const summaryPanel = createFeedbackWizardPanel(theme, tui, "bug", vi.fn(), vi.fn(), vi.fn());
+    const summaryPanel = createFeedbackWizardPanel(theme, ui, "bug", vi.fn(), vi.fn(), vi.fn());
     summaryPanel.handleInput("\u001b[B");
     summaryPanel.handleInput("\r");
     expect(summaryPanel.renderContent(120).join("\n")).toContain("Ctrl+S save field");
 
     for (const char of "Line one") summaryPanel.handleInput(char);
-    summaryPanel.handleInput("\u001b[13;2u");
+    summaryPanel.handleInput("\r");
     for (const char of "Line two") summaryPanel.handleInput(char);
     summaryPanel.handleInput("\u0013");
 
@@ -57,7 +66,7 @@ describe("FeedbackWizardPanel", () => {
       labels: ["feedback"],
       body: "body",
     }));
-    const panel = createFeedbackWizardPanel(theme, tui, "bug", prepare, vi.fn(), vi.fn());
+    const panel = createFeedbackWizardPanel(theme, ui, "bug", prepare, vi.fn(), vi.fn());
 
     panel.handleInput("\r");
     for (const char of "Broken help") panel.handleInput(char);
@@ -66,6 +75,7 @@ describe("FeedbackWizardPanel", () => {
     await Promise.resolve();
 
     expect(prepare).toHaveBeenCalled();
+    expect(ui.requestRender).toHaveBeenCalledOnce();
     expect(panel.renderContent(120).join("\n")).toContain("Preview");
   });
 });

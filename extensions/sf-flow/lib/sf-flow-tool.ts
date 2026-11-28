@@ -2,14 +2,13 @@
 /** Single SF Flow family tool registration. */
 
 import { StringEnum } from "@earendil-works/pi-ai";
-import {
-  withFileMutationQueue,
-  type ExtensionAPI,
-  type Theme,
-} from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionRows, ExtensionTheme } from "@oh-my-pi/pi-coding-agent";
+import { withFileMutationQueue } from "@oh-my-pi/pi-coding-agent/tools/file-mutation-queue";
 import { Type } from "typebox";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
 import { connectSalesforce } from "../../../lib/common/sf-conn/index.ts";
+import { textRows } from "../../../lib/common/ui-rows.ts";
 import { resolveFlowFile } from "./analyzer.ts";
 import { flowErrorResult } from "./errors.ts";
 import {
@@ -175,7 +174,7 @@ const Params = Type.Object({
 export function registerSfFlowTool(pi: ExtensionAPI): void {
   const state: SfFlowSessionState = {};
   const validationRepair = createRepairLoopState();
-  pi.registerTool<typeof Params>({
+  registerNativeUiTool<typeof Params, unknown>(pi, {
     name: SF_FLOW_TOOL_NAME,
     label: "SF Flow",
     description:
@@ -198,7 +197,7 @@ export function registerSfFlowTool(pi: ExtensionAPI): void {
       "Use the installed SF Flow guide path declared in <sf_engineering_constitution> for core Flow families, lifecycle ordering, and proof boundaries.",
     ],
     parameters: Params,
-    renderCall: (args, theme) => renderCall(args as SfFlowParams, theme),
+    renderCall: (args, _opts, theme) => renderCall(args as SfFlowParams, theme),
     renderResult: (result, options, theme) =>
       renderFlowResult(result as ToolResult, options, theme),
     async execute(_id, rawParams, signal, _onUpdate, ctx) {
@@ -285,12 +284,10 @@ export function registerSfFlowTool(pi: ExtensionAPI): void {
   });
 }
 
-function renderCall(args: SfFlowParams, theme: Theme): Text {
+function renderCall(args: SfFlowParams, theme: ExtensionTheme): ExtensionRows {
   const label = theme.fg("toolTitle", theme.bold("🌊 SF Flow "));
   const scope = args.file ?? args.flow_names?.[0] ?? args.target_org;
-  return new Text(
+  return textRows(
     label + theme.fg("muted", args.action) + (scope ? theme.fg("dim", ` · ${scope}`) : ""),
-    0,
-    0,
   );
 }

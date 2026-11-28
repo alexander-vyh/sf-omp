@@ -45,7 +45,7 @@ function harness() {
     readReadiness: () => ({ status: "ready", summary: "ready" }),
     isReadyForAutoScan: () => true,
     runCodeAnalyzer,
-    buildScanRecipeGuidance: () => ({ recipes: [], suggestions: [], herdrHandoffs: [], text: "" }),
+    buildScanRecipeGuidance: () => ({ recipes: [], suggestions: [], text: "" }),
   });
   // No UI or session-manager functionality is used by the deferred scan.
   const ctx = { cwd: "/tmp/offline-diagnostics" } as ExtensionContext;

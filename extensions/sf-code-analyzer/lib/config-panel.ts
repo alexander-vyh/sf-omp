@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager Settings panel for SF Code Analyzer automation preferences. */
-import { type Focusable, matchesKey, visibleWidth } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
+import { decodeRowKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import {
   describeSetting,
   readEffectiveCodeAnalyzerSettings,
@@ -33,7 +34,7 @@ function padAnsi(text: string, width: number): string {
   return `${text}${" ".repeat(Math.max(0, width - visibleWidth(text)))}`;
 }
 
-class CodeAnalyzerConfigPanel implements Focusable {
+class CodeAnalyzerConfigPanel implements RowsPanel {
   focused = false;
 
   private cursor = 0;
@@ -45,7 +46,7 @@ class CodeAnalyzerConfigPanel implements Focusable {
   private message = "";
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: ExtensionTheme,
     private readonly cwd: string,
     private readonly scope: "global" | "project",
     private readonly done: (result: ConfigPanelResult | undefined) => void,
@@ -59,23 +60,26 @@ class CodeAnalyzerConfigPanel implements Focusable {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
+    const key = decodeRowKey(data);
+    if (key?.kind === "release") return;
+    const id = key?.id;
+    if (id === "escape" || key?.text === "q") {
       this.done(undefined);
       return;
     }
-    if (matchesKey(data, "up")) {
+    if (id === "up") {
       this.move(-1);
       return;
     }
-    if (matchesKey(data, "down")) {
+    if (id === "down") {
       this.move(1);
       return;
     }
-    if (matchesKey(data, "left") || matchesKey(data, "right") || matchesKey(data, "space")) {
+    if (id === "left" || id === "right" || id === "space") {
       this.toggleCurrent();
       return;
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "s") {
+    if (id === "enter" || key?.text === "s") {
       this.save();
     }
   }
@@ -114,8 +118,6 @@ class CodeAnalyzerConfigPanel implements Focusable {
   render(width: number): string[] {
     return this.renderContent(width);
   }
-
-  invalidate(): void {}
 
   private move(delta: -1 | 1): void {
     this.cursor = (this.cursor + delta + SETTING_ROWS.length) % SETTING_ROWS.length;

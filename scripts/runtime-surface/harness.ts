@@ -121,6 +121,9 @@ export function createRuntimeRecorder(options: RecorderOptions = {}) {
     registerProvider(provider: { id?: string } | string) {
       const id = typeof provider === "string" ? provider : provider?.id;
       if (!id) throw new Error("registerProvider called without an id");
+      // OMP's registerProvider(name, config) queues one config per call, and a
+      // provider spreads its custom APIs, auth and discovery across several.
+      if (typeof provider === "string" && providers.includes(id)) return;
       providers.push(id);
     },
     registerTool(definition: { name?: string }) {

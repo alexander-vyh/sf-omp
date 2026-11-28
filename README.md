@@ -1,7 +1,7 @@
 # sf-omp
 
 Salesforce Agentforce and developer tooling from [Salesforce SF Pi](https://github.com/salesforce/sf-pi),
-running natively in a repository-local **OMP 18.22.0** runtime on macOS. This fork is
+running in native **OMP 19.2.1 or newer** on macOS. This fork is
 rebased onto SF Pi 0.354.0 and keeps every bundled SF Pi extension: the
 [extension catalog](./docs/extensions.md) lists them and the
 [top-level command inventory](./docs/commands.md) lists their commands.
@@ -10,8 +10,8 @@ rebased onto SF Pi 0.354.0 and keeps every bundled SF Pi extension: the
 
 ## Run
 
-macOS only. Requires Node.js >=22.19 and npm (Node 24 recommended). OMP and Bun
-are pinned local dependencies; nothing is installed globally.
+macOS only. Requires Node.js >=22.19 and npm (Node 24 recommended) and
+[native OMP](https://omp.sh/) on PATH.
 
 ```sh
 npm ci
@@ -22,12 +22,17 @@ From an existing Salesforce project, keep that project as the working directory:
 
 ```sh
 cd /path/to/your/salesforce-project
-bun /path/to/sf-omp/scripts/omp.ts
+/path/to/sf-omp/tools/bin/omp
 ```
 
 Provider authentication reuses your existing global OMP logins. OMP UI and
 settings stay local to this checkout. Full setup, including Salesforce CLI,
 managed skills, and language servers, is in [Install](./docs/install.md).
+
+With direnv enabled, `omp update` and `omp update --check` work normally inside
+this checkout, even with local changes. They update the native binary, not
+this repository. To reuse the launcher in another repo, put its `tools/bin`
+first on PATH and symlink its `tools/bin/omp` to this launcher's `tools/bin/omp`.
 
 ## Salesforce prerequisites
 
@@ -65,11 +70,10 @@ permissions; installing packages cannot supply those.
 
 ## Isolation
 
-- The launcher runs this checkout's OMP **18.22.0** with local Bun **1.4.4**, never the global `omp` or `bun`.
+- The launcher runs the same native OMP binary that `omp update` manages outside the checkout. `npm ci` installs local Bun for the auth helper and the exact OMP release used by compatibility tests.
 - OMP configuration, profiles, agent state, native addon cache, and Bun/npm caches live under ignored `.runtime/`. Global extension discovery is disabled; the root `package.json` `pi.extensions` list selects the extensions.
 - Normal launches keep your real HOME, XDG tool configuration, and Salesforce CLI authentication.
 - Global OMP provider credentials and account policies are shared through OMP's native authenticated broker; the credential database is never copied or symlinked. Global extensions, plugin configuration, and conversation history are not imported.
-- `npm ci` applies one version-checked patch **only inside this checkout's `node_modules`** (`scripts/patch-local-omp.mjs`): OMP 18.22's compatibility loader otherwise returns ESM namespace objects to CommonJS callers. Review or remove it when upgrading OMP.
 
 ## How parity is proven
 
@@ -82,6 +86,9 @@ permissions; installing packages cannot supply those.
 
 `parity:omp` compares results with `scripts/omp-parity-baseline.json` and fails
 on any regression; record an improvement with `bun scripts/omp-parity.ts --update`.
+These checks verify OMP 19.2.1, using that native release when available.
+Set `SF_OMP_PROOF_NPM=1` to run against the pinned npm test host instead, as CI
+does. This does not affect the OMP binary that starts a Salesforce session.
 Offline checks never call a live org, Slack, Fin, or model; those paths are
 reported as not tested. Reports land under `.runtime/` (`omp-smoke-report.json`,
 `omp-auth-smoke-report.json`, `parity/`).

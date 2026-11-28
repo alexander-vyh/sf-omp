@@ -138,14 +138,13 @@ describe("sf-omp checkout update planning", () => {
 });
 
 describe("Auto Update on the OMP host", () => {
-  it("updates the checkout and the Salesforce CLI, never Pi packages", async () => {
+  it("updates the checkout and the Salesforce CLI, never the OMP runtime", async () => {
     commit(writer, "README.md", "v2\n");
     git(writer, "push", "-q");
     const plans: unknown[] = [];
     const ctx = { cwd: checkout, hasUI: false, ui: { setStatus: vi.fn() } };
 
     const status = await runNativeAutoUpdate(pi, ctx as never, {
-      omp: true,
       checkoutRoot: checkout,
       env: {},
       onPlan: (plan) => plans.push(plan),

@@ -424,20 +424,6 @@ describe("Safety Kernel — commandGate (Tier 2)", () => {
     }
   });
 
-  it("confirms dangerous herdr_pane.run commands", async () => {
-    const config = readBundledConfig();
-    const decision = await evaluateSafety({
-      toolName: "herdr_pane",
-      input: { action: "run", pane: "tests", command: "rm -rf tmp/" },
-      cwd: "/project",
-      config,
-    });
-    expect(decision?.feature).toBe("commandGate");
-    expect(decision?.action).toBe("confirm");
-    expect(decision?.ruleId).toBe("rm-rf");
-    expect(decision?.subject).toBe("rm -rf tmp/");
-  });
-
   it("auto-allows strictly validated OS temp cleanup", async () => {
     const tempDir = mkdtempSync(path.join(tmpdir(), "tmp.sf-guardrail-"));
     try {
@@ -471,28 +457,6 @@ describe("Safety Kernel — commandGate (Tier 2)", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
-
-  it("ignores non-run herdr_pane actions", async () => {
-    const config = readBundledConfig();
-    const decision = await evaluateSafety({
-      toolName: "herdr_pane",
-      input: { action: "read", pane: "tests", command: "rm -rf tmp/" },
-      cwd: "/project",
-      config,
-    });
-    expect(decision).toBeUndefined();
-  });
-
-  it("ignores herdr_pane.run without a string command", async () => {
-    const config = readBundledConfig();
-    const decision = await evaluateSafety({
-      toolName: "herdr_pane",
-      input: { action: "run", pane: "tests" },
-      cwd: "/project",
-      config,
-    });
-    expect(decision).toBeUndefined();
-  });
 });
 
 describe("Safety Kernel — orgAwareGate (Tier 2)", () => {
@@ -512,23 +476,6 @@ describe("Safety Kernel — orgAwareGate (Tier 2)", () => {
     expect(decision?.orgType).toBe("production");
     expect(decision?.approvalScope?.operationFamily).toBe("sf project deploy");
     expect(decision?.approvalScope?.persistedGrant).toBeUndefined();
-  });
-
-  it("confirms herdr_pane.run sf project deploy start against production", async () => {
-    mockedEnv = env("Prod", "production");
-    lookupOrg("Prod", "production");
-    const config = readBundledConfig();
-    const decision = await evaluateSafety({
-      toolName: "herdr_pane",
-      input: { action: "run", pane: "deploy", command: "sf project deploy start -o Prod" },
-      cwd: "/project",
-      config,
-    });
-    expect(decision?.feature).toBe("orgAwareGate");
-    expect(decision?.ruleId).toBe("sf-deploy-prod");
-    expect(decision?.orgAlias).toBe("Prod");
-    expect(decision?.orgType).toBe("production");
-    expect(decision?.subject).toBe("sf project deploy start -o Prod");
   });
 
   it("confirms chained sf project deploy start against production", async () => {

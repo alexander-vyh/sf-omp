@@ -6,7 +6,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import sfMcp from "../index.ts";
-import { inspectMcpConfig, mcpConfigPath, setNativeMcpDialect } from "../lib/mcp-config.ts";
+import { inspectMcpConfig, mcpConfigPath } from "../lib/mcp-config.ts";
 import {
   deactivateHiddenMcpTools,
   hiddenMcpToolNames,
@@ -20,7 +20,6 @@ const tempDirs: string[] = [];
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 
 afterEach(() => {
-  setNativeMcpDialect("pi");
   captureObservedMcpTools([]);
   if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
   else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
@@ -41,7 +40,6 @@ function ompTool(server: string, tool: string) {
 
 describe("SF MCP on the OMP host", () => {
   it("writes OMP's millisecond timeout and redirectUri, and reads them back unchanged", () => {
-    setNativeMcpDialect("omp");
     const cwd = workspace();
     const installed = installPreset({
       cwd,
@@ -64,7 +62,7 @@ describe("SF MCP on the OMP host", () => {
       timeout: 120,
       oauth: { callbackUrl: onDisk.oauth.redirectUri },
     });
-    // The Pi-shaped round trip keeps the managed fingerprint, so lifecycle actions still apply.
+    // The model-shaped round trip keeps the managed fingerprint, so lifecycle actions still apply.
     const preset = getPreset("headless-360");
     expect(inspectPresetRuntime(cwd, "global", preset).managed.status).toBe("managed-enabled");
     expect(
@@ -92,7 +90,6 @@ describe("SF MCP on the OMP host", () => {
   });
 
   it("hides unapproved tools of a governed entry and lets a project entry shadow global", async () => {
-    setNativeMcpDialect("omp");
     const cwd = workspace();
     expect(
       installPreset({ cwd, scope: "global", presetId: "trailhead", resolution: "enable" }).ok,

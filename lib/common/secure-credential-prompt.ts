@@ -2,26 +2,20 @@
 /**
  * Session-bound masked credential entry for SF Pi provider authentication.
  *
- * Pi still owns `/login` orchestration and credential persistence. Providers
- * use this bridge instead of the visible stock secret prompt in Pi 0.81.1-0.82.0.
+ * OMP owns `/login` orchestration and credential persistence. This supplies
+ * fixed-length masking when a provider interaction needs the session prompt.
  */
 import type { ApiKeyCredential, AuthInteraction } from "@earendil-works/pi-ai";
+import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type {
-  ExtensionContext,
-  ExtensionUIContext,
-  KeybindingsManager,
-  Theme,
-} from "@earendil-works/pi-coding-agent";
-import {
-  CURSOR_MARKER,
-  decodeKittyPrintable,
-  matchesKey,
-  truncateToWidth,
-  type Component,
-  type Focusable,
-  type TUI,
-} from "@earendil-works/pi-tui";
+  ExtensionRows,
+  ExtensionTheme,
+  ExtensionUiHost,
+  ExtensionUIContext as NativeUIContext,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate } from "@oh-my-pi/pi-tui/text/width";
 import { hostMasksSecretPrompts } from "./auth-only-provider.ts";
+import { decodeRowKey, nativeUi } from "./ui-rows.ts";
 
 const CANCELLED_MESSAGE = "Login cancelled";
 const UNAVAILABLE_MESSAGE = "Secure credential entry is only available in interactive TUI mode.";
@@ -32,9 +26,7 @@ const CSI = `${ESC}[`;
 const SS3 = `${ESC}O`;
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-function normalizePastedTextFieldInput(data: string): string {
-  if (/^\[(?:\d+(?:;\d+)*)?[A-Za-z~]$/.test(data)) return "";
-
+function stripTerminalControls(data: string): string {
   let output = "";
   for (let i = 0; i < data.length; i++) {
     const nextIndex = consumeTerminalControl(data, i);
@@ -43,7 +35,7 @@ function normalizePastedTextFieldInput(data: string): string {
       continue;
     }
     const code = data.charCodeAt(i);
-    if (code < 32 || code === 127) continue;
+    if (code < 32 || (code >= 127 && code <= 159)) continue;
     output += data[i] ?? "";
   }
   return output;
@@ -66,14 +58,13 @@ export interface SecureCredentialPromptOptions {
   description?: string;
 }
 
-export class MaskedCredentialInput implements Component, Focusable {
-  focused = false;
+export class MaskedCredentialInput implements ExtensionRows {
   private value = "";
   private settled = false;
 
   constructor(
-    private readonly tui: TUI,
-    private readonly theme: Theme,
+    private readonly ui: ExtensionUiHost,
+    private readonly theme: ExtensionTheme,
     private readonly done: (value: string | undefined) => void,
     private readonly options: SecureCredentialPromptOptions = { title: "Secure credential" },
   ) {}
@@ -81,34 +72,30 @@ export class MaskedCredentialInput implements Component, Focusable {
   render(width: number): string[] {
     const safeWidth = Math.max(1, width);
     const maskedValue = this.value ? MASK : "";
-    const cursor = this.focused ? CURSOR_MARKER : "";
+    const end = this.theme.fg("border", this.settled ? "]" : this.theme.inverse("]"));
 
     return [
-      truncateToWidth(this.theme.fg("accent", this.theme.bold(this.options.title)), safeWidth),
-      truncateToWidth(
-        this.theme.fg("muted", this.options.description ?? DEFAULT_DESCRIPTION),
+      truncate(this.theme.fg("accent", this.theme.bold(this.options.title)), safeWidth),
+      truncate(this.theme.fg("muted", this.options.description ?? DEFAULT_DESCRIPTION), safeWidth),
+      truncate(
+        `${this.theme.fg("border", "[")}${this.theme.fg("text", maskedValue)}${end}`,
         safeWidth,
       ),
-      truncateToWidth(
-        `${this.theme.fg("border", "[")}${this.theme.fg("text", maskedValue)}${cursor}${this.theme.fg("border", "]")}`,
-        safeWidth,
-      ),
-      truncateToWidth(
-        this.theme.fg("dim", "Enter saves • Esc cancels • Backspace edits"),
-        safeWidth,
-      ),
+      truncate(this.theme.fg("dim", "Enter saves • Esc cancels • Backspace edits"), safeWidth),
     ];
   }
 
   handleInput(data: string): void {
     if (this.settled) return;
 
-    if (matchesKey(data, "escape")) {
+    const key = decodeRowKey(data);
+    if (key?.kind === "release") return;
+    if (key?.id === "escape") {
       this.cancel();
       return;
     }
 
-    if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+    if (key?.id === "enter") {
       if (!this.value) return;
       const submitted = this.value;
       this.value = "";
@@ -117,19 +104,26 @@ export class MaskedCredentialInput implements Component, Focusable {
       return;
     }
 
-    if (matchesKey(data, "backspace")) {
-      const segments = [...graphemeSegmenter.segment(this.value)];
-      const last = segments.at(-1);
+    if (key?.id === "backspace") {
+      const last = graphemeSegmenter.segment(this.value).containing(this.value.length - 1);
       this.value = last ? this.value.slice(0, last.index) : "";
-      this.tui.requestRender();
+      this.ui.requestRender();
       return;
     }
 
-    const decoded = decodeKittyPrintable(data);
-    const text = (decoded ?? normalizePastedTextFieldInput(data)).replace(/[\u0080-\u009f]/gu, "");
-    if (!text) return;
-    this.value += text;
-    this.tui.requestRender();
+    // Paste arrives bracketed; filter terminal controls even if pasted bytes
+    // look like a key. Orphaned CSI fragments should not become credential text.
+    let text = key ? key.text : data;
+    if (key && text === undefined) {
+      // A Kitty key can name a supplementary character without associated text.
+      const id = key.id.startsWith("shift+") ? key.id.slice(6) : key.id;
+      if (/^[\u{10000}-\u{10ffff}]$/u.test(id)) text = id;
+    }
+    if (!text || (!key && /^\[(?:\d+(?:;\d+)*)?[A-Za-z~]$/.test(text))) return;
+    const clean = stripTerminalControls(text);
+    if (!clean) return;
+    this.value += clean;
+    this.ui.requestRender();
   }
 
   cancel(): void {
@@ -143,8 +137,6 @@ export class MaskedCredentialInput implements Component, Focusable {
     this.value = "";
     this.settled = true;
   }
-
-  invalidate(): void {}
 }
 
 type ExtensionMode = ExtensionContext["mode"];
@@ -156,17 +148,6 @@ export interface SecureCredentialPromptBridge {
   clear(): void;
   prompt(signal?: AbortSignal): Promise<string>;
 }
-
-type SessionBinding = {
-  generation: number;
-  mode: ExtensionMode;
-  ui?: ExtensionUIContext;
-};
-
-type ActivePrompt = {
-  generation: number;
-  cancel(): void;
-};
 
 export async function loginWithSecureCredentialPrompt(
   bridge: SecureCredentialPromptBridge,
@@ -190,37 +171,29 @@ export async function loginWithSecureCredentialPrompt(
 export function createSecureCredentialPromptBridge(
   options: SecureCredentialPromptOptions = { title: "Secure credential" },
 ): SecureCredentialPromptBridge {
-  let generation = 0;
-  let binding: SessionBinding | undefined;
-  let activePrompt: ActivePrompt | undefined;
+  let ui: NativeUIContext | undefined;
+  let activePrompt: AbortController | undefined;
 
   const cancelActivePrompt = () => {
     const current = activePrompt;
     activePrompt = undefined;
-    current?.cancel();
+    current?.abort(new Error(CANCELLED_MESSAGE));
   };
 
   return {
     title: options.title,
-    bind(ui, mode) {
-      generation += 1;
+    bind(sessionUi, mode) {
+      ui = mode === "tui" ? nativeUi(sessionUi) : undefined;
       cancelActivePrompt();
-      binding = {
-        generation,
-        mode,
-        ui: mode === "tui" ? ui : undefined,
-      };
     },
 
     clear() {
-      generation += 1;
-      binding = undefined;
+      ui = undefined;
       cancelActivePrompt();
     },
 
     async prompt(signal) {
-      const current = binding;
-      if (!current || current.mode !== "tui" || !current.ui) {
+      if (!ui) {
         throw new Error(UNAVAILABLE_MESSAGE);
       }
       if (signal?.aborted) {
@@ -230,37 +203,24 @@ export function createSecureCredentialPromptBridge(
         throw new Error("Credential entry is already active.");
       }
 
-      const promptGeneration = current.generation;
-      const abortListener = signal
-        ? () => {
-            if (activePrompt?.generation === promptGeneration) activePrompt.cancel();
-          }
-        : undefined;
-      if (abortListener) signal?.addEventListener("abort", abortListener, { once: true });
+      const controller = new AbortController();
+      activePrompt = controller;
+      const onAbort = () => controller.abort(new Error(CANCELLED_MESSAGE));
+      signal?.addEventListener("abort", onAbort, { once: true });
       try {
-        const result = await current.ui.custom<string | undefined>(
-          (tui: TUI, theme: Theme, _keybindings: KeybindingsManager, done) => {
-            const component = new MaskedCredentialInput(tui, theme, done, options);
-            activePrompt = {
-              generation: promptGeneration,
-              cancel: () => component.cancel(),
-            };
-            if (generation !== promptGeneration || signal?.aborted) {
-              component.cancel();
-            }
-            return component;
-          },
-          // Terminals with program status show Pi waiting on sign-in input.
-          { blocked: { kind: "auth", message: options.title } },
+        const result = await ui.custom<string | undefined>(
+          (host, theme, _keybindings, done) =>
+            new MaskedCredentialInput(host, theme, done, options),
+          { signal: controller.signal },
         );
 
-        if (generation !== promptGeneration || !result) {
+        if (controller.signal.aborted || !result) {
           throw new Error(CANCELLED_MESSAGE);
         }
         return result;
       } finally {
-        if (abortListener && signal) signal.removeEventListener("abort", abortListener);
-        if (activePrompt?.generation === promptGeneration) activePrompt = undefined;
+        signal?.removeEventListener("abort", onAbort);
+        if (activePrompt === controller) activePrompt = undefined;
       }
     },
   };

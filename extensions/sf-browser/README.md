@@ -29,6 +29,10 @@ frameworks for durable CI regression coverage.
 | `/sf-browser guidance`           | Print the Salesforce Browser contract                     |
 | `/sf-browser help`               | Print command and tool usage                              |
 
+Screenshot captures with attached image data open a native preview in the OMP
+terminal. Press Enter, Esc, or `q` to close it. The evidence path stays available
+through `/sf-browser evidence`, including artifact-only captures.
+
 ## Agent tools
 
 The hot path comprises `sf_browser_open_org`, `sf_browser_navigate_setup`,

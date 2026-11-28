@@ -6,8 +6,8 @@
  * recompile result inline (✓ N issues post-mutate, or rolled-back hint).
  */
 
-import { Text } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionRows, ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
+import { textRows } from "../../../../lib/common/ui-rows.ts";
 import { clipLine, fmtMs } from "./shared.ts";
 
 export interface MutateResultDetails {
@@ -48,7 +48,7 @@ interface MutateArgs {
 
 // ─── renderCall ───────────────────────────────────────────────────────────────
 
-export function renderMutateCall(args: MutateArgs, theme: Theme): Text {
+export function renderMutateCall(args: MutateArgs, theme: Theme): ExtensionRows {
   const label = theme.fg("toolTitle", theme.bold("🧬 Agent Script mutate "));
   const op = args.op ?? "?";
   let summary = `${op}`;
@@ -60,7 +60,7 @@ export function renderMutateCall(args: MutateArgs, theme: Theme): Text {
     summary = `rename`;
   }
   if (args.dry_run) summary += theme.fg("warning", " (dry-run)");
-  return new Text(label + theme.fg("muted", summary), 0, 0);
+  return textRows(label + theme.fg("muted", summary));
 }
 
 // ─── renderResult ─────────────────────────────────────────────────────────────
@@ -69,17 +69,13 @@ export function renderMutateResult(
   result: { details?: MutateResultDetails | unknown; content?: unknown[] },
   opts: { isPartial?: boolean; expanded?: boolean },
   theme: Theme,
-): Text {
-  if (opts.isPartial) return new Text(theme.fg("warning", "🧬 mutate · running…"), 0, 0);
+): ExtensionRows {
+  if (opts.isPartial) return textRows(theme.fg("warning", "🧬 mutate · running…"));
   const details = (result.details ?? {}) as MutateResultDetails;
   if (!details.ok) {
-    return new Text(
-      theme.fg("error", `✗ ${getFirstText(result.content) || "mutate failed"}`),
-      0,
-      0,
-    );
+    return textRows(theme.fg("error", `✗ ${getFirstText(result.content) || "mutate failed"}`));
   }
-  return new Text(formatMutateBody(details, theme, /*ansi=*/ true), 0, 0);
+  return textRows(formatMutateBody(details, theme, /*ansi=*/ true));
 }
 
 // ─── Markdown emitter ─────────────────────────────────────────────────────────

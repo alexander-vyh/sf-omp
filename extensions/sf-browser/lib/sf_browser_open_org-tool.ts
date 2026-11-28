@@ -2,14 +2,15 @@
 /** Salesforce-aware org opening tool for SF Browser. */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { renderBrowserToolCall, renderBrowserToolResult } from "./browser-render.ts";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
+import { browserToolRenderers } from "./browser-render.ts";
 import { openOrgInAgentBrowser } from "./operations.ts";
 import { SalesforceNavigationTargetSchema } from "./salesforce-path-schema.ts";
 
 export const SF_BROWSER_OPEN_ORG_TOOL_NAME = "sf_browser_open_org";
 
 export function registerSfBrowserOpenOrgTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool(pi, {
     name: SF_BROWSER_OPEN_ORG_TOOL_NAME,
     label: "SF Browser Open Org",
     description:
@@ -20,9 +21,7 @@ export function registerSfBrowserOpenOrgTool(pi: ExtensionAPI): void {
       "Use sf_browser_open_org before Salesforce UI last-mile work, then call sf_browser_snapshot before acting.",
       "Pass exactly one target object. Lightning app, External Client App, list-view, and related-list targets use org verification; known paths, home, Setup, Data Cloud, object, and record targets resolve locally.",
     ],
-    renderCall: (args, theme) => renderBrowserToolCall(SF_BROWSER_OPEN_ORG_TOOL_NAME, args, theme),
-    renderResult: (result, options, theme, context) =>
-      renderBrowserToolResult(SF_BROWSER_OPEN_ORG_TOOL_NAME, result, options, theme, context),
+    ...browserToolRenderers(SF_BROWSER_OPEN_ORG_TOOL_NAME),
     parameters: Type.Object({
       target_org: Type.Optional(
         Type.String({

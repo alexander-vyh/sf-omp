@@ -4,6 +4,7 @@ import { createData360SqlStrategy } from "../lib/modes/data360-sql.ts";
 import { createSoqlStrategy } from "../lib/modes/soql.ts";
 import { createSoslStrategy } from "../lib/modes/sosl.ts";
 import type { Method, SfDataExplorerTransport } from "../lib/transport.ts";
+import { ExplorerSpa } from "../lib/ui/explorer-spa.ts";
 
 function fakeTransport(): SfDataExplorerTransport & {
   calls: Array<{ method: Method; path: string; query?: Record<string, unknown>; body?: unknown }>;
@@ -169,4 +170,33 @@ describe("strategies call expected transport endpoints", () => {
       query: { entityName: "ssot__Individual__dlm" },
     });
   });
+});
+
+it("edits and copies a multiline query with native key reports and bracketed paste", () => {
+  const strategy = createSoqlStrategy({
+    transport: fakeTransport(),
+    org: "my-org",
+    initial: { objects: [], cacheLine: "" },
+  });
+  let copied: string | undefined;
+  const explorer = new ExplorerSpa({
+    org: "my-org",
+    cwd: "/tmp",
+    theme: { fg: (_color, text) => text, bold: (text) => text },
+    strategy: { ...strategy, buildQuery: () => "SELECT Id" },
+    notify: () => {},
+    requestRender: () => {},
+    done: (result) => {
+      if (result?.kind === "copyToEditor") copied = result.text;
+    },
+  });
+
+  explorer.handleInput("\x1b[118u"); // v (accordion)
+  expect(explorer.render(70).join("\n")).toContain("[ Fields ]");
+  explorer.handleInput("\x1b[101u"); // e
+  expect(explorer.render(70).join("\n")).toContain("Edit query in-place");
+  explorer.handleInput("\x1b[200~\r\nFROM Account\r\nLIMIT 10\x1b[201~");
+  explorer.handleInput("\x1b[13u"); // Enter
+  explorer.handleInput("\x1b[99u"); // c
+  expect(copied).toBe("SELECT Id\nFROM Account\nLIMIT 10");
 });

@@ -8,14 +8,20 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
+import type sfWelcomeExtension from "../index.ts";
+
+let sfWelcome: typeof sfWelcomeExtension;
 
 // Render assertions must not depend on the launching terminal (NO_COLOR, Terminal.app).
-beforeEach(() => {
+// The first import loads the extension's cold module graph after the env stubs; it can
+// exceed the 5s per-test budget on loaded CI runners, so it runs in this hook instead.
+beforeEach(async () => {
   vi.stubEnv("NO_COLOR", undefined);
   vi.stubEnv("TERM_PROGRAM", undefined);
   vi.stubEnv("SF_PI_ASCII_ICONS", undefined);
-});
+  sfWelcome ??= (await import("../index.ts")).default;
+}, 30_000);
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -61,16 +67,14 @@ describe("sf-welcome", () => {
     expect(source).toContain("dismiss(ctx)");
   });
 
-  it("exports a default function", async () => {
-    const mod = await import("../index.ts");
-    expect(typeof mod.default).toBe("function");
+  it("exports a default function", () => {
+    expect(typeof sfWelcome).toBe("function");
   });
 
-  it("registers flat slash-command completions", async () => {
-    const mod = await import("../index.ts");
+  it("registers flat slash-command completions", () => {
     const pi = { events: { on: vi.fn() }, on: vi.fn(), registerCommand: vi.fn() };
 
-    mod.default(pi as never);
+    sfWelcome(pi as never);
 
     const welcome = pi.registerCommand.mock.calls.find(([name]) => name === "sf-welcome")?.[1];
     expect(welcome?.getArgumentCompletions?.("sum")?.map((item) => item.value)).toEqual([
@@ -625,100 +629,6 @@ describe("sf-welcome", () => {
     expect(plain).not.toContain("Update available");
   });
 
-  it("keeps ready Herdr status to one calm startup row", async () => {
-    const { SfWelcomeOverlay } = await import("../lib/splash-component.ts");
-    const data = {
-      modelName: "Claude Sonnet 4",
-      providerName: "anthropic",
-      loadedCounts: { extensions: 3, skills: 1, promptTemplates: 0 },
-      recentSessions: [],
-      extensionHealth: [],
-      slackConnected: false,
-      monthlyCost: 0,
-      monthlyBudget: 3000,
-      herdrRuntime: {
-        kind: "ready" as const,
-        extensionEnabled: true,
-        toolActive: true,
-        packageInstalled: true,
-        activeControlEnv: true,
-        passiveStatusBridge: true,
-        runtimeVersion: "0.8.0-preview.2026-08-04-d78e3d3b5126",
-        runtimeChannel: "preview" as const,
-        runtimeProtocol: 19,
-        controlPackageVersion: "0.4.0",
-        runtimeVersionLoading: false,
-        piIntegration: {
-          kind: "installed" as const,
-          path: "/example/herdr-agent-state.ts",
-          version: 8,
-          loading: false,
-        },
-        loading: false,
-      },
-    };
-
-    const plain = stripAnsi(new SfWelcomeOverlay(data).render(180).join("\n"));
-    const herdrLines = plain.split("\n").filter((line) => line.includes("Herdr (Multiplexer)"));
-
-    expect(herdrLines).toHaveLength(1);
-    expect(herdrLines[0]).toContain("0.8.0-preview");
-    expect(herdrLines[0]).toContain("tools ready");
-    expect(plain).not.toContain("control 0.4.0");
-    expect(plain).not.toContain("bridge schema 8");
-    expect(plain).not.toContain("protocol 19");
-  });
-
-  it("keeps degraded Herdr remediation inline", async () => {
-    const { SfWelcomeOverlay } = await import("../lib/splash-component.ts");
-    const base = {
-      modelName: "Claude Sonnet 4",
-      providerName: "anthropic",
-      loadedCounts: { extensions: 3, skills: 1, promptTemplates: 0 },
-      recentSessions: [],
-      extensionHealth: [],
-      slackConnected: false,
-      monthlyCost: 0,
-      monthlyBudget: 3000,
-    };
-    const shared = {
-      extensionEnabled: true,
-      toolActive: false,
-      packageInstalled: true,
-      activeControlEnv: false,
-      passiveStatusBridge: false,
-      piIntegration: { kind: "missing" as const, path: "/example/bridge.ts", loading: false },
-      loading: false,
-    };
-    const cases = [
-      {
-        status: { ...shared, kind: "tool-only" as const, toolActive: true },
-        expected: "Tools active · start Pi inside Herdr",
-      },
-      {
-        status: { ...shared, kind: "installed-not-active" as const },
-        expected: "Package installed · start Pi inside Herdr",
-      },
-      {
-        status: { ...shared, kind: "missing" as const, packageInstalled: false },
-        expected: "Not installed · /sf-herdr doctor",
-      },
-      {
-        status: { ...shared, kind: "disabled" as const, extensionEnabled: false },
-        expected: "Disabled",
-      },
-    ];
-
-    for (const testCase of cases) {
-      const plain = stripAnsi(
-        new SfWelcomeOverlay({ ...base, herdrRuntime: testCase.status }).render(180).join("\n"),
-      );
-      const herdrLines = plain.split("\n").filter((line) => line.includes("Herdr (Multiplexer)"));
-      expect(herdrLines).toHaveLength(1);
-      expect(herdrLines[0]).toContain(testCase.expected);
-    }
-  });
-
   it("keeps optional setup rows calm when disabled or missing", async () => {
     const { SfWelcomeOverlay } = await import("../lib/splash-component.ts");
     const data = {
@@ -851,7 +761,7 @@ describe("sf-welcome", () => {
     }
   });
 
-  it("renders pending and package-update coordinator states truthfully", async () => {
+  it("renders pending and checkout-update coordinator states truthfully", async () => {
     const { SfWelcomeOverlay } = await import("../lib/splash-component.ts");
     const base = {
       modelName: "Claude Sonnet 4",
@@ -877,7 +787,7 @@ describe("sf-welcome", () => {
         ...base,
         autoUpdate: {
           enabled: true,
-          status: { running: true, currentTarget: "pi-packages" as const },
+          status: { running: true, currentTarget: "sf-omp-checkout" as const },
         },
       })
         .render(140)
@@ -885,7 +795,7 @@ describe("sf-welcome", () => {
     );
 
     expect(pending).toContain("waiting for the turn to settle");
-    expect(running).toContain("Updating Pi packages");
+    expect(running).toContain("Updating sf-omp checkout");
   });
 
   it("renders skipped SF Browser freshness without an update warning", async () => {
@@ -960,49 +870,6 @@ describe("sf-welcome", () => {
     expect(plain).not.toContain("$186");
   });
 
-  it("renders only the top four pending recommendations with the install shortcut", async () => {
-    const { SfWelcomeOverlay } = await import("../lib/splash-component.ts");
-    const data = {
-      modelName: "Example Gateway Model",
-      providerName: "sf-llm-gateway",
-      loadedCounts: { extensions: 8, skills: 38, promptTemplates: 1 },
-      recentSessions: [],
-      extensionHealth: [],
-      slackConnected: true,
-      monthlyCost: 0,
-      monthlyBudget: null,
-      monthlyUsageSource: "gateway" as const,
-      recommendations: {
-        total: 8,
-        installedCount: 0,
-        pendingCount: 8,
-        declinedCount: 0,
-        items: [
-          { id: "rec-1", name: "Recommendation 1", status: "pending" as const },
-          { id: "rec-2", name: "Recommendation 2", status: "pending" as const },
-          { id: "rec-3", name: "Recommendation 3", status: "pending" as const },
-          { id: "rec-4", name: "Recommendation 4", status: "pending" as const },
-          { id: "rec-5", name: "Recommendation 5", status: "pending" as const },
-          { id: "rec-6", name: "Recommendation 6", status: "pending" as const },
-          { id: "rec-7", name: "Recommendation 7", status: "pending" as const },
-          { id: "rec-8", name: "Recommendation 8", status: "pending" as const },
-        ],
-      },
-    };
-
-    const overlay = new SfWelcomeOverlay(data);
-    const plain = stripAnsi(overlay.render(170).join("\n"));
-
-    expect(plain).toContain("Recommended");
-    expect(plain).toContain("0/8 installed");
-    expect(plain).toContain("Recommendation 1");
-    expect(plain).toContain("Recommendation 4");
-    expect(plain).not.toContain("Recommendation 5");
-    expect(plain).toContain("Top 4 not installed");
-    expect(plain).toContain("/sf-pi recommended");
-    expect(plain).toContain("(+4 more)");
-  });
-
   it("omits the shortcut Tips section", async () => {
     const { SfWelcomeOverlay } = await import("../lib/splash-component.ts");
     const data = {
@@ -1047,7 +914,7 @@ describe("sf-welcome", () => {
   });
 
   it("keeps overlay and header lines within a 78-col pane", async () => {
-    // Herdr vertical splits land around 78 columns. The splash used to floor
+    // Multiplexer vertical splits land around 78 columns. The splash used to floor
     // the box at 80 cols, which crashed Pi's TUI with:
     //   Rendered line N exceeds terminal width (80 > 78)
     const { SfWelcomeHeader, SfWelcomeOverlay } = await import("../lib/splash-component.ts");

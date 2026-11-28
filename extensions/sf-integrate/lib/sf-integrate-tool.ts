@@ -4,6 +4,7 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
 import { connectSalesforce } from "../../../lib/common/sf-conn/index.ts";
 import { integrationErrorResult } from "./errors.ts";
 import { applyInboundSetup, designInboundPlan, verifyInboundSetup } from "./inbound-operations.ts";
@@ -187,7 +188,7 @@ export function registerSfIntegrateTool(
     inboundPlans: new Map(),
     outboundPlans: new Map(),
   };
-  pi.registerTool<typeof Params>({
+  registerNativeUiTool<typeof Params, ToolResult["details"]>(pi, {
     name: SF_INTEGRATE_TOOL_NAME,
     label: "SF Integrate",
     description:
@@ -195,7 +196,7 @@ export function registerSfIntegrateTool(
     promptSnippet:
       "Set up Salesforce hosted MCP OAuth, generic inbound ECA OAuth profiles, and outbound Named Credential stacks with plan-bound changes and compact proof.",
     promptGuidelines: [
-      "Use direction=mcp for Salesforce-side Headless 360 OAuth setup and hosted-server activation; sf_mcp remains the owner of Pi MCP configuration, exposure, connections, and tokens.",
+      "Use direction=mcp for Salesforce-side Headless 360 OAuth setup and hosted-server activation; sf_mcp remains the owner of OMP MCP configuration, exposure, connections, and tokens.",
       "Hosted MCP setup adopts an exact existing ECA, activates through runtime-proved Tooling capabilities, and returns activation_navigation.route for the sf_browser_open_org MCP Servers fallback when Tooling is unavailable.",
       "Use direction=inbound with eca_flow for Authorization Code, PKCE, Client Credentials, Device, JWT Bearer, or Token Exchange ECA profiles. Run plan, check-only-backed apply, then exact readback verification.",
       "Successful hosted MCP handoff includes the exact org identity, trusted host key, activation state, deterministic per-org server name, non-session-bearing Salesforce Setup URL, and navigation.route for sf_browser_open_org.",
@@ -205,9 +206,8 @@ export function registerSfIntegrateTool(
       "Use OAuth browser consent only after principal access and identity-provider credentials are configured. Salesforce stores the resulting tokens.",
     ],
     parameters: Params,
-    renderCall: (args, theme) => renderIntegrationCall(args as SfIntegrateParams, theme),
-    renderResult: (result, options, theme) =>
-      renderIntegrationResult(result as ToolResult, options, theme),
+    renderCall: (args, _options, theme) => renderIntegrationCall(args as SfIntegrateParams, theme),
+    renderResult: renderIntegrationResult,
     async execute(_id, rawParams, signal, _onUpdate, ctx) {
       const params = rawParams as SfIntegrateParams;
       try {

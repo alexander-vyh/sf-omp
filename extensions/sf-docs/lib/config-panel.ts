@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager Settings panel for SF Docs preferences. */
-import { type Focusable, matchesKey, visibleWidth } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import { detectTokenSource, isDocsConfigured, resolveEndpoint } from "./auth.ts";
 import {
   describePreferenceSource,
@@ -68,7 +69,7 @@ function padAnsi(text: string, width: number): string {
   return `${text}${" ".repeat(Math.max(0, width - visibleWidth(text)))}`;
 }
 
-class SfDocsConfigPanel implements Focusable {
+class SfDocsConfigPanel implements RowsPanel {
   focused = false;
   private cursor = 0;
   private draft: SfDocsPreferences;
@@ -77,7 +78,7 @@ class SfDocsConfigPanel implements Focusable {
   private message = "";
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: Pick<ExtensionTheme, "fg" | "bold">,
     private readonly cwd: string,
     private readonly scope: "global" | "project",
     private readonly done: (result: ConfigPanelResult | undefined) => void,
@@ -89,7 +90,7 @@ class SfDocsConfigPanel implements Focusable {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.done(undefined);
       return;
     }
@@ -97,7 +98,7 @@ class SfDocsConfigPanel implements Focusable {
     if (matchesKey(data, "down")) return this.move(1);
     if (matchesKey(data, "left")) return this.cycle(-1);
     if (matchesKey(data, "right") || matchesKey(data, "space")) return this.cycle(1);
-    if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "s") this.save();
+    if (matchesKey(data, "enter") || matchesKey(data, "s")) this.save();
   }
 
   renderContent(width: number): string[] {
@@ -143,8 +144,6 @@ class SfDocsConfigPanel implements Focusable {
   render(width: number): string[] {
     return this.renderContent(width);
   }
-
-  invalidate(): void {}
 
   private move(delta: -1 | 1): void {
     this.cursor = (this.cursor + delta + SETTING_ROWS.length) % SETTING_ROWS.length;

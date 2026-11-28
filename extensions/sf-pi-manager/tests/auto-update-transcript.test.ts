@@ -26,7 +26,7 @@ describe("Auto Update human-only transcript", () => {
     expect(persisted).not.toContain("private.example.test");
   });
 
-  it("appends state-only rows that never enter Pi model context", () => {
+  it("appends state-only rows that never enter model context", () => {
     const session = SessionManager.inMemory();
     const pi = {
       appendEntry: (customType: string, data: unknown) =>
@@ -35,7 +35,7 @@ describe("Auto Update human-only transcript", () => {
 
     appendAutoUpdateTranscript(pi as never, {
       title: "Auto Update planned",
-      body: "Pi packages and Salesforce CLI",
+      body: "sf-omp checkout and Salesforce CLI",
       severity: "info",
     });
 

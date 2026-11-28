@@ -9,6 +9,7 @@
 
 import { AGENTFORCE_DOCUMENT_URI, processAgentforceDocument } from "./agentforce-document.ts";
 import type { DocumentState } from "@sf-agentscript/lsp";
+import { loadAgentforceLsp } from "./agentforce-lsp.ts";
 import type {
   AgentScriptCodeActionProviderStatus,
   AgentScriptDiagnostic,
@@ -80,7 +81,7 @@ async function officialQuickFixes(
       state ?? (await processAgentforceDocument(source, AGENTFORCE_DOCUMENT_URI));
     const provideCodeActions =
       options.provideCodeActions ??
-      ((await import("@sf-agentscript/lsp")).provideCodeActions as ProvideCodeActions);
+      ((await loadAgentforceLsp()).provideCodeActions as ProvideCodeActions);
     actions = provideCodeActions(documentState, fullDocumentRange(source), diagnostics);
   } catch (error) {
     return {

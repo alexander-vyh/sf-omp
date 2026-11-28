@@ -4,11 +4,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionCommandContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import { createConfigPanel, GatewayConfigPanelComponent } from "../lib/config-panel.ts";
 import { BASE_URL_ENV, projectGatewayConfigPath, readGatewaySavedConfig } from "../lib/config.ts";
 import { readEffectivePrioritySettings } from "../lib/priority-settings.ts";
 import { readEffectiveCompactionSettings } from "../lib/compaction-settings.ts";
+import { GatewaySetupOverlayComponent } from "../lib/setup-overlay.ts";
 
 const PI_AGENT_ENV = "PI_CODING_AGENT_DIR";
 const originalAgentDir = process.env[PI_AGENT_ENV];
@@ -38,6 +41,36 @@ afterEach(() => {
   else process.env[BASE_URL_ENV] = originalBaseUrl;
   rmSync(tempAgentDir, { recursive: true, force: true });
   rmSync(tempProjectDir, { recursive: true, force: true });
+});
+
+it("keeps the standalone setup reachable in a short OMP terminal", () => {
+  const done = vi.fn();
+  const overlay = new GatewaySetupOverlayComponent(
+    theme,
+    "project",
+    tempProjectDir,
+    done,
+    {
+      size: () => ({ rows: 20, columns: 64 }),
+      requestRender: vi.fn(),
+      suspend: (run) => run(),
+    },
+    true,
+  );
+  const first = overlay.render(64);
+  expect(first.length).toBeLessThanOrEqual(20);
+  expect(first.every((row) => visibleWidth(row) <= 64)).toBe(true);
+  expect(first.join("\n")).toContain("Saved base URL");
+  expect(first.join("\n")).not.toContain("Import from Claude Code");
+
+  overlay.handleInput("\x1b[200~https://gateway.example.test/v1\x1b[201~");
+  for (let i = 0; i < 6; i++) overlay.handleInput("\x1b[B");
+  expect(overlay.render(64).join("\n")).toContain("[ Save ]");
+  overlay.handleInput("\r");
+  expect(done).toHaveBeenCalledWith({ action: "save" });
+  expect(readGatewaySavedConfig(projectGatewayConfigPath(tempProjectDir))).toMatchObject({
+    baseUrl: "https://gateway.example.test",
+  });
 });
 
 describe("GatewayConfigPanelComponent Manager contract", () => {

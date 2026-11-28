@@ -124,7 +124,7 @@ export interface FileSafetySubject {
 
 export interface ShellCommandSafetySubject {
   kind: "shellCommand";
-  toolName: "bash" | "herdr_pane";
+  toolName: "bash";
   command: string;
 }
 

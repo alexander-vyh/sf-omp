@@ -9,7 +9,8 @@
  * AgentScript toolchain until a `.agent` workflow needs it.
  */
 
-import type { DocumentState, LspParser } from "@sf-agentscript/lsp";
+import type { DocumentState, LspConfig, LspParser } from "@sf-agentscript/lsp";
+import { loadAgentforceLsp } from "./agentforce-lsp.ts";
 import { getSdkLoadError, loadAgentforceSDK, type AgentforceSDK } from "./sdk.ts";
 import type {
   AgentScriptDiagnostic,
@@ -44,10 +45,10 @@ export async function processAgentforceDocument(
   // parser/compiler instead of depending on registry names that can change.
   const [agentforce, lsp] = await Promise.all([
     import("@sf-agentscript/agentforce"),
-    import("@sf-agentscript/lsp"),
+    loadAgentforceLsp(),
   ]);
   const agentforceDialect =
-    agentforce.agentforceDialect as unknown as (typeof lsp.defaultDialects)[number];
+    agentforce.agentforceDialect as unknown as LspConfig["dialects"][number];
 
   return lsp.processDocument(uri, source, {
     dialects: [agentforceDialect],

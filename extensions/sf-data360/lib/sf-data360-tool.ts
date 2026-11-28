@@ -4,6 +4,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { buildExecFn } from "../../../lib/common/exec-adapter.ts";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
 import {
   getCachedSfEnvironment,
   getSharedSfEnvironment,
@@ -16,6 +17,7 @@ import { presentSfData360Result } from "./result.ts";
 import { runSfData360Action } from "./sdk.ts";
 import type { Data360ProgressEvent } from "./actions/dispatcher.ts";
 import type { SfData360Input } from "./actions/action-types.ts";
+import type { SfData360ToolResult } from "./types.ts";
 
 export const SF_DATA360_TOOL_NAME = "sf_data360";
 export const DATA360_EXECUTION_CHAIN_ENTRY_TYPE = "sf-data360-execution-chain";
@@ -76,7 +78,7 @@ const LOCAL_ENV: SfEnvironment = {
 
 export function registerSfData360Tool(pi: ExtensionAPI): void {
   const exec = buildExecFn(pi);
-  pi.registerTool<typeof Params>({
+  registerNativeUiTool<typeof Params, SfData360ToolResult["details"]>(pi, {
     name: SF_DATA360_TOOL_NAME,
     label: "SF Data 360",
     description:
@@ -90,9 +92,8 @@ export function registerSfData360Tool(pi: ExtensionAPI): void {
     ],
     parameters: Params,
     outputSchema: OutputSchema,
-    renderCall: (args, theme) => renderSfData360Call(args as SfData360Input, theme),
-    renderResult: (result, options, theme) =>
-      renderSfData360Result(result as never, options, theme),
+    renderCall: (args, _options, theme) => renderSfData360Call(args as SfData360Input, theme),
+    renderResult: renderSfData360Result,
     async execute(_id, rawParams, signal, onUpdate, ctx) {
       const input = rawParams as SfData360Input;
       const env = LOCAL_ACTIONS.has(input.action)

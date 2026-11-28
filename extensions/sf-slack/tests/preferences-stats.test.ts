@@ -20,6 +20,7 @@ import {
 } from "../lib/preferences.ts";
 import { openPreferencesPanel } from "../lib/preferences-panel.ts";
 import { getStats, recordSample, renderStatsLines, resetStats } from "../lib/stats.ts";
+import { createNativeTestUi } from "./native-ui-fixture.ts";
 
 const tempDirs = new Set<string>();
 
@@ -94,6 +95,39 @@ describe("preferences", () => {
     expect(scoped.preferences.defaultFields).toBe("summary");
     expect(effective.defaultFields).toBe("summary");
     expect(effective.source).toBe("project");
+  });
+
+  it("navigates and searches the native settings picker, changes a value, and closes", async () => {
+    const { ui, terminal, overlays, dispose } = await createNativeTestUi();
+    const onChange = vi.fn();
+    try {
+      const closed = openPreferencesPanel(
+        { mode: "tui", hasUI: true, cwd: tempCwd(), ui } as never,
+        DEFAULT_PREFERENCES,
+        { onChange },
+      );
+      await vi.waitFor(() => expect(overlays.open()).toBe(true));
+      terminal.press("down");
+      terminal.press("enter");
+      expect(onChange).toHaveBeenLastCalledWith({
+        ...DEFAULT_PREFERENCES,
+        threadBodies: "preview",
+      });
+
+      terminal.paste("thread/historx");
+      terminal.press("right");
+      expect(onChange).toHaveBeenCalledTimes(1);
+      terminal.press("backspace");
+      terminal.type("y");
+      terminal.press("left");
+      expect(onChange).toHaveBeenLastCalledWith(DEFAULT_PREFERENCES);
+
+      terminal.press("escape");
+      await closed;
+      expect(overlays.open()).toBe(false);
+    } finally {
+      dispose();
+    }
   });
 
   it("uses dialog UI instead of custom TUI in RPC mode", async () => {

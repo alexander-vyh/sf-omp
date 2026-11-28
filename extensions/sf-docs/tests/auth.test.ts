@@ -48,7 +48,7 @@ describe("sf-docs authenticated configuration", () => {
     expect(resolveEndpoint()).toMatchObject({ ok: false, source: "none" });
   });
 
-  it("stores the masked token and endpoint through Pi-native login", async () => {
+  it("stores the masked token and endpoint through OMP-native login", async () => {
     const bridge = makePromptBridge("sfmcp-pi-owned-token");
     const controller = createSfDocsAuthController(bridge);
     controller.bind(UNUSED_UI, "tui");
@@ -73,7 +73,7 @@ describe("sf-docs authenticated configuration", () => {
         baseUrl: "https://docs.example.test/",
       },
       env: { SF_DOCS_MCP_ENDPOINT: "https://docs.example.test/" },
-      source: "Pi saved credential",
+      source: "OMP saved credential",
     });
     expect(bridge.prompt).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(prompt.mock.calls)).not.toContain("sfmcp-pi-owned-token");

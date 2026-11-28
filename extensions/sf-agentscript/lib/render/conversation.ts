@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Shared human-only conversation replay for Preview sessions and Eval runs. */
 
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
 import { fmtMs } from "./shared.ts";
 
 export interface ConversationReplayTurn {

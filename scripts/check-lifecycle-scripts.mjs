@@ -16,10 +16,14 @@ const ROOT = path.resolve(__dirname, "..");
 const LOCK_PATH = path.join(ROOT, "package-lock.json");
 
 const ALLOWED_INSTALL_SCRIPT_PACKAGES = new Map([
-  ["", "sf-omp local OMP interoperability patch and development hooks; no global installation."],
+  ["", "sf-omp Node version check and development hooks; no global installation."],
   [
     "node_modules/bun",
     "Pinned repository-local Bun executable; selects/downloads its platform binary into node_modules.",
+  ],
+  [
+    "node_modules/esbuild",
+    "Builds the official Agent Script LSP module for standalone OMP; checks the bundled platform binary.",
   ],
   ["node_modules/@google/genai", "dev dependency from pi-ai model tooling."],
   ["node_modules/protobufjs", "dev dependency from Google client tooling."],

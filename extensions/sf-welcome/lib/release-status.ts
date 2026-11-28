@@ -2,15 +2,12 @@
 /**
  * SF Pi package release freshness for the welcome splash.
  *
- * Pi owns Pi Runtime installation, release checks, and update guidance. SF Pi
- * freshness piggybacks on the announcements cache and performs no network I/O.
+ * SF Pi freshness piggybacks on the announcements cache and performs no network
+ * I/O. The sf-omp checkout updates through `/sf-pi auto-update run`; OMP's own
+ * runtime updates stay with `omp update`.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  findPackageInSettings,
-  type PackageEntryMatch,
-} from "../../../lib/common/sf-pi-package-state.ts";
 import { readAnnouncementsState } from "../../../lib/common/catalog-state/announcements-state.ts";
 import {
   loadAnnouncementsManifest,
@@ -20,18 +17,23 @@ import { compareVersions } from "../../../lib/common/catalog-state/whats-new.ts"
 import type { ReleaseStatusInfo } from "./types.ts";
 
 const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const UPDATE_COMMAND = "/sf-pi auto-update run";
 
-export function detectSfPiReleaseStatus(cwd?: string): ReleaseStatusInfo {
+export function detectSfPiReleaseStatus(): ReleaseStatusInfo {
   const packageRoot = resolveDefaultPackageRoot();
   const installedVersion = readSfPiInstalledVersion(packageRoot);
   const bundledLatest = readBundledLatestVersion(packageRoot);
   const cachedRemoteLatest = readFreshCachedRemoteLatestVersion();
   const latestVersion = latestKnownVersion([bundledLatest, cachedRemoteLatest]);
-  const match = cwd ? findEffectivePackageMatch(cwd) : null;
-  const updateCommand = buildSfPiUpdateCommand(match);
 
   if (!installedVersion || !latestVersion) {
-    return { installedVersion, latestVersion, freshness: "unknown", loading: false, updateCommand };
+    return {
+      installedVersion,
+      latestVersion,
+      freshness: "unknown",
+      loading: false,
+      updateCommand: UPDATE_COMMAND,
+    };
   }
 
   return {
@@ -39,7 +41,7 @@ export function detectSfPiReleaseStatus(cwd?: string): ReleaseStatusInfo {
     latestVersion,
     freshness: freshnessFor(installedVersion, latestVersion),
     loading: false,
-    updateCommand,
+    updateCommand: UPDATE_COMMAND,
   };
 }
 
@@ -93,23 +95,4 @@ function freshnessFor(
   latestVersion: string,
 ): ReleaseStatusInfo["freshness"] {
   return compareVersions(latestVersion, installedVersion) > 0 ? "update-available" : "latest";
-}
-
-function findEffectivePackageMatch(cwd: string): PackageEntryMatch | null {
-  return findPackageInSettings(cwd, "project") ?? findPackageInSettings(cwd, "global");
-}
-
-function buildSfPiUpdateCommand(match: PackageEntryMatch | null): string | undefined {
-  if (!match) return "pi update --extensions";
-  if (isLocalPackageSource(match.source)) return undefined;
-  return `pi update ${match.source}`;
-}
-
-function isLocalPackageSource(source: string): boolean {
-  return (
-    source.startsWith("/") ||
-    source.startsWith("./") ||
-    source.startsWith("../") ||
-    source.startsWith("~")
-  );
 }

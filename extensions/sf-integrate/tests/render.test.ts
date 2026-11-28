@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
-import type { Theme } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { renderIntegrationResult } from "../lib/render.ts";
 import type { ToolResult } from "../lib/types.ts";
@@ -9,7 +8,7 @@ const theme = {
   fg: (color: string, text: string) => `[${color}]${text}[/]`,
   bold: (text: string) => `**${text}**`,
   bg: (color: string, text: string) => `{${color}}${text}{/}`,
-} as unknown as Theme;
+};
 
 describe("SF Integrate Result Card", () => {
   it("renders plan scope, OAuth proof, artifact, and next step", () => {

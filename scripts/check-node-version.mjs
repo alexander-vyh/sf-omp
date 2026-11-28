@@ -34,14 +34,12 @@ function isTooOld(left, right) {
 
 if (isTooOld(current, required)) {
   console.error(`
-sf-pi requires Node.js >=${requiredVersion}.
+sf-omp requires Node.js >=${requiredVersion}.
 Detected Node.js ${process.version}.
 
-Install or switch to Node 22, then reinstall pi and sf-pi:
-  nvm install 22
-  nvm use 22
-  npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-  pi install git:github.com/salesforce/sf-pi
+Install or switch to a supported Node.js version, then retry this installation:
+  nvm install ${required.major}
+  nvm use ${required.major}
 `);
   process.exit(1);
 }

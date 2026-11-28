@@ -9,7 +9,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { RecommendationsManifest, RecommendedItem } from "../../../catalog/types.ts";
+import type { RecommendationsManifest } from "../../../catalog/types.ts";
 
 const EMPTY_MANIFEST: RecommendationsManifest = {
   schemaVersion: 1,
@@ -47,32 +47,4 @@ export function loadRecommendationsManifest(packageRoot: string): Recommendation
   } catch {
     return EMPTY_MANIFEST;
   }
-}
-
-/** Resolve a list of bundle ids into the set of items they include. */
-export function resolveBundleItems(
-  manifest: RecommendationsManifest,
-  bundleIds: readonly string[],
-): RecommendedItem[] {
-  const seen = new Set<string>();
-  const result: RecommendedItem[] = [];
-
-  for (const bundleId of bundleIds) {
-    const bundle = manifest.bundles.find((b) => b.id === bundleId);
-    if (!bundle) continue;
-    for (const itemId of bundle.items) {
-      if (seen.has(itemId)) continue;
-      const item = manifest.items[itemId];
-      if (!item) continue;
-      seen.add(itemId);
-      result.push(item);
-    }
-  }
-
-  return result;
-}
-
-/** All bundle ids marked `defaultOnFirstRun: true`. */
-export function defaultFirstRunBundleIds(manifest: RecommendationsManifest): string[] {
-  return manifest.bundles.filter((b) => b.defaultOnFirstRun).map((b) => b.id);
 }

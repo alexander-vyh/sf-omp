@@ -1,102 +1,117 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Real Pi 0.81 mode proofs for display-only command reports. */
-import { mkdtempSync, rmSync } from "node:fs";
+/** Native OMP mode proofs for display-only command reports. */
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
-import { spawnCommand } from "../windows-spawn.ts";
+import {
+  OMP_ISOLATION_ARGS,
+  OMP_OFFLINE_MODEL_ARGS,
+  OMP_SESSION_ENTRIES_PROBE,
+  REPO_ROOT,
+  ompTestHost,
+} from "./omp-host.ts";
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
-const PI_BIN = path.join(REPO_ROOT, "node_modules", ".bin", "pi");
+/** Generous ceiling for a cold OMP start that transpiles the extension. */
+const RUN_TIMEOUT_MS = 30_000;
 const tempDirs: string[] = [];
 
-function runPi(extensionPath: string, modeArgs: string[], command: string, input?: string) {
-  const agentDir = mkdtempSync(path.join(tmpdir(), "sf-pi-human-output-"));
-  tempDirs.push(agentDir);
-  const env = { ...process.env, PI_CODING_AGENT_DIR: agentDir };
-  delete env.SF_LLM_GATEWAY_BASE_URL;
-  delete env.SF_LLM_GATEWAY_API_KEY;
+/** label, extension, command, report customType, report marker */
+const REPORTS = [
+  [
+    "SF Feedback",
+    "extensions/sf-feedback/index.ts",
+    "/sf-feedback help",
+    "sf-feedback",
+    "/sf-feedback subcommands",
+  ],
+  [
+    "Gateway",
+    "extensions/sf-llm-gateway/index.ts",
+    "/sf-llm-gateway help",
+    "sf-llm-gateway",
+    "/sf-llm-gateway with no args",
+  ],
+] as const;
 
+interface SessionEntry {
+  type?: string;
+  customType?: string;
+  data?: { body?: string };
+}
+
+function runOmp(extensionPath: string, modeArgs: string[], command: string, input?: string) {
+  const root = mkdtempSync(path.join(tmpdir(), "sf-omp-human-output-"));
+  tempDirs.push(root);
+  const entriesPath = path.join(root, "entries.json");
+  const host = ompTestHost(root, { SF_OMP_PROBE_ENTRIES: entriesPath });
+  const [executable, ...cli] = host.command;
   const args = [
-    "--offline",
-    "--no-extensions",
-    "--no-skills",
-    "--no-prompt-templates",
-    "--no-themes",
-    "--no-context-files",
-    "--no-session",
+    ...cli,
+    ...OMP_ISOLATION_ARGS,
+    ...OMP_OFFLINE_MODEL_ARGS,
     "-e",
     path.join(REPO_ROOT, extensionPath),
+    "-e",
+    OMP_SESSION_ENTRIES_PROBE,
     ...modeArgs,
   ];
   if (command) args.push(command);
 
-  // Windows: node_modules\.bin\pi is a .cmd wrapper; run its entry without a shell.
-  const [piCommand, piArgs] = spawnCommand(
-    process.platform === "win32" ? `${PI_BIN}.cmd` : PI_BIN,
-    args,
-  );
-  return spawnSync(piCommand, piArgs, {
-    cwd: agentDir,
-    env,
+  const result = spawnSync(executable, args, {
+    cwd: root,
+    env: host.env,
     encoding: "utf8",
-    timeout: 30_000,
+    timeout: RUN_TIMEOUT_MS,
     input,
   });
+  return {
+    ...result,
+    events: () =>
+      result.stdout
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as Record<string, unknown>),
+    /** Session entries the probe recorded at shutdown. */
+    entries: () => JSON.parse(readFileSync(entriesPath, "utf8")) as SessionEntry[],
+  };
 }
 
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-describe("human-only command output through real Pi modes", () => {
-  it("emits SF Feedback JSON output as an entry, never a custom message", () => {
-    const result = runPi(
-      "extensions/sf-feedback/index.ts",
-      ["--mode", "json", "--print"],
-      "/sf-feedback help",
-    );
-
-    expect(result.status, result.stderr).toBe(0);
-    const events = result.stdout
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
-    const entry = events.find((event) => event.type === "entry_appended") as
-      { entry?: { type?: string; customType?: string; data?: { body?: string } } } | undefined;
-
-    expect(entry?.entry).toMatchObject({ type: "custom", customType: "sf-feedback" });
-    expect(entry?.entry?.data?.body).toContain("/sf-feedback subcommands");
-    expect(events.some((event) => event.type === "message_start")).toBe(false);
-  });
-
-  it.each([
-    [
-      "SF Feedback",
-      "extensions/sf-feedback/index.ts",
-      "/sf-feedback help",
-      "/sf-feedback subcommands",
-    ],
-    [
-      "Gateway",
-      "extensions/sf-llm-gateway/index.ts",
-      "/sf-llm-gateway help",
-      "/sf-llm-gateway with no args",
-    ],
-  ])(
-    "emits %s reports through the RPC notification channel",
-    (_label, extensionPath, command, marker) => {
-      const request = `${JSON.stringify({ id: "report", type: "prompt", message: command })}\n`;
-      const result = runPi(extensionPath, ["--mode", "rpc"], "", request);
+describe("human-only command output through native OMP modes", () => {
+  it.each(REPORTS)(
+    "records %s JSON-mode output as an entry, never a custom message",
+    (_label, extensionPath, command, customType, marker) => {
+      const result = runOmp(extensionPath, ["--mode", "json", "--print"], command);
 
       expect(result.status, result.stderr).toBe(0);
-      const events = result.stdout
-        .trim()
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(result.events().some((event) => event.type === "message_start")).toBe(false);
+      // OMP's JSON stream does not publish appended entries; read the session itself.
+      const entries = result.entries();
+      const report = entries.find(
+        (entry) => entry.type === "custom" && entry.customType === customType,
+      );
+      expect(report?.data?.body).toContain(marker);
+      expect(
+        entries.filter((entry) => entry.type === "message" || entry.type === "custom_message"),
+      ).toEqual([]);
+    },
+    RUN_TIMEOUT_MS,
+  );
+
+  it.each(REPORTS)(
+    "emits %s reports through the RPC notification channel",
+    (_label, extensionPath, command, _customType, marker) => {
+      const request = `${JSON.stringify({ id: "report", type: "prompt", message: command })}\n`;
+      const result = runOmp(extensionPath, ["--mode", "rpc"], "", request);
+
+      expect(result.status, result.stderr).toBe(0);
+      const events = result.events();
       const notification = events.find(
         (event) => event.type === "extension_ui_request" && event.method === "notify",
       ) as { message?: string } | undefined;
@@ -104,51 +119,19 @@ describe("human-only command output through real Pi modes", () => {
       expect(notification?.message).toContain(marker);
       expect(events.some((event) => event.type === "message_start")).toBe(false);
     },
+    RUN_TIMEOUT_MS,
   );
 
-  it.each([
-    [
-      "SF Feedback",
-      "extensions/sf-feedback/index.ts",
-      "/sf-feedback help",
-      "/sf-feedback subcommands",
-    ],
-    [
-      "Gateway",
-      "extensions/sf-llm-gateway/index.ts",
-      "/sf-llm-gateway help",
-      "/sf-llm-gateway with no args",
-    ],
-  ])("prints %s reports in print mode", (_label, extensionPath, command, marker) => {
-    const result = runPi(extensionPath, ["--print"], command);
+  it.each(REPORTS)(
+    "prints %s reports in print mode",
+    (_label, extensionPath, command, _customType, marker) => {
+      const result = runOmp(extensionPath, ["--print"], command);
 
-    expect(result.status, result.stderr).toBe(0);
-    // Pi preserves print-mode stdout for the assistant response and routes
-    // extension console output to stderr; both remain human-visible.
-    expect(`${result.stdout}\n${result.stderr}`).toContain(marker);
-  });
-
-  it("emits Gateway JSON output as an entry, never a custom message", () => {
-    const result = runPi(
-      "extensions/sf-llm-gateway/index.ts",
-      ["--mode", "json", "--print"],
-      "/sf-llm-gateway help",
-    );
-
-    expect(result.status, result.stderr).toBe(0);
-    const events = result.stdout
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
-    const entry = events.find((event) => event.type === "entry_appended") as
-      { entry?: { type?: string; customType?: string; data?: { body?: string } } } | undefined;
-
-    expect(entry?.entry).toMatchObject({
-      type: "custom",
-      customType: "sf-llm-gateway",
-    });
-    expect(entry?.entry?.data?.body).toContain("/sf-llm-gateway with no args");
-    expect(events.some((event) => event.type === "message_start")).toBe(false);
-  });
+      expect(result.status, result.stderr).toBe(0);
+      // OMP prints extension console output to stdout and progress to stderr;
+      // either stream is human-visible.
+      expect(`${result.stdout}\n${result.stderr}`).toContain(marker);
+    },
+    RUN_TIMEOUT_MS,
+  );
 });

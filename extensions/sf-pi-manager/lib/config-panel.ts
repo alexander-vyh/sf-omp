@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Config panel for core sf-pi settings. */
-import { type Focusable, matchesKey } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
 import {
   readAutoUpdateEnabled,
@@ -19,11 +18,12 @@ import {
   SF_PI_DISPLAY_PROFILES,
   type SfPiDisplayProfile,
 } from "../../../lib/common/display/types.ts";
+import { matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import { padAnsi, wrapPlainText } from "./render.ts";
 
 type SettingsRow = "auto-update" | "display";
 
-class SfPiManagerConfigPanel implements Focusable {
+class SfPiManagerConfigPanel implements RowsPanel {
   focused = false;
 
   private profile: SfPiDisplayProfile;
@@ -95,7 +95,7 @@ class SfPiManagerConfigPanel implements Focusable {
       pad(` ${autoCursor} ${t.fg("accent", autoBox)} ${t.bold("Enable daily native auto-update")}`),
     );
     for (const line of wrapPlainText(
-      "When enabled, due work waits for the next agent-settled boundary. SF Pi never updates or restarts the active Pi runtime. It updates only declared-compatible unpinned global npm Pi packages through Pi (including Herdr when outdated), then runs sf update stable.",
+      "When enabled, due work waits for the next agent-settled boundary. It fast-forwards a clean sf-omp checkout that is strictly behind its upstream (git pull --ff-only + npm ci), then runs sf update stable. It never updates or restarts the OMP runtime; use omp update for that.",
       Math.max(20, width - 5),
     )) {
       lines.push(pad(`    ${t.fg("dim", line)}`));
@@ -161,8 +161,6 @@ class SfPiManagerConfigPanel implements Focusable {
   render(width: number): string[] {
     return this.renderContent(width);
   }
-
-  invalidate(): void {}
 
   private toggleSelectedRow(): void {
     this.selectedRow = this.selectedRow === "auto-update" ? "display" : "auto-update";

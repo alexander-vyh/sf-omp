@@ -7,12 +7,11 @@ Pi + SALESFORCE wordmark and cache-first readiness information.
 
 The default header summarizes the active model, optional gateway usage,
 dedicated compaction readiness, Salesforce CLI and API context, Apex/LWC/Agent
-Script LSP readiness, Node runtime, Herdr, Browser, Code Analyzer, fonts, local
-review tools, SF Pi package freshness, privacy posture, announcements,
-recommended packages, skill sources, and recent sessions. Pi owns Pi Runtime
-release checks and update guidance. Slack stays hidden until configured. SF Docs
-appears when the extension is enabled and reports connected, setup needed, or
-not configured.
+Script LSP readiness, Node runtime, Browser, Code Analyzer, fonts, local
+review tools, SF Pi package freshness, announcements, skill sources, and recent
+sessions. OMP itself updates with `omp update`. Slack stays hidden until
+configured. SF Docs appears when the extension is enabled and reports connected,
+setup needed, or not configured.
 
 When SF LLM Gateway is enabled, the Context Compaction row reads only Pi settings
 and the restored model catalog. Native active-model compaction is shown as a
@@ -34,14 +33,13 @@ Wide terminals can show two columns; narrow terminals stack the same content.
 
 **SF Pi Manager → SF Welcome → Settings** controls `sfPi.welcome.mode`:
 
-- `header` — compact non-blocking Salesforce startup surface;
+- `header` — compact, non-blocking widget above the OMP editor. Esc, agent
+  activity, or a tool call dismisses it;
 - `off` — no automatic SF Welcome surface.
 
-Pi separately owns its native `quietStartup` setting. SF Pi Doctor uses
-`quietStartup: "header"` for recovery so Pi keeps its version and key hints while
-hiding the longer resource listing. `SF_PI_SAFE_START=1 pi` also keeps SF Welcome
-on its non-blocking header. Glyph policy
-can be overridden with `SF_PI_ASCII_ICONS=1`/`0` or `sfPi.asciiIcons`.
+`SF_PI_SAFE_START=1 <checkout>/tools/bin/omp` keeps SF Welcome on its
+non-blocking header for recovery launches. Glyph policy can be overridden with
+`SF_PI_ASCII_ICONS=1`/`0` or `sfPi.asciiIcons`.
 Announcements can be disabled with `SF_PI_ANNOUNCEMENTS=off` or
 `sfPi.announcements=false`.
 
@@ -71,13 +69,6 @@ Mono** in the terminal, or force ASCII icons.
 
 **The LSP row stays unknown:** Run `/sf-lsp doctor`. SF Welcome reads shared
 readiness and never launches a duplicate probe.
-
-**Herdr reports missing tools:** Install `npm:@ogulcancelik/pi-herdr`, launch Pi
-inside a Herdr pane, and install the Herdr Pi bridge when needed.
-
-**Herdr tool-name conflicts at startup:** Keep `npm:@ogulcancelik/pi-herdr` and
-remove `git:github.com/ogulcancelik/pi-extensions` from `packages[]`, then run
-`/sf-pi doctor`.
 
 **Startup feels noisy:** Select `off` in Manager settings. Optional
 integrations should remain calm unless enabled or degraded.

@@ -19,7 +19,7 @@ import { captureVisualResponseAudit } from "./visual-response-audit.ts";
 import { VisualResponseAuditPanel } from "./visual-response-panel.ts";
 
 export function buildSfBrainManagerActions(
-  pi: Pick<ExtensionAPI, "getAllTools">,
+  pi: Pick<ExtensionAPI, "getAllTools" | "getActiveTools">,
   options: CaptureInstructionSurfaceOptions,
 ): ManagerDetailAction[] {
   return [

@@ -20,17 +20,17 @@ remains explicit-command-only. Managed-library _invocation_ is separate:
 `disable-model-invocation` on a global `effective/` copy so unused skills stay
 out of the system prompt while `/skill:name` keeps working.
 
-It also provides an optional active-context HUD, the managed public Salesforce
-skill-library installer (`forcedotcom/sf-skills`), explicit invocation counters,
-and stale-entry/orphan cleanup. Pi's built-in MCP extension owns MCP server
+It also provides an optional active-context HUD above the composer, the managed
+public Salesforce skill-library installer (`forcedotcom/sf-skills`), explicit invocation counters,
+and stale-entry/orphan cleanup. OMP's native MCP support owns MCP server
 configuration, connections, authentication, exposure, and readiness; use `/mcp`
-or `pi mcp` for those workflows. SF Skills does not install, recommend, or inspect
+for those workflows. SF Skills does not install, recommend, or inspect
 third-party MCP adapters. A retired `forcedotcom/afv-library` checkout is detected
 and warned; `/sf-skills defaults install` switches wiring to the new library
 without deleting the old clone.
 
-Funnel and toggle overlays use OMP's `ui.custom` lifecycle; they do not override
-the working indicator with unsupported visibility calls.
+Funnel and toggle views use OMP's fullscreen `ui.custom` lifecycle. The HUD is a
+passive widget: it does not capture input or appear when no skills are in context.
 
 ## Commands
 
@@ -58,7 +58,7 @@ report-only because SF Skills does not move user files.
 - `sfPi.skillInvocation`: global default/pack/skill visibility for the managed library.
 
 The full Skill Funnel remains an action surface because applying staged changes
-can update native settings and reload Pi. Catalog loading stays on explicit
+can update native settings and reload the OMP session. Catalog loading stays on explicit
 actions. Startup reads cached local state; the deferred welcome refresh and
 first turn repair a missing, empty, or stale managed effective tree from the
 same runtime agent root. A revision receipt avoids copying unchanged content.
@@ -90,10 +90,9 @@ effective skills, not just the clone. A deferred refresh or first turn repairs
 the projection; reload to refresh runtime discovery. A missing clone never
 deletes an existing projection and an explicit sync warns with both paths.
 
-**An MCP-backed skill cannot reach its tools:** Run `/mcp` to inspect Pi's native
-server state, authentication, exposure, and connection errors. Use `pi mcp` for
-shell-based configuration. SF Skills controls whether the skill is model-invocable,
-but Pi owns the MCP runtime.
+**An MCP-backed skill cannot reach its tools:** Run `/mcp` to inspect OMP's
+native server state, authentication, exposure, and connection errors. SF Skills
+controls whether the skill is model-invocable, but OMP owns the MCP runtime.
 
 ## File Structure
 

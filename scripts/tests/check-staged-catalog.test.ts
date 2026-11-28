@@ -63,7 +63,7 @@ function git(...args: string[]): string {
 }
 
 function runGenerator(): CommandResult {
-  return spawnSync(process.execPath, [path.join(repository, "scripts/generate-catalog.mjs")], {
+  return spawnSync("node", [path.join(repository, "scripts/generate-catalog.mjs")], {
     cwd: repository,
     encoding: "utf8",
     timeout: MAX_EXECUTION_MS,
@@ -76,7 +76,7 @@ function runGenerator(): CommandResult {
 }
 
 function runChecker(): CommandResult {
-  return spawnSync(process.execPath, [CHECKER_PATH], {
+  return spawnSync("node", [CHECKER_PATH], {
     cwd: repository,
     encoding: "utf8",
     timeout: MAX_EXECUTION_MS,

@@ -4,8 +4,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import type { Component } from "@earendil-works/pi-tui";
+import type { ExtensionRows, ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
 import {
   renderSfPiResultCardPanel,
   renderSfPiResultCardText,
@@ -108,9 +107,8 @@ export function renderCodeAnalyzerReportPanel(
   summary: CodeAnalyzerReportSummary,
   opts: { expanded?: boolean } = {},
   theme: Theme,
-  outputPad = 1,
-): Component {
-  return renderSfPiResultCardPanel(codeAnalyzerReportCard(summary), opts, theme, outputPad);
+): ExtensionRows {
+  return renderSfPiResultCardPanel(codeAnalyzerReportCard(summary), opts, theme);
 }
 
 export interface CodeAnalyzerRecipeCardItem {
@@ -119,7 +117,6 @@ export interface CodeAnalyzerRecipeCardItem {
   label?: string;
   when?: string;
   ruleSelector?: string[];
-  herdrRecommended?: boolean;
 }
 
 export function renderCodeAnalyzerDoctorCard(
@@ -132,9 +129,8 @@ export function renderCodeAnalyzerDoctorCard(
 export function renderCodeAnalyzerDoctorPanel(
   report: CodeAnalyzerDoctorReport,
   theme: Theme,
-  outputPad = 1,
-): Component {
-  return renderSfPiResultCardPanel(codeAnalyzerDoctorCard(report), {}, theme, outputPad);
+): ExtensionRows {
+  return renderSfPiResultCardPanel(codeAnalyzerDoctorCard(report), {}, theme);
 }
 
 export function renderCodeAnalyzerRecipesCard(
@@ -155,9 +151,8 @@ export function renderCodeAnalyzerRecipesPanel(
   },
   opts: { expanded?: boolean } = {},
   theme: Theme,
-  outputPad = 1,
-): Component {
-  return renderSfPiResultCardPanel(codeAnalyzerRecipesCard(input), opts, theme, outputPad);
+): ExtensionRows {
+  return renderSfPiResultCardPanel(codeAnalyzerRecipesCard(input), opts, theme);
 }
 
 export function renderCodeAnalyzerPlainCard(title: string, body: string, theme: Theme): string {
@@ -168,14 +163,8 @@ export function renderCodeAnalyzerPlainPanel(
   title: string,
   body: string,
   theme: Theme,
-  outputPad = 1,
-): Component {
-  return renderSfPiResultCardPanel(
-    codeAnalyzerPlainCard(title, body),
-    { expanded: true },
-    theme,
-    outputPad,
-  );
+): ExtensionRows {
+  return renderSfPiResultCardPanel(codeAnalyzerPlainCard(title, body), { expanded: true }, theme);
 }
 
 function codeAnalyzerPlainCard(title: string, body: string): SfPiResultCard {
@@ -244,7 +233,6 @@ function codeAnalyzerRecipesCard(input: {
   const suggestions = input.suggestions ?? [];
   const automatic = recipes.filter((recipe) => recipe.kind === "automatic");
   const explicit = recipes.filter((recipe) => recipe.kind !== "automatic");
-  const herdr = recipes.filter((recipe) => recipe.herdrRecommended);
   const sections: SfPiSection[] = [];
   if (automatic.length) {
     sections.push({
@@ -264,7 +252,7 @@ function codeAnalyzerRecipesCard(input: {
       ? suggestions.map((recipe) => ({
           label: recipe.id ?? "scan",
           value: recipeDetail(recipe),
-          tone: recipe.herdrRecommended ? "warning" : "muted",
+          tone: "muted",
         }))
       : [{ label: "current", value: "no broader suggestion for current target/selector" }],
     collapsedLimit: 3,
@@ -276,7 +264,7 @@ function codeAnalyzerRecipesCard(input: {
       rows: explicit.map((recipe) => ({
         label: recipe.id ?? "recipe",
         value: recipeDetail(recipe),
-        tone: recipe.herdrRecommended ? "warning" : "muted",
+        tone: "muted",
       })),
       collapsedLimit: 4,
     });
@@ -285,17 +273,16 @@ function codeAnalyzerRecipesCard(input: {
     tool: codeAnalyzerToolChrome(),
     title: "Scan Recipes",
     status: "info",
-    summary: "Choose the narrowest scan that answers the question; use Herdr for broad scans.",
+    summary: "Choose the narrowest scan that answers the question.",
     chips: [
       { label: `${recipes.length} recipes`, tone: "info" },
       { label: `${automatic.length} automatic`, tone: "muted" },
-      { label: `${herdr.length} Herdr-friendly`, tone: herdr.length ? "warning" : "muted" },
     ],
     scope: [
       { label: "profiles", value: `${automatic.length} automatic · ${explicit.length} explicit` },
     ],
     sections,
-    next: ["choose recipe → run scan; use Herdr for broad scans"],
+    next: ["choose recipe → run scan"],
   };
 }
 
@@ -546,7 +533,6 @@ function recipeDetail(recipe: CodeAnalyzerRecipeCardItem): string {
   return [
     recipe.label,
     recipe.ruleSelector?.length ? `selector ${recipe.ruleSelector.join(", ")}` : undefined,
-    recipe.herdrRecommended ? "Herdr recommended" : undefined,
   ]
     .filter(Boolean)
     .join(" · ");

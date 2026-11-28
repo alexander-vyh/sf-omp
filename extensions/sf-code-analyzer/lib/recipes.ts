@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Static, public-safe scan recipe catalog for SF Code Analyzer. */
 import { existsSync, readFileSync } from "node:fs";
-import type { HerdrWorkflow, HerdrWorkflowHandoff } from "../../../lib/common/herdr.ts";
 
 export interface CodeAnalyzerRecipe {
   id: string;
@@ -12,12 +11,6 @@ export interface CodeAnalyzerRecipe {
   workspace: string[];
   target?: string[];
   outputFiles?: string[];
-  herdrRecommended?: boolean;
-  herdrReason?: string;
-}
-
-export interface CodeAnalyzerHerdrHandoff extends HerdrWorkflowHandoff {
-  recipeId: string;
 }
 
 export interface ScanRecipeGuidanceInput {
@@ -30,7 +23,6 @@ export interface ScanRecipeGuidanceInput {
 export interface ScanRecipeGuidance {
   recipes: CodeAnalyzerRecipe[];
   suggestions: CodeAnalyzerRecipe[];
-  herdrHandoffs: CodeAnalyzerHerdrHandoff[];
   text: string;
 }
 
@@ -66,8 +58,6 @@ export const CODE_ANALYZER_RECIPES: CodeAnalyzerRecipe[] = [
     when: "Before a larger checkpoint when you want recommended rules across eligible engines.",
     ruleSelector: ["Recommended"],
     workspace: ["."],
-    herdrRecommended: true,
-    herdrReason: "Whole-project recommended scans can be long-running and produce broad output.",
   },
   {
     id: "security",
@@ -76,9 +66,6 @@ export const CODE_ANALYZER_RECIPES: CodeAnalyzerRecipe[] = [
     when: "Auth, permissions, CRUD/FLS, sharing, dynamic SOQL, callouts, endpoints, secrets, crypto, or guest/Experience changes.",
     ruleSelector: ["Recommended:Security"],
     workspace: ["."],
-    herdrRecommended: true,
-    herdrReason:
-      "Security scans often touch multiple engines and are best run in a visible validation lane.",
   },
   {
     id: "appexchange",
@@ -88,8 +75,6 @@ export const CODE_ANALYZER_RECIPES: CodeAnalyzerRecipe[] = [
     ruleSelector: ["AppExchange"],
     workspace: ["."],
     outputFiles: ["code-analyzer-results.html", "code-analyzer-results.sarif.json"],
-    herdrRecommended: true,
-    herdrReason: "AppExchange scans can be long-running and generate review artifacts.",
   },
   {
     id: "all-rules",
@@ -98,8 +83,6 @@ export const CODE_ANALYZER_RECIPES: CodeAnalyzerRecipe[] = [
     when: "Explicit exhaustive scan, CI hardening, or pre-release quality sweep.",
     ruleSelector: ["all"],
     workspace: ["."],
-    herdrRecommended: true,
-    herdrReason: "All-rules scans are intentionally broad and can be noisy/long-running.",
   },
   {
     id: "retire-js",
@@ -108,8 +91,6 @@ export const CODE_ANALYZER_RECIPES: CodeAnalyzerRecipe[] = [
     when: "package.json, lockfile, or dependency updates.",
     ruleSelector: ["retire-js:Recommended"],
     workspace: ["."],
-    herdrRecommended: true,
-    herdrReason: "Dependency scans are project-shaped and useful as explicit validation lanes.",
   },
   {
     id: "cpd",
@@ -118,8 +99,6 @@ export const CODE_ANALYZER_RECIPES: CodeAnalyzerRecipe[] = [
     when: "Many files changed, refactors, migrations, or copy/similar-logic cleanup.",
     ruleSelector: ["cpd:Recommended"],
     workspace: ["."],
-    herdrRecommended: true,
-    herdrReason: "CPD scans compare code across files and can be broader than edit-scoped checks.",
   },
   {
     id: "sfge",
@@ -128,9 +107,6 @@ export const CODE_ANALYZER_RECIPES: CodeAnalyzerRecipe[] = [
     when: "Apex data-flow or security-sensitive SOQL/DML path changes.",
     ruleSelector: ["sfge:Recommended"],
     workspace: ["."],
-    herdrRecommended: true,
-    herdrReason:
-      "SFGE can need broader Apex project context and may take longer than file-local scans.",
   },
   {
     id: "apex-performance",
@@ -147,39 +123,24 @@ export function buildScanRecipeGuidance(input: ScanRecipeGuidanceInput): ScanRec
   const suggestions = suggestionIds
     .map((id) => CODE_ANALYZER_RECIPES.find((recipe) => recipe.id === id))
     .filter((recipe): recipe is CodeAnalyzerRecipe => Boolean(recipe));
-  const herdrHandoffs = herdrHandoffsForRecipes(suggestionIds);
   const recipeText =
     input.includeCatalog === false ? undefined : renderRecipes({ inline: input.includeExamples });
   const suggestionText = renderBroaderRecipeSuggestion(suggestionIds);
-  const herdrText = herdrHandoffs.length
-    ? [
-        "",
-        "Herdr handoff:",
-        "If sf_herdr_plan is available and the user chooses one of these broad scans, call it visibly before running the scan.",
-      ].join("\n")
-    : "";
   return {
     recipes: CODE_ANALYZER_RECIPES,
     suggestions,
-    herdrHandoffs,
-    text: [recipeText, suggestionText, herdrText].filter(Boolean).join("\n"),
+    text: [recipeText, suggestionText].filter(Boolean).join("\n"),
   };
 }
 
 export function renderRecipes(options: { inline?: boolean } = {}): string {
   const lines = ["📋 SF Code Analyzer scan recipes", ""];
   for (const recipe of CODE_ANALYZER_RECIPES) {
-    lines.push(`${recipe.herdrRecommended ? "🐑 " : ""}${recipe.id} — ${recipe.label}`);
+    lines.push(`${recipe.id} — ${recipe.label}`);
     lines.push(`  Kind: ${recipe.kind}`);
     lines.push(`  When: ${recipe.when}`);
     lines.push(`  rule_selector: ${recipe.ruleSelector.join(", ")}`);
     if (recipe.outputFiles?.length) lines.push(`  output_files: ${recipe.outputFiles.join(", ")}`);
-    if (recipe.herdrRecommended) {
-      lines.push(`  Herdr recommended: ${recipe.herdrReason}`);
-      lines.push(
-        "  Next agent step: If sf_herdr_plan is available, call it visibly before running this broad scan.",
-      );
-    }
     if (options.inline) {
       lines.push(
         `  Example: code_analyzer action='run' rule_selector=${JSON.stringify(recipe.ruleSelector)} workspace=${JSON.stringify(recipe.workspace)}`,
@@ -215,33 +176,9 @@ export function renderBroaderRecipeSuggestion(recipeIds: string[]): string | und
     "💡 Broader scan suggestions (not run automatically):",
     ...recipes.map(
       (recipe) =>
-        `- ${recipe.id}: ${recipe.label} — rule_selector ${recipe.ruleSelector.join(", ")}${recipe.herdrRecommended ? " (Herdr recommended)" : ""}`,
+        `- ${recipe.id}: ${recipe.label} — rule_selector ${recipe.ruleSelector.join(", ")}`,
     ),
   ].join("\n");
-}
-
-export function herdrHandoffsForRecipes(recipeIds: string[]): CodeAnalyzerHerdrHandoff[] {
-  return recipeIds
-    .map((id) => CODE_ANALYZER_RECIPES.find((recipe) => recipe.id === id))
-    .filter((recipe): recipe is CodeAnalyzerRecipe => Boolean(recipe?.herdrRecommended))
-    .map((recipe) => ({
-      recipeId: recipe.id,
-      label: `Plan a Herdr lane for ${recipe.label}`,
-      reason: recipe.herdrReason ?? "This scan can be long-running.",
-      commandSource: "owning-extension" as const,
-      plan: {
-        intent: "verify" as const,
-        primaryWorkflow: primaryWorkflowForRecipe(recipe),
-      },
-    }));
-}
-
-function primaryWorkflowForRecipe(recipe: CodeAnalyzerRecipe): HerdrWorkflow {
-  if (recipe.id === "sfge" || recipe.id === "apex-performance") return "apex";
-  if (recipe.id === "auto-apex-default") return "apex";
-  if (recipe.id === "auto-js-default") return "generic";
-  if (recipe.id === "auto-flow-default") return "generic";
-  return "generic";
 }
 
 function sniffChangedContent(targets: string[]): { security: boolean; dataFlow: boolean } {

@@ -4,7 +4,7 @@
  *
  * Source of truth:
  * - extension metadata comes from catalog/registry.ts
- * - enabled/disabled state comes from Pi package filters in settings.json
+ * - enabled/disabled state comes from OMP's `disabledExtensions` config
  *
  * This replaces the earlier hardcoded extension list so the welcome screen
  * stays in sync as new bundled extensions are added.

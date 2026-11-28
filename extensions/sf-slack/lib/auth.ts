@@ -7,8 +7,7 @@
  *   1. Existing Pi auth through `ctx.modelRegistry.getApiKeyForProvider()`.
  *   2. Environment variable (SLACK_USER_TOKEN) for automation / CI.
  *
- * Interactive credential entry uses SF Pi's fixed-mask component while Pi owns
- * credential persistence and logout.
+ * OMP masks native credential entry and owns credential persistence and logout.
  *
  * Config/status surfaces without ExtensionContext use a shared status-only
  * auth-store adapter that never returns token values.
@@ -58,7 +57,7 @@ export function createSfSlackAuthController(
         login: (interaction) => loginWithSecureCredentialPrompt(promptBridge, interaction),
         resolve: async ({ ctx, credential }) => {
           const saved = credential?.key?.trim();
-          if (saved) return { auth: { apiKey: saved }, source: "Pi saved credential" };
+          if (saved) return { auth: { apiKey: saved }, source: "OMP saved credential" };
           const env = (await ctx.env(ENV_TOKEN))?.trim();
           return env ? { auth: { apiKey: env }, source: ENV_TOKEN } : undefined;
         },
@@ -174,7 +173,7 @@ export async function getSlackToken(
     message: [
       "Slack auth is not configured.",
       "Run /login sf-slack in interactive TUI mode, then /sf-slack refresh.",
-      `For automation, set ${ENV_TOKEN}=xoxp-... before starting Pi.`,
+      `For automation, set ${ENV_TOKEN}=xoxp-... before starting OMP.`,
     ].join("\n"),
   };
 }

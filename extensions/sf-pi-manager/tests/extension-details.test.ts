@@ -1,7 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { describe, expect, it, vi } from "vitest";
 import path from "node:path";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionTheme as Theme,
+  ExtensionUiHost,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import {
   buildExtensionDetailSummary,
   getExtensionReadmePath,
@@ -22,6 +25,10 @@ const stubTheme: Theme = {
   fg: (_color: string, text: string) => text,
   bold: (text: string) => text,
 } as Theme;
+
+function uiAtHeight(rows: number): ExtensionUiHost {
+  return { size: () => ({ columns: 120, rows }), requestRender: vi.fn(), suspend: (run) => run() };
+}
 
 describe("extension detail helpers", () => {
   it("reports enabled and disabled states explicitly", () => {
@@ -57,8 +64,8 @@ describe("extension detail helpers", () => {
 
   it("renders extension details as a user control page without developer metadata sections", () => {
     const states = buildExtensionStates(new Set());
-    const herdr = states.find((state) => state.id === "sf-herdr");
-    expect(herdr).toBeDefined();
+    const analyzer = states.find((state) => state.id === "sf-code-analyzer");
+    expect(analyzer).toBeDefined();
 
     const overlay = new SfPiOverlayComponent(
       stubTheme,
@@ -68,24 +75,22 @@ describe("extension detail helpers", () => {
       states,
       states,
       "global",
-      () => 40,
       () => undefined,
       {} as never,
-      {} as never,
+      uiAtHeight(40),
       () => [],
       () => undefined,
-      { extensionId: "sf-herdr", view: "detail" },
+      { extensionId: "sf-code-analyzer", view: "detail" },
     );
 
     const rendered = overlay.render(120).join("\n");
     expect(rendered).toContain(
-      `${iconForExtension("sf-herdr", resolveUiGlyphs("/tmp/project"))} SF Herdr`,
+      `${iconForExtension("sf-code-analyzer", resolveUiGlyphs("/tmp/project"))} SF Code Analyzer`,
     );
     expect(rendered).toContain("Actions");
     expect(rendered).not.toContain("Bundle");
     expect(rendered).not.toContain("Capabilities");
-    expect(rendered).not.toContain("extensions/sf-herdr/index.ts");
-    expect(rendered).not.toContain("sf_herdr_plan");
+    expect(rendered).not.toContain("extensions/sf-code-analyzer/index.ts");
   });
 
   it("renders Manager detail actions under group headings", () => {
@@ -98,10 +103,9 @@ describe("extension detail helpers", () => {
       states,
       states,
       "global",
-      () => 40,
       () => undefined,
       {} as never,
-      {} as never,
+      uiAtHeight(40),
       () => [
         {
           id: "status",
@@ -140,10 +144,9 @@ describe("extension detail helpers", () => {
       states,
       states,
       "global",
-      () => 40,
       () => undefined,
       {} as never,
-      {} as never,
+      uiAtHeight(40),
       () => [
         {
           id: "setup",
@@ -175,10 +178,9 @@ describe("extension detail helpers", () => {
       states,
       states,
       "global",
-      () => 40,
       () => undefined,
       {} as never,
-      {} as never,
+      uiAtHeight(40),
       () => [
         {
           id: "setup",
@@ -220,12 +222,11 @@ describe("extension detail helpers", () => {
       states,
       states,
       "global",
-      () => 40,
       (value) => {
         result = value;
       },
       {} as never,
-      {} as never,
+      uiAtHeight(40),
       () => [action],
       () => undefined,
       { extensionId: "sf-feedback", view: "detail" },
@@ -251,10 +252,9 @@ describe("extension detail helpers", () => {
       states,
       states,
       "global",
-      () => 12,
       () => undefined,
       {} as never,
-      {} as never,
+      uiAtHeight(12),
       () =>
         Array.from({ length: 12 }, (_, i) => ({
           id: `action-${i}`,
@@ -280,10 +280,15 @@ describe("extension detail helpers", () => {
 
   it("scrolls long settings pages with PageDown", async () => {
     const commandCtx = {} as never;
+    const ui = uiAtHeight(12);
+    const handleInput = vi.fn();
+    const dispose = vi.fn();
+    let editing = false;
     const configFactory = vi.fn(() => ({
       focused: false,
-      handleInput: () => undefined,
-      invalidate: () => undefined,
+      handleInput,
+      dispose,
+      capturesNavigation: () => editing,
       render: () => [],
       renderContent: () => Array.from({ length: 24 }, (_, i) => ` row ${i + 1}`),
     }));
@@ -306,10 +311,9 @@ describe("extension detail helpers", () => {
       [custom],
       [custom],
       "global",
-      () => 12,
       () => undefined,
       commandCtx,
-      {} as never,
+      ui,
       () => [],
       () => undefined,
       { extensionId: "sf-test", view: "settings" },
@@ -318,6 +322,9 @@ describe("extension detail helpers", () => {
     await Promise.resolve();
     const first = overlay.render(100).join("\n");
     expect((configFactory.mock.calls[0] as unknown[] | undefined)?.[5]).toBe(commandCtx);
+    expect((configFactory.mock.calls[0] as unknown[] | undefined)?.[4]).toBe(ui);
+    expect(configFactory.mock.results[0]?.value.focused).toBe(true);
+    expect(ui.requestRender).toHaveBeenCalledOnce();
     expect(first).toContain("row 1");
     expect(first).toContain("PageUp/PageDown scroll");
     expect(first).not.toContain("row 20");
@@ -326,6 +333,16 @@ describe("extension detail helpers", () => {
     const second = overlay.render(100).join("\n");
     expect(second).toContain("row 5");
     expect(second).not.toContain("row 1");
+    expect(handleInput).not.toHaveBeenCalled();
+
+    editing = true;
+    overlay.handleInput("\x1b[H");
+    expect(handleInput).toHaveBeenCalledWith("\x1b[H");
+    overlay.handleInput("\x1b[5~");
+    expect(overlay.render(100).join("\n")).toContain("row 1");
+    expect(handleInput).toHaveBeenCalledTimes(1);
+    overlay.dispose();
+    expect(dispose).toHaveBeenCalledOnce();
   });
 
   it("keeps the active settings row visible during panel navigation", async () => {
@@ -335,7 +352,6 @@ describe("extension detail helpers", () => {
       handleInput: (data: string) => {
         if (data === "\x1b[B") activeRow = 23;
       },
-      invalidate: () => undefined,
       render: () => [],
       renderContent: () => Array.from({ length: 24 }, (_, i) => ` row ${i + 1}`),
       getActiveRow: () => activeRow,
@@ -359,10 +375,9 @@ describe("extension detail helpers", () => {
       [custom],
       [custom],
       "global",
-      () => 12,
       () => undefined,
       {} as never,
-      {} as never,
+      uiAtHeight(12),
       () => [],
       () => undefined,
       { extensionId: "sf-test", view: "settings" },
@@ -389,12 +404,11 @@ describe("extension detail helpers", () => {
       states,
       states,
       "global",
-      () => 40,
       () => {
         closed = true;
       },
       {} as never,
-      {} as never,
+      uiAtHeight(40),
       () => [],
       () => undefined,
       { extensionId: "sf-feedback", view: "detail" },

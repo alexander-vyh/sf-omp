@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Exact-Pi, command-only probe used by scripts/instruction-surface-report.mjs. */
+/** OMP command-only probe used by scripts/instruction-surface-report.mjs. */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { VERSION, type ExtensionAPI } from "@earendil-works/pi-coding-agent";

@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Single SF SOQL family tool registration. */
 
-import { Text } from "@earendil-works/pi-tui";
-import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionRows, ExtensionTheme } from "@oh-my-pi/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
 import { connectSalesforce } from "../../../lib/common/sf-conn/index.ts";
+import { textRows } from "../../../lib/common/ui-rows.ts";
 import { errorResult } from "./errors.ts";
 import { renderSoqlResultMarkdown } from "./render.ts";
 import type { SfSoqlParams, SfSoqlSessionState, ToolResult } from "./types.ts";
@@ -109,7 +111,7 @@ const Params = Type.Object({
 
 export function registerSfSoqlTool(pi: ExtensionAPI): void {
   const state: SfSoqlSessionState = {};
-  pi.registerTool<typeof Params>({
+  registerNativeUiTool<typeof Params, unknown>(pi, {
     name: SF_SOQL_TOOL_NAME,
     label: "SF SOQL",
     description:
@@ -123,7 +125,7 @@ export function registerSfSoqlTool(pi: ExtensionAPI): void {
       "Use the installed SOQL guide path declared in <sf_engineering_constitution> for Tooling API, query-plan, artifact, and export guidance.",
     ],
     parameters: Params,
-    renderCall: (args, theme) => renderCall(args as SfSoqlParams, theme),
+    renderCall: (args, _opts, theme) => renderCall(args as SfSoqlParams, theme),
     renderResult: (result, opts, theme) => renderResult(result as ToolResult, opts, theme),
     async execute(_id, rawParams, signal, _onUpdate, ctx) {
       const params = rawParams as SfSoqlParams;
@@ -182,13 +184,17 @@ export function registerSfSoqlTool(pi: ExtensionAPI): void {
   });
 }
 
-function renderCall(args: SfSoqlParams, theme: Theme): Text {
+function renderCall(args: SfSoqlParams, theme: ExtensionTheme): ExtensionRows {
   const label = theme.fg("toolTitle", theme.bold("🔎 SF SOQL "));
   const target = args.target_org ? theme.fg("dim", ` · ${args.target_org}`) : "";
-  return new Text(label + theme.fg("muted", args.action) + target, 0, 0);
+  return textRows(label + theme.fg("muted", args.action) + target);
 }
 
-function renderResult(result: ToolResult, opts: { isPartial?: boolean }, theme: Theme): Text {
-  if (opts.isPartial) return new Text(theme.fg("warning", "🔎 SF SOQL running…"), 0, 0);
-  return new Text(renderSoqlResultMarkdown(result), 0, 0);
+function renderResult(
+  result: ToolResult,
+  opts: { isPartial?: boolean },
+  theme: ExtensionTheme,
+): ExtensionRows {
+  if (opts.isPartial) return textRows(theme.fg("warning", "🔎 SF SOQL running…"));
+  return textRows(renderSoqlResultMarkdown(result));
 }

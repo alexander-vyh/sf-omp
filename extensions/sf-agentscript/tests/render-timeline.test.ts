@@ -155,9 +155,11 @@ describe("previewSessionEndMarkdown", () => {
       { details: endDetails },
       { expanded: false },
       plainTheme,
-    ) as unknown as { text: string };
-    expect(rendered.text).toMatch(/Conversation Replay/);
-    expect(rendered.text).not.toMatch(/Do you have weekend appointments/);
+    )
+      .render(200)
+      .join("\n");
+    expect(rendered).toMatch(/Conversation Replay/);
+    expect(rendered).not.toMatch(/Do you have weekend appointments/);
   });
 
   it("shows the complete replay when the Preview end card is expanded", () => {
@@ -165,9 +167,11 @@ describe("previewSessionEndMarkdown", () => {
       { details: endDetails },
       { expanded: true },
       plainTheme,
-    ) as unknown as { text: string };
-    expect(rendered.text).toMatch(/Do you have weekend appointments/);
-    expect(rendered.text).toMatch(/Transfer → Agent Router → Appointments/);
+    )
+      .render(200)
+      .join("\n");
+    expect(rendered).toMatch(/Do you have weekend appointments/);
+    expect(rendered).toMatch(/Transfer → Agent Router → Appointments/);
   });
 
   it("renders the complete session conversation and route taken per turn", () => {

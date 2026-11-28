@@ -56,7 +56,7 @@ describe("current documentation authority", () => {
     const bugTemplate = read(".github/ISSUE_TEMPLATE/bug_report.yml");
 
     expect(bugTemplate).toContain("`/sf-pi doctor`");
-    expect(bugTemplate).toContain("`bun scripts/omp.ts --version`");
+    expect(bugTemplate).toContain("`tools/bin/omp --version`");
     expect(bugTemplate).toContain("`node --version`");
     expect(bugTemplate).not.toMatch(/placeholder:\s+(?:0\.|v20)/);
   });

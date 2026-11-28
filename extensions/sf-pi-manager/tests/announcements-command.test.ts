@@ -2,9 +2,8 @@
 /**
  * Tests for `/sf-pi announcements` argument parsing and the footer nudge.
  *
- * Mirrors recommendations-command.test.ts — both commands share the
- * "nudge on unseen revision" pattern and the "parse with optional tail
- * scope" shape, so the tests read symmetrically.
+ * The nudge fires on an unseen revision; the parser accepts an optional
+ * tail scope.
  */
 import { describe, it, expect } from "vitest";
 import type { AnnouncementsManifest, AnnouncementItem } from "../../../catalog/types.ts";

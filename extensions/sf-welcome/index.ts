@@ -2,24 +2,20 @@
 /**
  * sf-welcome — Salesforce-branded splash screen for sf-pi.
  *
- * Displays a two-column overlay on startup with:
+ * Displays a two-column widget on startup with:
  *   Left column:  Gradient Pi logo, model info, optional gateway usage,
  *                 environment checks, and release freshness rows
- *   Right column: Announcements, loaded counts, recent sessions,
- *                  recommended extensions, attribution
+ *   Right column: Announcements, loaded counts, recent sessions, attribution
  *
  * Automatic startup has two SF Welcome modes:
  *   - sfPi.welcome.mode="header" (default) → Non-blocking header above input
  *   - sfPi.welcome.mode="off"              → No automatic SF Welcome surface
  *
- * On OMP, whose setHeader is a no-op, the same component mounts as a widget
- * above the editor; OMP's session_start carries no reason, so a session that
- * already holds messages counts as a resume.
- *
- * Pi's quietStartup setting independently controls Pi's native startup output.
+ * The splash mounts as an OMP widget above the editor. A session that
+ * already holds messages counts as a resume when no start reason is given.
  *
  * Dismissal triggers:
- *   - Any keypress
+ *   - Esc
  *   - Agent starts responding (agent_start event)
  *   - Tool call execution
  *
@@ -27,12 +23,11 @@
  *
  *   Event/Trigger         | Condition                    | Result
  *   ----------------------|------------------------------|-------------------------------------------
- *   session_start         | reason="startup", no quiet   | Show overlay splash
- *   session_start         | reason="startup", quiet=true | Show persistent header
- *   session_start         | reason!="startup"            | Skip (resume, reload, fork, etc.)
- *   agent_start           | overlay visible              | Dismiss overlay
- *   tool_call             | overlay visible              | Dismiss overlay
- *   any keypress          | overlay visible              | Dismiss overlay
+ *   session_start         | startup, mode="header"       | Mount splash above input
+ *   session_start         | resume, reload, fork, or off | Skip
+ *   agent_start           | splash visible               | Dismiss splash
+ *   tool_call             | splash visible               | Dismiss splash
+ *   Esc                   | splash visible               | Dismiss splash
  *   /sf-welcome           | always                       | Show splash info summary
  */
 import type {
@@ -40,6 +35,7 @@ import type {
   ExtensionCommandContext,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import type { ExtensionUiFactory } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 
 import { getFirstTokenCompletionsFromActions } from "../../lib/common/command-actions.ts";
 import { openInfoPanel, type InfoPanelSeverity } from "../../lib/common/info-panel.ts";
@@ -54,7 +50,7 @@ import {
 } from "../../lib/common/manager-actions.ts";
 
 import type { SplashData } from "./lib/types.ts";
-import { matchesKey } from "@earendil-works/pi-tui";
+import { matchesKey, nativeUi } from "../../lib/common/ui-rows.ts";
 import {
   collectInitialSplashData,
   collectSplashData,
@@ -78,7 +74,6 @@ import {
   writeCachedPlannotatorRuntime,
 } from "../../lib/common/plannotator-runtime.ts";
 import { detectHomebrewStatus, writeCachedHomebrewStatus } from "./lib/homebrew-status.ts";
-import { detectHerdrClientStatus } from "./lib/herdr-runtime-status.ts";
 import {
   detectBrowserRuntimeStatus,
   writeCachedBrowserRuntimeStatus,
@@ -86,14 +81,13 @@ import {
 import { acknowledgeAnnouncementsRevision } from "../../lib/common/catalog-state/announcements-state.ts";
 import { SfWelcomeHeader } from "./lib/splash-component.ts";
 import {
-  refreshRuntimeDiagnosticsCache,
   resolveConfiguredWelcomeMode,
   runDoctorDiagnostics,
   summarizeStartupDoctorNudge,
 } from "../../lib/common/doctor/diagnostics.ts";
 
 import { buildExecFn } from "../../lib/common/exec-adapter.ts";
-import { isOmpHost, requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { requirePiVersion } from "../../lib/common/pi-compat.ts";
 import {
   getMonthlyUsageState,
   refreshMonthlyUsage,
@@ -152,17 +146,14 @@ function isReducedMotionRequested(): boolean {
 
 export default function sfWelcome(pi: ExtensionAPI) {
   if (!requirePiVersion(pi, "sf-welcome")) return;
-  // OMP ignores setHeader; the splash mounts as an above-editor widget there.
-  const ompHost = isOmpHost(pi);
 
   function clearSplash(ctx: ExtensionContext): void {
-    if (ompHost) ctx.ui.setWidget(SPLASH_WIDGET_KEY, undefined);
-    else ctx.ui.setHeader(undefined);
+    nativeUi(ctx.ui).setWidget(SPLASH_WIDGET_KEY, undefined);
   }
 
   let headerActive = false;
   let activeHeader: SfWelcomeHeader | null = null;
-  let headerRequestRender: ((force?: boolean) => void) | null = null;
+  let headerRequestRender: (() => void) | null = null;
   let headerAnimationTimer: ReturnType<typeof setInterval> | null = null;
   let headerInputUnsubscribe: (() => void) | null = null;
   let headerOffset = 0;
@@ -206,18 +197,6 @@ export default function sfWelcome(pi: ExtensionAPI) {
 
   function isActiveSession(ctx: ExtensionContext, generation = activeSessionGeneration): boolean {
     return generation === activeSessionGeneration && activeSessionKey === sessionKey(ctx);
-  }
-
-  function runtimeToolNames(): { activeToolNames: string[]; allToolNames: string[] } {
-    try {
-      return {
-        activeToolNames: typeof pi.getActiveTools === "function" ? pi.getActiveTools() : [],
-        allToolNames:
-          typeof pi.getAllTools === "function" ? pi.getAllTools().map((tool) => tool.name) : [],
-      };
-    } catch {
-      return { activeToolNames: [], allToolNames: [] };
-    }
   }
 
   /**
@@ -269,8 +248,7 @@ export default function sfWelcome(pi: ExtensionAPI) {
 
       headerOffset += 1;
       activeHeader?.setHeaderOffset(headerOffset);
-      activeHeader?.invalidate();
-      headerRequestRender?.(true);
+      headerRequestRender?.();
 
       if (headerOffset >= HEADER_ANIMATION_FRAMES) {
         stopHeaderAnimation();
@@ -279,54 +257,21 @@ export default function sfWelcome(pi: ExtensionAPI) {
   }
 
   function startHeaderDismissListener(ctx: ExtensionContext, generation: number): void {
-    headerInputUnsubscribe ??= ctx.ui.onTerminalInput((data) => {
+    headerInputUnsubscribe ??= nativeUi(ctx.ui).onTerminalInput((data) => {
       if (!headerActive || !isActiveSession(ctx, generation)) return;
-      if (matchesKey(data, "escape") || matchesKey(data, "esc")) {
-        dismiss(ctx);
-        return { consume: true };
-      }
-      return;
+      // The splash is passive; Escape still belongs to the focused native view.
+      if (matchesKey(data, "escape")) dismiss(ctx);
+      return undefined;
     });
   }
 
-  function refreshMountedSplash(
-    ctx: ExtensionContext,
-    generation: number,
-    force: boolean = false,
-  ): void {
-    if (!isActiveSession(ctx, generation)) return;
-    if (headerActive) {
-      activeHeader?.invalidate();
-      headerRequestRender?.(force);
-    }
-  }
-
-  /**
-   * Phase 2.2: debounced repaint coalescer.
-   *
-   * Multiple async data sources (gateway usage probe, slack scope check,
-   * sf-cli detection, announcements feed) each finish on their own and
-   * trigger a forced repaint. Without coalescing the splash forces 5–7
-   * full overlay redraws during hydration, which reads as visual jitter
-   * on slower terminals. A 60ms trailing debounce drops that to 2–3
-   * paints without any user-visible delay (well below the 100ms
-   * perceptual threshold). Force is OR'ed across coalesced calls so a
-   * single force=true callsite is preserved through the merge.
-   */
-  let coalesceForce = false;
+  // Coalesce updates from independently hydrated splash data into one repaint.
   let coalesceTimer: ReturnType<typeof setTimeout> | null = null;
-  function scheduleSplashRepaint(
-    ctx: ExtensionContext,
-    generation: number,
-    force: boolean = false,
-  ): void {
-    coalesceForce = coalesceForce || force;
+  function scheduleSplashRepaint(ctx: ExtensionContext, generation: number): void {
     if (coalesceTimer) return;
     coalesceTimer = setTimeout(() => {
-      const f = coalesceForce;
-      coalesceForce = false;
       coalesceTimer = null;
-      refreshMountedSplash(ctx, generation, f);
+      if (headerActive && isActiveSession(ctx, generation)) headerRequestRender?.();
     }, 60);
     coalesceTimer.unref?.();
   }
@@ -372,14 +317,14 @@ export default function sfWelcome(pi: ExtensionAPI) {
 
     const modelName = ctx.model?.name || ctx.model?.id || "No model";
     const providerName = ctx.model?.provider || "Unknown provider";
-    const startupDoctorReport = runDoctorDiagnostics({ cwd: ctx.cwd, runtime: "cached" });
+    const startupDoctorReport = runDoctorDiagnostics({ cwd: ctx.cwd });
     const startupDoctorNudge = summarizeStartupDoctorNudge(startupDoctorReport) ?? undefined;
     const data = collectInitialSplashData(
       modelName,
       providerName,
       MONTHLY_BUDGET_FALLBACK,
       ctx.cwd,
-      { doctor: startupDoctorNudge, ...runtimeToolNames() },
+      { doctor: startupDoctorNudge },
     );
     const cachedSfCli = readCachedSfCliStatus();
     if (cachedSfCli) {
@@ -436,7 +381,6 @@ export default function sfWelcome(pi: ExtensionAPI) {
             doctor: data.doctor,
             includeLoadedCounts: false,
             includeSessionCostFallback: false,
-            ...runtimeToolNames(),
           }),
         );
         // collectSplashData is sync — markBootStep returns the sync result
@@ -482,19 +426,6 @@ export default function sfWelcome(pi: ExtensionAPI) {
         // local settings/session scan fails unexpectedly.
       }
     });
-
-    const doctorRefreshTimer = setTimeout(() => {
-      if (runId !== startupRunId || !isActiveSession(ctx, generation)) return;
-      void markBootStep("sf-welcome.doctor-runtime-refresh", () => refreshRuntimeDiagnosticsCache())
-        .then(() => {
-          if (runId !== startupRunId || !isActiveSession(ctx, generation)) return;
-          const report = runDoctorDiagnostics({ cwd: ctx.cwd, runtime: "cached" });
-          data.doctor = summarizeStartupDoctorNudge(report) ?? undefined;
-          scheduleSplashRepaint(ctx, generation);
-        })
-        .catch(() => undefined);
-    }, 1_500);
-    doctorRefreshTimer.unref?.();
 
     // Background CLI status: cache-first for first paint, live refresh later.
     // SF CLI freshness is informational, so we defer the subprocess + npm
@@ -617,28 +548,6 @@ export default function sfWelcome(pi: ExtensionAPI) {
       }
     }, 4_000);
     fontStatusTimer.unref?.();
-
-    // Background Herdr client identity: bounded and local-only. This reports
-    // the installed runtime, update channel, and protocol without checking for
-    // or applying updates.
-    const herdrStatusTimer = setTimeout(() => {
-      if (runId !== startupRunId || !isActiveSession(ctx, generation)) return;
-      if (!data.herdrRuntime?.activeControlEnv) return;
-      void markBootStep("sf-welcome.herdr-client-detect", () => detectHerdrClientStatus(exec))
-        .then((status) => {
-          if (runId !== startupRunId || !isActiveSession(ctx, generation)) return;
-          if (!data.herdrRuntime) return;
-          data.herdrRuntime = { ...data.herdrRuntime, ...status };
-          scheduleSplashRepaint(ctx, generation);
-        })
-        .catch(() => {
-          if (runId !== startupRunId || !isActiveSession(ctx, generation)) return;
-          if (!data.herdrRuntime) return;
-          data.herdrRuntime = { ...data.herdrRuntime, runtimeVersionLoading: false };
-          scheduleSplashRepaint(ctx, generation);
-        });
-    }, 4_250);
-    herdrStatusTimer.unref?.();
 
     // Background Hunk readiness: optional review-tool nudge only. This does
     // not open Hunk or create review annotations.
@@ -818,7 +727,7 @@ export default function sfWelcome(pi: ExtensionAPI) {
       )
         .then((summary) => {
           if (runId !== startupRunId || !isActiveSession(ctx, generation)) return;
-          data.sfPiRelease = detectSfPiReleaseStatus(ctx.cwd);
+          data.sfPiRelease = detectSfPiReleaseStatus();
           if (!summary) {
             scheduleSplashRepaint(ctx, generation);
             return;
@@ -920,7 +829,7 @@ export default function sfWelcome(pi: ExtensionAPI) {
       value: "summary",
       label: "Show splash summary",
       description:
-        "Print the same model, usage, integration, LSP/Herdr readiness, release freshness, extension health, and recent-session lines the splash shows on startup.",
+        "Print the same model, usage, integration, LSP readiness, release freshness, extension health, and recent-session lines the splash shows on startup.",
       group: "Diagnostics",
     },
     {
@@ -1054,9 +963,7 @@ export default function sfWelcome(pi: ExtensionAPI) {
       // the shared usage/status cache.
     }
 
-    const data = collectSplashData(modelName, providerName, ctx.cwd, MONTHLY_BUDGET_FALLBACK, {
-      ...runtimeToolNames(),
-    });
+    const data = collectSplashData(modelName, providerName, ctx.cwd, MONTHLY_BUDGET_FALLBACK);
     try {
       const { detectNodeCertStatus } = await import("./lib/node-cert-status.ts");
       const nodeCert = detectNodeCertStatus(ctx.cwd);
@@ -1065,7 +972,7 @@ export default function sfWelcome(pi: ExtensionAPI) {
     } catch {
       data.nodeCert ??= { kind: "unknown", loading: false };
     }
-    data.sfPiRelease = detectSfPiReleaseStatus(ctx.cwd);
+    data.sfPiRelease = detectSfPiReleaseStatus();
     const healthLines = data.extensionHealth.map((ext) => {
       const statusIcon = ext.status === "active" ? "●" : ext.status === "locked" ? "◆" : "○";
       return `  ${statusIcon} ${ext.name} — ${ext.status}`;
@@ -1093,7 +1000,6 @@ export default function sfWelcome(pi: ExtensionAPI) {
     const nodeRuntimeStatus = data.nodeRuntime
       ? `${data.nodeRuntime.version} (${data.nodeRuntime.kind}, requires >=${data.nodeRuntime.requiredVersion})`
       : "not checked";
-    const herdrRuntimeStatus = formatPlainHerdrRuntimeStatus(data.herdrRuntime);
     const fontRuntimeStatus = data.fontRuntime?.kind ?? "not checked";
     const hunkStatus = data.hunk?.installed
       ? `installed${data.hunk.installedVersion ? ` v${data.hunk.installedVersion}` : ""}`
@@ -1136,7 +1042,6 @@ export default function sfWelcome(pi: ExtensionAPI) {
       `SF tldraw: ${tldrawStatus}`,
       `SF LSP: ${lspStatus}`,
       `Node.js: ${nodeRuntimeStatus}`,
-      `Herdr (Multiplexer): ${herdrRuntimeStatus}`,
       `Fonts: ${fontRuntimeStatus}`,
       `Hunk (Code Review): ${hunkStatus}`,
       `Plannotator (Plan): ${plannotatorStatus}`,
@@ -1191,40 +1096,6 @@ export default function sfWelcome(pi: ExtensionAPI) {
     const version = status.installedVersion ? ` v${status.installedVersion}` : "";
     const freshness = status.checkSkipped ? "latest check skipped" : status.freshness;
     return `installed${version} (${freshness})`;
-  }
-
-  function formatPlainHerdrPiIntegration(status: SplashData["herdrRuntime"]): string {
-    const pi = status?.piIntegration;
-    if (!pi) return "Pi bridge not checked";
-    if (pi.kind === "installed") {
-      return `Pi bridge schema ${typeof pi.version === "number" ? pi.version : "unknown"}`;
-    }
-    if (pi.kind === "missing") return "Pi bridge not installed";
-    return "Pi bridge unknown";
-  }
-
-  function formatPlainHerdrRuntimeStatus(status: SplashData["herdrRuntime"]): string {
-    if (!status) return "not checked";
-    const details = [
-      status.runtimeVersion ? `runtime ${status.runtimeVersion}` : undefined,
-      status.runtimeChannel ? `channel ${status.runtimeChannel}` : undefined,
-      status.controlPackageVersion ? `control ${status.controlPackageVersion}` : undefined,
-      typeof status.runtimeProtocol === "number" ? `protocol ${status.runtimeProtocol}` : undefined,
-      formatPlainHerdrPiIntegration(status),
-    ].filter(Boolean);
-    if (status.kind === "ready") {
-      return `tools active · pane control ready · ${details.join(" · ")}`;
-    }
-    if (status.kind === "tool-only") {
-      return `tools active · not inside Herdr · ${details.join(" · ")}`;
-    }
-    if (status.kind === "installed-not-active") {
-      return status.activeControlEnv
-        ? `package installed · tools inactive · ${details.join(" · ")}`
-        : `package installed · not inside Herdr · ${details.join(" · ")}`;
-    }
-    if (status.kind === "disabled") return "sf-herdr disabled";
-    return "package not installed · upstream Herdr inactive";
   }
 
   function formatPlainReleaseStatus(status: SplashData["sfPiRelease"]): string {
@@ -1489,9 +1360,9 @@ export default function sfWelcome(pi: ExtensionAPI) {
     header.setHeaderOffset(headerOffset);
     headerActive = true;
 
-    const factory: NonNullable<Parameters<ExtensionContext["ui"]["setHeader"]>[0]> = (tui) => {
+    const factory: ExtensionUiFactory = (ui) => {
       activeHeader = header;
-      headerRequestRender = (force = false) => tui.requestRender(force);
+      headerRequestRender = () => ui.requestRender();
       startHeaderAnimation(ctx, generation);
       startHeaderDismissListener(ctx, generation);
 
@@ -1499,9 +1370,6 @@ export default function sfWelcome(pi: ExtensionAPI) {
         render(width: number): string[] {
           if (!isActiveSession(ctx, generation)) return [];
           return header.render(width);
-        },
-        invalidate() {
-          if (isActiveSession(ctx, generation)) header.invalidate();
         },
         dispose() {
           if (activeHeader === header) {
@@ -1511,12 +1379,6 @@ export default function sfWelcome(pi: ExtensionAPI) {
         },
       };
     };
-    if (ompHost) ctx.ui.setWidget(SPLASH_WIDGET_KEY, factory, { placement: "aboveEditor" });
-    else ctx.ui.setHeader(factory);
-
-    // Pi paints one default frame before extensions bind. Force a full repaint
-    // immediately after installing the header so the default editor frame is
-    // replaced as quickly as sf-pi can manage without Pi core changes.
-    headerRequestRender?.(true);
+    nativeUi(ctx.ui).setWidget(SPLASH_WIDGET_KEY, factory, { placement: "aboveEditor" });
   }
 }

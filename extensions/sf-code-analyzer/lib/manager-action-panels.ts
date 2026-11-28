@@ -1,23 +1,24 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager action pages for SF Code Analyzer actions that need confirmation. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { type Component, type Focusable, matchesKey } from "@earendil-works/pi-tui";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent";
 import type { ConfigPanelResult } from "../../../catalog/registry.ts";
+import { decodeRowKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 
 type Done = (result: ConfigPanelResult | undefined) => void;
 
 export function createCodeAnalyzerConfirmPanel(args: {
-  theme: Theme;
+  theme: ExtensionTheme;
   title: string;
   detail: string;
   confirmLabel: string;
   onConfirm: () => Promise<string> | string;
+  requestRender: () => void;
   done: Done;
-}): Component & Focusable & { renderContent(width: number): string[] } {
+}): RowsPanel & { renderContent(width: number): string[] } {
   return new CodeAnalyzerConfirmPanel(args);
 }
 
-class CodeAnalyzerConfirmPanel implements Focusable {
+class CodeAnalyzerConfirmPanel implements RowsPanel {
   focused = false;
   private selected = 0;
   private busy = false;
@@ -25,26 +26,30 @@ class CodeAnalyzerConfirmPanel implements Focusable {
 
   constructor(
     private readonly args: {
-      theme: Theme;
+      theme: ExtensionTheme;
       title: string;
       detail: string;
       confirmLabel: string;
       onConfirm: () => Promise<string> | string;
+      requestRender: () => void;
       done: Done;
     },
   ) {}
 
   handleInput(data: string): void {
     if (this.busy) return;
-    if (matchesKey(data, "escape") || data === "q") {
+    const key = decodeRowKey(data);
+    if (key?.kind === "release") return;
+    const id = key?.id;
+    if (id === "escape" || key?.text === "q") {
       this.args.done(undefined);
       return;
     }
-    if (matchesKey(data, "up") || matchesKey(data, "down")) {
+    if (id === "up" || id === "down") {
       this.selected = this.selected === 0 ? 1 : 0;
       return;
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+    if (id === "enter") {
       if (this.result) {
         this.args.done(undefined);
         return;
@@ -88,8 +93,6 @@ class CodeAnalyzerConfirmPanel implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {}
-
   private async confirm(): Promise<void> {
     this.busy = true;
     try {
@@ -98,6 +101,7 @@ class CodeAnalyzerConfirmPanel implements Focusable {
       this.result = error instanceof Error ? error.message : String(error);
     } finally {
       this.busy = false;
+      this.args.requestRender();
     }
   }
 }

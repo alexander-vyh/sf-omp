@@ -2,6 +2,7 @@
 /** Public agentscript_lifecycle registration and dispatch. */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
 import { renderLifecycleCall, renderLifecycleResult } from "./render/lifecycle.ts";
 import { createTimingCollector, withTimings } from "./timings.ts";
 import { toolError } from "./tool-types.ts";
@@ -136,12 +137,12 @@ function checkRequired(p: ParamsAny): { ok: true } | { ok: false; error: string 
 }
 
 export function registerLifecycleTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool<typeof Params, unknown>(pi, {
     name: LIFECYCLE_TOOL_NAME,
     label: "Agent Script lifecycle",
     description:
       "Multi-action Agent Script lifecycle: publish an inactive version, activate only with exact-version release eval evidence, deactivate/list versions, and diagnose or provision Service Agent users.",
-    renderCall: renderLifecycleCall,
+    renderCall: (args, _opts, theme) => renderLifecycleCall(args, theme),
     renderResult: renderLifecycleResult,
     promptSnippet:
       "Publish inactive Agent Script versions and manage eval-gated activation lifecycle.",

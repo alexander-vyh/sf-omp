@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Read-only SF Pi Manager panel for the advisory Instruction Surface Report. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { type Focusable, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent";
+import { truncate } from "@oh-my-pi/pi-tui/text/width";
 import type { ConfigPanelResult } from "../../../catalog/registry.ts";
+import { decodeRowKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import type { InstructionSurfaceBaselineComparison } from "./instruction-surface-baseline.ts";
 import type { InstructionSurfaceReport } from "./instruction-surface-report.ts";
 
@@ -12,6 +13,8 @@ export function renderInstructionSurfaceReport(
   comparison?: InstructionSurfaceBaselineComparison,
 ): string[] {
   const safeWidth = Number.isFinite(width) ? Math.max(20, Math.floor(width)) : 100;
+  const skillsUnavailable = report.unavailable.some((item) => item.surface === "skills");
+  const guidanceUnavailable = report.unavailable.some((item) => item.surface === "tool_guidance");
   const lines: string[] = [
     "Instruction Surface Report",
     "Advisory character counts; prompt contents are never displayed.",
@@ -20,16 +23,25 @@ export function renderInstructionSurfaceReport(
     row("System prompt", report.summary.system_prompt_chars),
     row("SF Pi-owned", report.summary.sf_pi_owned_chars),
     row("SF Pi tool definitions", report.summary.sf_pi_tool_definition_chars),
-    row("External Salesforce skills", report.summary.external_salesforce_skill_chars),
+    skillsUnavailable
+      ? `  ${"External Salesforce skills".padEnd(29)} unavailable`
+      : row("External Salesforce skills", report.summary.external_salesforce_skill_chars),
     row("Effective startup estimate", report.summary.effective_startup_estimate_chars),
     row("Approximate tokens", report.summary.approximate_effective_startup_tokens),
     "",
     "SF Pi-owned sections",
     sectionRow("Tool definitions", report.sections.sf_pi_tool_definitions),
-    sectionRow("Tool guidance", report.sections.sf_pi_tool_guidance),
+    guidanceUnavailable
+      ? `  ${"Tool guidance".padEnd(20)} unavailable`
+      : sectionRow("Tool guidance", report.sections.sf_pi_tool_guidance),
     sectionRow("Hidden context", report.sections.sf_pi_hidden_context),
-    sectionRow("Bundled skills", report.sections.bundled_extension_skills),
+    skillsUnavailable
+      ? `  ${"Bundled skills".padEnd(20)} unavailable`
+      : sectionRow("Bundled skills", report.sections.bundled_extension_skills),
     "",
+    ...(report.unavailable.length > 0
+      ? ["Unavailable on this host", ...report.unavailable.map((item) => `  • ${item.reason}`), ""]
+      : []),
     ...comparisonLines(comparison),
     "Largest SF Pi contributors",
     ...report.largest_contributors
@@ -41,25 +53,24 @@ export function renderInstructionSurfaceReport(
     ...report.limitations.slice(0, 3).map((line) => `  • ${line}`),
   ];
 
-  return lines.map((line) => truncateToWidth(line, safeWidth, "…"));
+  return lines.map((line) => truncate(line, safeWidth));
 }
 
-export class InstructionSurfacePanel implements Focusable {
+export class InstructionSurfacePanel implements RowsPanel {
   focused = false;
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: ExtensionTheme,
     private readonly report: InstructionSurfaceReport,
     private readonly done: (result: ConfigPanelResult | undefined) => void,
     private readonly comparison?: InstructionSurfaceBaselineComparison,
   ) {}
 
   handleInput(data: string): void {
+    const key = decodeRowKey(data);
     if (
-      matchesKey(data, "escape") ||
-      matchesKey(data, "enter") ||
-      matchesKey(data, "return") ||
-      data === "q"
+      key?.kind !== "release" &&
+      (key?.id === "escape" || key?.id === "enter" || key?.text === "q")
     ) {
       this.done(undefined);
     }
@@ -74,8 +85,6 @@ export class InstructionSurfacePanel implements Focusable {
   render(width = 100): string[] {
     return this.renderContent(width);
   }
-
-  invalidate(): void {}
 }
 
 function comparisonLines(comparison: InstructionSurfaceBaselineComparison | undefined): string[] {

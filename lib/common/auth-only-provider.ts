@@ -2,10 +2,10 @@
 /**
  * Authentication-only providers: own `/login` credentials, expose no models.
  *
- * Pi registers a `Provider` object whose `auth` drives `/login`. OMP registers
- * `registerProvider(name, { oauth })` instead, and its `/login` persists either
- * a plain API key or OAuth-shaped credentials in its agent database. On OMP the
- * Pi `ProviderAuth` is adapted to one OMP OAuth login:
+ * Extensions declare a Pi `ProviderAuth`; OMP registers
+ * `registerProvider(name, { oauth })`, and its `/login` persists either a plain
+ * API key or OAuth-shaped credentials in its agent database. The Pi
+ * `ProviderAuth` is adapted to one OMP OAuth login:
  *
  * - Pi API-key credentials (`{ key, env }`) are stored as an OAuth-shaped record
  *   (`access` = key, `env` kept, never expires) so non-secret provider env such
@@ -14,9 +14,8 @@
  * - `accountId` is pinned to the provider id so a new login replaces the
  *   stored row instead of adding a second pooled credential.
  *
- * `readPiAuthCredential()` (pi-auth-status.ts) reads either host store back in
- * Pi's shape, and `resolveAuthOnlyProviderAuth()` resolves request auth like
- * Pi's `modelRegistry.getProviderAuth()` on both hosts.
+ * `readPiAuthCredential()` (pi-auth-status.ts) reads the stored row back in
+ * Pi's shape, and `resolveAuthOnlyProviderAuth()` resolves request auth from it.
  */
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -33,7 +32,6 @@ import type {
   ProviderAuthInteraction,
 } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { isOmpHost } from "./pi-compat.ts";
 import { readPiAuthCredential, SF_PI_ACCOUNT_ID, SF_PI_CREDENTIAL_KIND } from "./pi-auth-status.ts";
 
 export interface AuthOnlyProviderInput {
@@ -98,9 +96,9 @@ const API_KEY_EXPIRES = 253_402_300_799_000;
 const HOST_MASKED_SECRETS = Symbol.for("sf-pi.auth.host-masked-secrets");
 
 /**
- * True when `prompt({ type: "secret" })` is masked by the host's own login UI
- * (OMP). Pi's stock secret prompt is visible, so Pi providers use SF Pi's
- * session-bound masked input instead.
+ * True for interactions built by the OMP `/login` adapter below, whose
+ * `prompt({ type: "secret" })` OMP's login UI masks natively. Other
+ * interactions use SF Pi's session-bound masked input instead.
  */
 export function hostMasksSecretPrompts(interaction: unknown): boolean {
   return (
@@ -111,12 +109,12 @@ export function hostMasksSecretPrompts(interaction: unknown): boolean {
   );
 }
 
-/** Pi auth registered on OMP, by provider id, for `resolveAuthOnlyProviderAuth()`. */
+/** Registered provider auth, by provider id, for `resolveAuthOnlyProviderAuth()`. */
 const ompProviderAuth = new Map<string, ProviderAuth>();
 
 /**
- * Register an authentication-only provider on the active host so `/login <id>`
- * stores its credential and `/logout <id>` removes it.
+ * Register an authentication-only provider with OMP so `/login <id>` stores
+ * its credential and `/logout <id>` removes it.
  *
  * @example
  * registerAuthOnlyProvider(pi, { id: "sf-docs", name: "SF Docs", auth: { apiKey } });
@@ -125,14 +123,7 @@ const ompProviderAuth = new Map<string, ProviderAuth>();
  * // status path (no ctx):
  * const credential = readPiAuthCredential("sf-docs");
  */
-export function registerAuthOnlyProvider(
-  pi: ExtensionAPI,
-  input: AuthOnlyProviderInput | Provider,
-): void {
-  if (!isOmpHost(pi)) {
-    pi.registerProvider("getModels" in input ? input : createAuthOnlyProvider(input));
-    return;
-  }
+export function registerAuthOnlyProvider(pi: ExtensionAPI, input: AuthOnlyProviderInput): void {
   ompProviderAuth.set(input.id, input.auth);
   // Pi's type declares `registerProvider(provider)`; the OMP host method is
   // `registerProvider(name, config)` and reads `this`, so call it bound.
@@ -309,39 +300,26 @@ const hostAuthContext: AuthContext = {
     existsSync(file.startsWith("~") ? path.join(homedir(), file.slice(1)) : file),
 };
 
-type PiProviderAuthRegistry = {
-  getProviderAuth?: (provider: string) => Promise<AuthResult | undefined>;
-  getApiKeyForProvider?: (provider: string) => Promise<string | undefined>;
-};
-
 /** Refresh OAuth this long before expiry, matching the host refresh window. */
 const OAUTH_REFRESH_SKEW_MS = 5 * 60_000;
 
 /**
  * Resolve request auth (`apiKey`/`baseUrl`/`headers`, provider env, source)
- * for an authentication-only provider, like Pi's
- * `ctx.modelRegistry.getProviderAuth()`: stored credential first, then the
- * provider's ambient fallbacks. Returns undefined when not configured.
- * On OMP, expiring OAuth credentials are refreshed through OMP's locked
- * credential refresh before `toAuth()`.
+ * for a provider registered with `registerAuthOnlyProvider()`: the OMP-stored
+ * credential first, then the provider's ambient fallbacks. Returns undefined
+ * when not configured. Expiring OAuth credentials are refreshed through OMP's
+ * locked credential refresh before `toAuth()`.
  */
 export async function resolveAuthOnlyProviderAuth(
   ctx: Pick<ExtensionContext, "modelRegistry">,
   providerId: string,
 ): Promise<AuthResult | undefined> {
-  const registry = ctx.modelRegistry as unknown as PiProviderAuthRegistry;
-  if (typeof registry.getProviderAuth === "function") {
-    return registry.getProviderAuth.call(ctx.modelRegistry, providerId);
-  }
   const auth = ompProviderAuth.get(providerId);
   if (!auth) return undefined;
   let credential = readPiAuthCredential(providerId);
   if (credential?.type === "oauth" && auth.oauth) {
-    if (
-      credential.expires - OAUTH_REFRESH_SKEW_MS <= Date.now() &&
-      typeof registry.getApiKeyForProvider === "function"
-    ) {
-      await registry.getApiKeyForProvider.call(ctx.modelRegistry, providerId);
+    if (credential.expires - OAUTH_REFRESH_SKEW_MS <= Date.now()) {
+      await ctx.modelRegistry.getApiKeyForProvider(providerId);
       credential = readPiAuthCredential(providerId);
       if (credential?.type !== "oauth") return undefined;
     }

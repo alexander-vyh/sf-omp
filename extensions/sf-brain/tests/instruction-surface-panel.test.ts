@@ -1,10 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import { describe, expect, it } from "vitest";
 
 import type { InstructionSurfaceBaselineComparison } from "../lib/instruction-surface-baseline.ts";
 import { buildInstructionSurfaceReport } from "../lib/instruction-surface-report.ts";
 import { renderInstructionSurfaceReport } from "../lib/instruction-surface-panel.ts";
+import { OMP_UNAVAILABLE_SURFACES } from "../lib/instruction-surface-runtime.ts";
 
 describe("Instruction Surface Manager panel", () => {
   it("renders a bounded content-safe diagnostic summary", () => {
@@ -65,5 +66,27 @@ describe("Instruction Surface Manager panel", () => {
     const rendered = renderInstructionSurfaceReport(report, 80, comparison).join("\n");
     expect(rendered).toContain("Compared with bundled baseline v0.9.0");
     expect(rendered).toContain("-250");
+  });
+
+  it("shows surfaces the host does not expose as unavailable, never as zero", () => {
+    const report = buildInstructionSurfaceReport({
+      mode: "current_session",
+      systemPrompt: "base",
+      selectedTools: [],
+      tools: [],
+      skills: [],
+      contextMessages: [],
+      sfPiToolNames: [],
+      sfPiPackageRoot: "/repo",
+      externalSalesforceSkillRoots: [],
+      unavailable: OMP_UNAVAILABLE_SURFACES,
+    });
+
+    const lines = renderInstructionSurfaceReport(report, 140);
+    expect(lines).toContain(`  ${"External Salesforce skills".padEnd(29)} unavailable`);
+    expect(lines).toContain(`  ${"Tool guidance".padEnd(20)} unavailable`);
+    expect(lines).toContain(`  ${"Bundled skills".padEnd(20)} unavailable`);
+    expect(lines).toContain("Unavailable on this host");
+    for (const item of OMP_UNAVAILABLE_SURFACES) expect(lines).toContain(`  • ${item.reason}`);
   });
 });

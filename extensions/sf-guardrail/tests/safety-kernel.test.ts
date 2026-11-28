@@ -175,22 +175,6 @@ describe("Safety Kernel", () => {
     expect(decision).toBeUndefined();
   });
 
-  it("mediates Herdr pane run commands through the same command gate", async () => {
-    const decision = await evaluateSafety({
-      toolName: "herdr_pane",
-      input: { action: "run", pane: "tests", command: "rm -rf tmp/" },
-      cwd: "/project",
-      config: readBundledConfig(),
-    });
-
-    expect(decision).toMatchObject({
-      action: "confirm",
-      feature: "commandGate",
-      ruleId: "rm-rf",
-      subject: "rm -rf tmp/",
-    });
-  });
-
   it("auto-allows strictly validated operating-system temp cleanup", async () => {
     const tempDir = mkdtempSync(path.join(tmpdir(), "tmp.sf-guardrail-"));
     try {

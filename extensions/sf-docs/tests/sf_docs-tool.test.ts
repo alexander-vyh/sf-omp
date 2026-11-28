@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -9,16 +9,10 @@ let tempAgentDir: string;
 let originalEndpoint: string | undefined;
 let originalToken: string | undefined;
 
-vi.mock("@earendil-works/pi-coding-agent", async () => {
-  const actual = await vi.importActual<typeof import("@earendil-works/pi-coding-agent")>(
-    "@earendil-works/pi-coding-agent",
-  );
-  return { ...actual, getAgentDir: () => tempAgentDir };
-});
-
 describe("sf_docs tool", () => {
   beforeEach(() => {
     tempAgentDir = mkdtempSync(path.join(tmpdir(), "sf-docs-tool-"));
+    vi.stubEnv("PI_CODING_AGENT_DIR", tempAgentDir);
     originalEndpoint = process.env.SF_DOCS_MCP_ENDPOINT;
     originalToken = process.env.SF_DOCS_MCP_TOKEN;
     process.env.SF_DOCS_MCP_TOKEN = "sfmcp-test-token";
@@ -29,6 +23,7 @@ describe("sf_docs tool", () => {
     else process.env.SF_DOCS_MCP_ENDPOINT = originalEndpoint;
     if (originalToken === undefined) delete process.env.SF_DOCS_MCP_TOKEN;
     else process.env.SF_DOCS_MCP_TOKEN = originalToken;
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     rmSync(tempAgentDir, { recursive: true, force: true });
   });
@@ -48,7 +43,7 @@ describe("sf_docs tool", () => {
     expect(tool.parameters.properties).not.toHaveProperty("cite");
   });
 
-  it("passes thrown-error context through the registered result renderer", async () => {
+  it("receives the error flag on the result and the original args from OMP", async () => {
     vi.resetModules();
     const { registerSfDocsTool } = await import("../lib/sf_docs-tool.ts");
     const registerTool = vi.fn();
@@ -57,20 +52,17 @@ describe("sf_docs tool", () => {
     const theme = {
       fg: (_color: string, text: string) => text,
       bold: (text: string) => text,
-    } as unknown as Theme;
+    };
 
     const component = tool.renderResult(
-      { content: [{ type: "text", text: "fetch failed" }], details: {} },
+      { content: [{ type: "text", text: "fetch failed" }], details: {}, isError: true },
       { expanded: false, isPartial: false },
       theme,
       {
-        isError: true,
-        args: {
-          action: "search",
-          collection: "admin",
-          version: "current",
-          locale: "en-us",
-        },
+        action: "search",
+        collection: "admin",
+        version: "current",
+        locale: "en-us",
       },
     );
     const text = component.render(120).join("\n");

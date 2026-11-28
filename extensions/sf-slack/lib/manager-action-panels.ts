@@ -1,46 +1,51 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager action pages for SF Slack detail actions. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { type Component, type Focusable, matchesKey } from "@earendil-works/pi-tui";
+import type {
+  ExtensionTheme,
+  ExtensionUiHost,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { wrap } from "@oh-my-pi/pi-tui/text/width";
+import { decodeRowKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import type { ConfigPanelResult } from "../../../catalog/registry.ts";
 
-type Done = (result: ConfigPanelResult | undefined) => void;
+interface ActionPanelOptions {
+  theme: ExtensionTheme;
+  done: (result: ConfigPanelResult | undefined) => void;
+  ui?: Pick<ExtensionUiHost, "requestRender">;
+}
 
-export function createSlackConnectPanel(args: {
-  theme: Theme;
-  done: Done;
-  prepareLogin: () => Promise<string> | string;
-}): Component & Focusable & { renderContent(width: number): string[] } {
+type ConnectPanelOptions = ActionPanelOptions & { prepareLogin: () => Promise<string> | string };
+type DisconnectPanelOptions = ActionPanelOptions & {
+  tokenSourceLabel: string;
+  disconnect: () => Promise<string> | string;
+};
+type SlackActionPanel = RowsPanel & {
+  handleInput(data: string): void;
+  renderContent(width: number): string[];
+};
+
+export function createSlackConnectPanel(args: ConnectPanelOptions): SlackActionPanel {
   return new SlackConnectPanel(args);
 }
 
-export function createSlackDisconnectPanel(args: {
-  theme: Theme;
-  tokenSourceLabel: string;
-  done: Done;
-  disconnect: () => Promise<string> | string;
-}): Component & Focusable & { renderContent(width: number): string[] } {
+export function createSlackDisconnectPanel(args: DisconnectPanelOptions): SlackActionPanel {
   return new SlackDisconnectPanel(args);
 }
 
-class SlackConnectPanel implements Focusable {
+class SlackConnectPanel implements SlackActionPanel {
   focused = false;
   private result = "";
 
-  constructor(
-    private readonly args: {
-      theme: Theme;
-      done: Done;
-      prepareLogin: () => Promise<string> | string;
-    },
-  ) {}
+  constructor(private readonly args: ConnectPanelOptions) {}
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
+    const key = decodeRowKey(data);
+    if (!key || key.kind === "release") return;
+    if (key.id === "escape" || key.id === "q") {
       this.args.done(undefined);
       return;
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+    if (key.id === "enter") {
       if (this.result) {
         this.args.done(undefined);
         return;
@@ -55,21 +60,23 @@ class SlackConnectPanel implements Focusable {
       return [
         ` ${t.fg("accent", t.bold("Connect to Slack"))}`,
         "",
-        ...wrap(this.result, width - 3).map((line) => ` ${t.fg("success", line)}`),
+        ...wrap(this.result, Math.max(1, width - 3)).map((line) => ` ${t.fg("success", line)}`),
         "",
         ` ${t.fg("dim", "Enter/Esc back")}`,
       ];
     }
 
     const guidance = [
-      "Interactive entry uses a fixed-mask SF Pi component and Pi-owned credential persistence.",
+      "OMP masks credential entry and owns credential persistence.",
       "Existing saved credentials remain active. SLACK_USER_TOKEN remains the automation and CI fallback.",
       "After login, run /sf-slack refresh to verify identity, scopes, and tool availability.",
     ];
     return [
       ` ${t.fg("accent", t.bold("Connect to Slack"))}`,
       "",
-      ...guidance.flatMap((text) => wrap(text, width - 3).map((line) => ` ${t.fg("muted", line)}`)),
+      ...guidance.flatMap((text) =>
+        wrap(text, Math.max(1, width - 3)).map((line) => ` ${t.fg("muted", line)}`),
+      ),
       "",
       ` ${t.fg("accent", "→ Prepare native login")}`,
       "",
@@ -81,37 +88,31 @@ class SlackConnectPanel implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {}
-
   private async prepare(): Promise<void> {
     this.result = await this.args.prepareLogin();
+    this.args.ui?.requestRender();
   }
 }
 
-class SlackDisconnectPanel implements Focusable {
+class SlackDisconnectPanel implements SlackActionPanel {
   focused = false;
   private selected = 0;
   private result = "";
 
-  constructor(
-    private readonly args: {
-      theme: Theme;
-      tokenSourceLabel: string;
-      done: Done;
-      disconnect: () => Promise<string> | string;
-    },
-  ) {}
+  constructor(private readonly args: DisconnectPanelOptions) {}
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
+    const key = decodeRowKey(data);
+    if (!key || key.kind === "release") return;
+    if (key.id === "escape" || key.id === "q") {
       this.args.done(undefined);
       return;
     }
-    if (matchesKey(data, "up") || matchesKey(data, "down")) {
+    if (key.id === "up" || key.id === "down") {
       this.selected = this.selected === 0 ? 1 : 0;
       return;
     }
-    if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+    if (key.id === "enter") {
       if (this.result) {
         this.args.done(undefined);
         return;
@@ -130,7 +131,7 @@ class SlackDisconnectPanel implements Focusable {
       return [
         ` ${t.fg("accent", t.bold("Disconnect Slack"))}`,
         "",
-        ...wrap(this.result, width - 3).map((line) => ` ${t.fg("success", line)}`),
+        ...wrap(this.result, Math.max(1, width - 3)).map((line) => ` ${t.fg("success", line)}`),
         "",
         ` ${t.fg("dim", "Enter/Esc back")}`,
       ];
@@ -153,26 +154,8 @@ class SlackDisconnectPanel implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {}
-
   private async confirm(): Promise<void> {
     this.result = await this.args.disconnect();
+    this.args.ui?.requestRender();
   }
-}
-
-function wrap(text: string, width: number): string[] {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = "";
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length <= width) {
-      current = next;
-      continue;
-    }
-    if (current) lines.push(current);
-    current = word;
-  }
-  if (current) lines.push(current);
-  return lines.length > 0 ? lines : [""];
 }

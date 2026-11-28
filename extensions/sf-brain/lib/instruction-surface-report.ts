@@ -24,6 +24,12 @@ export interface InstructionSurfaceContextMessage {
   content: string | unknown[];
 }
 
+/** A surface the host does not expose; renderers show its sections as unavailable, not as zero. */
+export interface InstructionSurfaceUnavailable {
+  surface: "skills" | "tool_guidance";
+  reason: string;
+}
+
 export interface InstructionSurfaceInput {
   mode: "current_session" | "bundled_baseline";
   systemPrompt: string;
@@ -36,6 +42,7 @@ export interface InstructionSurfaceInput {
   externalSalesforceSkillRoots: readonly string[];
   piRuntimeVersion?: string;
   sfPiVersion?: string;
+  unavailable?: readonly InstructionSurfaceUnavailable[];
 }
 
 export interface InstructionSurfaceSection {
@@ -74,6 +81,7 @@ export interface InstructionSurfaceReport {
   }>;
   exclusions: string[];
   limitations: string[];
+  unavailable: InstructionSurfaceUnavailable[];
 }
 
 export function buildInstructionSurfaceReport(
@@ -205,6 +213,7 @@ export function buildInstructionSurfaceReport(
       "Provider serialization and before_provider_request payload rewrites are not observable here.",
       "System prompt totals can include user/project context that this report does not expose.",
     ],
+    unavailable: [...(input.unavailable ?? [])],
   };
 }
 

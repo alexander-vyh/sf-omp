@@ -1,6 +1,6 @@
 # SF MCP
 
-SF MCP makes Salesforce-published MCP servers easy to discover and configure while leaving the MCP runtime entirely with Pi. It supports both an interactive Manager workflow and a plan-bound `sf_mcp` agent tool.
+SF MCP makes Salesforce-published MCP servers easy to discover and configure while leaving the MCP runtime with OMP. It supports both an interactive Manager workflow and a plan-bound `sf_mcp` agent tool.
 
 ## What It Does
 
@@ -10,14 +10,14 @@ SF MCP makes Salesforce-published MCP servers easy to discover and configure whi
 - Detects semantic overlap with enabled SF Pi family tools.
 - Maps reviewed MCP tools to exact enabled SF Pi capability owners, including broad dispatcher warnings.
 - Offers a deterministic native-preferred recommendation or an explicit keep-both policy without disabling native extensions.
-- Writes explicit, user-reviewed entries to Pi's native global or project `mcp.json`.
+- Writes explicit, user-reviewed entries to OMP's native global or project `mcp.json`, converting timeouts to milliseconds and fixed OAuth callbacks to `redirectUri`.
 - Resolves Headless 360 `target_org` connections to a proved org-pinned endpoint whose protected-resource and OpenID metadata match that org's existing My Domain.
-- Gives every org-bound instance an independent native server name, configuration fingerprint, and Pi OAuth credential identity.
+- Gives every org-bound instance an independent native server name, configuration fingerprint, and OMP OAuth credential identity.
 - Lets agents inspect status, produce source-bound redacted plans, apply exact reviewed entries through SF Guardrail, disable unchanged managed entries, and return a human OAuth login handoff.
-- Publishes each preset's short description for Pi's MCP prompt summary, tool-search ranking, and namespace inspection.
+- Publishes each preset's short description for OMP's MCP prompt summary, tool-search ranking, and namespace inspection.
 - Preserves unknown top-level configuration and unrelated servers.
-- Recognizes Pi project overrides that change only a global server's enabled state or exposure; ordinary override editing stays in Pi's native `/mcp` surface, and SF MCP replaces one only after an explicit reviewed reset.
-- Detects server names that collide after Pi normalizes hyphens and underscores.
+- Recognizes native project overrides that change only a global server's enabled state or exposure; ordinary override editing stays in OMP's native `/mcp` surface, and SF MCP replaces one only after an explicit reviewed reset.
+- Detects server names that collide after OMP normalizes hyphens and underscores.
 - Offers explicit adoption, redacted diff, reset, and canonical-name reconciliation for existing entries.
 - Versions governed preset contracts and reports observed tool additions or removals.
 - Reviews live contract drift: additions remain locked hidden pending a preset revision, while removed tools become unavailable and can be repaired to Hidden through an explicit diff.
@@ -25,7 +25,7 @@ SF MCP makes Salesforce-published MCP servers easy to discover and configure whi
 - Separates **Connection & authentication**, **Tool access**, and **Tool conflict review** so transport fields, exposure policy, and overlap decisions are not crowded into one page.
 - Authors exact per-tool exposure through Recommended, Read-only, All approved, Custom, and Quarantine profiles.
 - Shows numbered tools, available-tool and per-mode counts, color-coded mode badges, compact conflict badges, and an on-demand mode reference.
-- Supports Pi's Hidden, Code Mode, Deferred, and Direct exposure modes with explicit diff review and warnings for risky Direct choices.
+- Authors Hidden, Code Mode, Deferred, and Direct exposure modes with explicit diff review and warnings for risky Direct choices. OMP has no Code Mode or Deferred tiers, so only Hidden changes runtime behavior there.
 - Uses `/mcp` for connection state, OAuth, errors, reconnects, and manual runtime review.
 
 The SF MCP extension is enabled by default for discoverability, but **every MCP server is off by default**. Loading SF Pi performs no Salesforce MCP network request or subprocess launch.
@@ -63,9 +63,9 @@ The `sf_mcp` family tool supports this lifecycle:
 1. `status` — inspect one preset or the catalog in explicit global or trusted-project scope, including every managed connection instance.
 2. `conflicts` — inspect exact reviewed tool overlaps and the current recommendation.
 3. `connection.plan` then `connection.apply` — configure URL or command, environment, and authentication while preserving existing managed tool access; Headless 360 accepts an explicit `target_org` and derives a per-org instance; new connections start Hidden.
-4. `login.handoff` — return the exact `/mcp login <server>` command after resulting-state verification. Pass `connection_name` when a preset has several instances. Pi and the user still own browser consent and tokens.
+4. `login.handoff` — return the exact `/mcp reauth <server>` command after resulting-state verification. Pass `connection_name` when a preset has several instances. OMP and the user still own browser consent and tokens.
 5. `tools.plan` then `tools.apply` — apply a reviewed profile plus optional exact `tool_overrides` without changing connection fields.
-6. `identity.verify` — after login, invoke bounded Headless 360 read-only userinfo and require the authenticated organization id to match the source-bound instance.
+6. `identity.verify` — after login, return the exact bounded Headless 360 read-only userinfo call and the organization id the source-bound instance requires. OMP extensions cannot delegate tool calls, so the identity is verified only after that call's result is compared.
 7. `disable.plan` then `disable.apply` — disable only an unchanged SF MCP-managed entry through the same plan-bound checks.
 
 `configure.plan` and `configure.apply` remain as a combined compatibility path. Public client identifiers can be passed through preset-specific fields; raw client secrets and OAuth tokens are never accepted. Secret-bearing products use environment references.
@@ -79,7 +79,7 @@ Open `/sf-mcp`, enter **Settings**, select a preset, and press Enter. The first 
 - **Review tool conflicts** shows exact affected tools, SF Pi owners, and recommendations without repeating long conflict paragraphs in the main editor.
 - **Browse tool details** shows schemas, annotations, descriptions, and session-observed metadata without mutation.
 
-Choose global or trusted-project scope before saving. A partial project override remains Pi-managed and opens `/mcp` guidance instead of being mistaken for a complete manual server. Use `/mcp` after reload for OAuth sign-in, connection diagnostics, project overrides, manual runtime review, and reconnects.
+Choose global or trusted-project scope before saving. A partial project override remains host-managed and opens `/mcp` guidance instead of being mistaken for a complete manual server. Use `/mcp` after `/mcp reload` for OAuth sign-in, connection diagnostics, project overrides, manual runtime review, and reconnects.
 
 The mode reference defines **Hidden** as unreachable, **Code Mode** as callable from codemode scripts, **Deferred** as loaded on demand through tool search, and **Direct** as declared to the model on every turn.
 
@@ -104,33 +104,32 @@ SF MCP-managed entries can be disabled from the catalog or `/sf-mcp disable <pre
 - Runtime observation never approves a new tool. Additions require a reviewed preset revision; removed tools remain unavailable and repair only changes their native exposure to Hidden.
 - New custom servers start with `hidden` exposure and no callable tools.
 - `status` and `login.handoff` warn when a managed, enabled connection exposes zero reviewed tools, because sign-in alone makes nothing callable.
-- OAuth tokens, including standalone Tableau OAuth, remain in Pi's native MCP credential store.
+- OAuth tokens, including standalone Tableau OAuth, remain in OMP's native MCP credential store.
 - Trailhead MCP requires no authentication and is restricted to its two documented read-only public-content tools.
-- Intercom MCP (Fin) uses Pi-native OAuth with dynamic client registration and requests the `mcp` and `operator` scopes; bearer-header or fixed-client entries are not adopted because they don't receive Fin Operator tools. Applying Fin Operator proposals is an exact, non-session SF Guardrail approval, and Operator turns are Guardrail-confirmed; both belong to the Power Tool **Fin CLI and Operator** family.
+- Intercom MCP (Fin) uses OMP-native OAuth with dynamic client registration and requests the `mcp` and `operator` scopes; bearer-header or fixed-client entries are not adopted because they don't receive Fin Operator tools. Applying Fin Operator proposals is an exact, non-session SF Guardrail approval, and Operator turns are Guardrail-confirmed; both belong to the Power Tool **Fin CLI and Operator** family.
 - External Client App consumer keys are public client identifiers. Standard hosted presets don't request client secrets.
 - Agentforce Sales references `AGENTFORCE_SALES_CLIENT_SECRET`, Slack references `SLACK_MCP_CLIENT_SECRET`, and MuleSoft references `ANYPOINT_CLIENT_ID` and `ANYPOINT_CLIENT_SECRET`. Secret values are never copied into SF MCP state.
 - Slack and Informatica connections start with server exposure Hidden because their public references don't provide stable exact tool-name contracts. Session observation never promotes those tools.
 - B2C Commerce uses the GA `@salesforce/b2c-dx-mcp` package and an exact reviewed allowlist; live instance credentials remain owned by the B2C toolchain rather than SF MCP.
 - Backup and Recover writes, Content writes, Headless 360 dispatch, hosted Data 360 execution, and managed external operations pass through SF Guardrail. Every experimental Agentforce Sales operation fails closed because exact OAuth-org identity is unavailable. Hosted mutation targets without exact identity evidence remain fail-closed.
-- The legacy SObject Reads, Mutations, Deletes, and All servers are intentionally absent from the SF MCP catalog. Existing native Pi entries are left untouched and remain visible in `/mcp`; users remove them there if desired. Legacy SObject mutation calls remain Guardrail-mediated and fail closed.
+- The legacy SObject Reads, Mutations, Deletes, and All servers are intentionally absent from the SF MCP catalog. Existing native entries are left untouched and remain visible in `/mcp`; users remove them there if desired. Legacy SObject mutation calls remain Guardrail-mediated and fail closed.
 
 ## Native Configuration Ownership
 
-Pi remains authoritative for:
+OMP remains authoritative for:
 
 - MCP transport and process lifecycle
 - OAuth token storage and refresh
 - connection and error state
 - tool discovery and resources
-- runtime enforcement of exposure, Code Mode, and tool search
 
-SF MCP authors reviewed native `exposure` and `toolExposure` fields, while Pi remains the runtime authority that enforces them. The selected per-tool policy lives in `mcp.json`; SF MCP does not duplicate it in extension state. SF MCP stores only a short configuration fingerprint, preset id, preset revision, and selected resolution so it can detect manual edits and outdated presets. Observed tool metadata is session-local. It stores no OAuth tokens, client secrets, record data, or tool arguments.
+SF MCP authors reviewed native `exposure` and `toolExposure` fields. OMP ignores them, so SF MCP enforces `hidden` itself: it removes policy-hidden MCP tools from the active set and blocks their calls. The selected per-tool policy lives in `mcp.json`; SF MCP does not duplicate it in extension state. SF MCP stores only a short configuration fingerprint, preset id, preset revision, and selected resolution so it can detect manual edits and outdated presets. Observed tool metadata is session-local. It stores no OAuth tokens, client secrets, record data, or tool arguments.
 
 ## Legacy SObject Servers
 
 SF MCP no longer catalogs or manages the four legacy SObject server presets. This is an SF Pi product simplification to avoid overlapping choices with Headless 360 and the native SF SOQL lifecycle; it is not a claim that Salesforce has retired the underlying public endpoints.
 
-Upgrades never delete user-owned Pi configuration. Existing `salesforce-sobject-*` entries continue to be owned by Pi's `/mcp` manager until the user disables or removes them.
+Upgrades never delete user-owned native MCP configuration. Existing `salesforce-sobject-*` entries continue to be owned by OMP's `/mcp` manager until the user disables or removes them.
 
 ## Current Presets
 
@@ -191,7 +190,6 @@ Upgrades never delete user-owned Pi configuration. Existing `salesforce-sobject-
 
 ## Official Sources
 
-- [Pi MCP configuration and exposure](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/mcp.md)
 - [Salesforce DX MCP setup](https://developer.salesforce.com/docs/platform/sfdx-dev/guide/sfdx-dev-mcp-server.html)
 - [Salesforce DX core tool reference](https://developer.salesforce.com/docs/platform/sfdx-dev/guide/sfdx-dev-mcp-use-core-tools.html)
 - [Salesforce Hosted MCP standard servers](https://developer.salesforce.com/docs/platform/hosted-mcp-servers/references/reference/servers-reference.html)

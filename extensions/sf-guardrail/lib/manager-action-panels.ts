@@ -1,8 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager action pages for SF Guardrail detail actions. */
-import type { ExtensionAPI, ExtensionCommandContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Input, type Component, type Focusable, matchesKey } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { ConfigPanelResult } from "../../../catalog/registry.ts";
+import type { ManagerDetailActionPanel } from "../../../lib/common/manager-actions.ts";
+import { RowsTextField } from "../../../lib/common/ui-field.ts";
+import { matchesKey } from "../../../lib/common/ui-rows.ts";
 import { clearProjectApprovals, forgetSessionApprovals } from "./approval-ledger.ts";
 import { loadConfig } from "./config.ts";
 import { productionAliasesText, updateProductionAliasesFromText } from "./preferences.ts";
@@ -12,7 +15,7 @@ type Done = (result: ConfigPanelResult | undefined) => void;
 export function createProtectedAliasesActionPanel(
   theme: Theme,
   done: Done,
-): Component & Focusable & { renderContent(width: number): string[] } {
+): ManagerDetailActionPanel {
   return new ProtectedAliasesActionPanel(theme, done);
 }
 
@@ -21,12 +24,12 @@ export function createForgetApprovalsActionPanel(
   ctx: ExtensionCommandContext,
   theme: Theme,
   done: Done,
-): Component & Focusable & { renderContent(width: number): string[] } {
+): ManagerDetailActionPanel {
   return new ForgetApprovalsActionPanel(pi, ctx, theme, done);
 }
 
-class ProtectedAliasesActionPanel implements Focusable {
-  private input = new Input();
+class ProtectedAliasesActionPanel implements ManagerDetailActionPanel {
+  private readonly input = new RowsTextField();
   private savedMessage = "";
 
   get focused(): boolean {
@@ -41,13 +44,15 @@ class ProtectedAliasesActionPanel implements Focusable {
     private readonly done: Done,
   ) {
     this.input.setValue(productionAliasesText(loadConfig().config));
-    this.input.onSubmit = (value) => this.save(value);
-    this.input.onEscape = () => this.done(undefined);
   }
 
   handleInput(data: string): void {
     if (matchesKey(data, "escape")) {
       this.done(undefined);
+      return;
+    }
+    if (matchesKey(data, "enter")) {
+      this.save(this.input.getValue());
       return;
     }
     this.input.handleInput(data);
@@ -70,8 +75,12 @@ class ProtectedAliasesActionPanel implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {
-    this.input.invalidate();
+  capturesNavigation(): boolean {
+    return true;
+  }
+
+  dispose(): void {
+    this.input.dispose();
   }
 
   private save(value: string): void {
@@ -84,8 +93,7 @@ class ProtectedAliasesActionPanel implements Focusable {
   }
 }
 
-class ForgetApprovalsActionPanel implements Focusable {
-  focused = false;
+class ForgetApprovalsActionPanel implements ManagerDetailActionPanel {
   private selected = 0;
   private result = "";
 
@@ -97,7 +105,7 @@ class ForgetApprovalsActionPanel implements Focusable {
   ) {}
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.done(undefined);
       return;
     }
@@ -146,6 +154,4 @@ class ForgetApprovalsActionPanel implements Focusable {
   render(): string[] {
     return this.renderContent();
   }
-
-  invalidate(): void {}
 }

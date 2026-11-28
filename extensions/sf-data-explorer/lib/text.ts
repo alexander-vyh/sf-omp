@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { truncate, wrap } from "@oh-my-pi/pi-tui/text/width";
+export { stripEscapes as stripAnsi } from "@oh-my-pi/pi-tui/text/ansi";
 
 export type ThemeLike = {
   bold: (s: string) => string;
@@ -7,16 +8,11 @@ export type ThemeLike = {
 };
 
 export function fit(text: string, width: number): string {
-  return truncateToWidth(text, Math.max(0, width), "…");
+  return truncate(text, width);
 }
 
 export function pad(text: string, width: number): string {
-  const fitted = fit(text, width);
-  return fitted + " ".repeat(Math.max(0, width - visibleWidth(fitted)));
-}
-
-export function stripAnsi(s: string): string {
-  return s.replace(/\x1b\[[0-9;]*m/g, "");
+  return truncate(text, width, "…", true);
 }
 
 export function formatValue(value: unknown): string {
@@ -30,34 +26,10 @@ export function formatValue(value: unknown): string {
   }
 }
 
-export function isBackspaceKey(data: string): boolean {
-  return data === "\x7f" || data === "\b" || data === "\x08";
-}
-
 export function wrapPlain(text: string, width: number, maxLines = 100): string[] {
-  const out: string[] = [];
-  for (const raw of text.split("\n")) {
-    let line = raw;
-    if (!line.length) {
-      out.push("");
-      continue;
-    }
-    while (visibleWidth(line) > width) {
-      out.push(fit(line, width));
-      if (out.length >= maxLines) return out;
-      const consumed = Math.max(1, Math.floor(width * 0.85));
-      if (consumed >= line.length) {
-        line = "";
-        break;
-      }
-      line = line.slice(consumed);
-    }
-    if (line.length > 0) {
-      out.push(line);
-      if (out.length >= maxLines) return out;
-    }
-  }
-  return out;
+  const rows = wrap(text, width);
+  if (rows.length > maxLines) rows.length = maxLines;
+  return rows;
 }
 
 export function quoteData360Identifier(identifier: string): string {

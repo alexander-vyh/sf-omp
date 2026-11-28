@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager Settings panel for SF Skills preferences. */
-import { type Focusable, matchesKey } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { decodeRowKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
 import {
   readEffectiveSfSkillsSettings,
@@ -10,7 +10,7 @@ import {
   type SkillsSettingsScope,
 } from "./settings.ts";
 
-class SfSkillsConfigPanel implements Focusable {
+class SfSkillsConfigPanel implements RowsPanel {
   focused = false;
   private cursor = 0;
   private draft: SfSkillsSettings;
@@ -19,7 +19,7 @@ class SfSkillsConfigPanel implements Focusable {
   private message = "";
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: ExtensionTheme,
     private readonly cwd: string,
     private readonly scope: SkillsSettingsScope,
     private readonly done: (result: ConfigPanelResult | undefined) => void,
@@ -32,20 +32,27 @@ class SfSkillsConfigPanel implements Focusable {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
-      this.done(undefined);
-      return;
+    const key = decodeRowKey(data);
+    if (!key || key.kind === "release") return;
+    switch (key.id) {
+      case "escape":
+      case "q":
+        this.done(undefined);
+        break;
+      case "up":
+      case "down":
+        this.cursor = this.cursor === 0 ? 1 : 0;
+        this.message = "";
+        break;
+      case "left":
+      case "right":
+      case "space":
+        this.toggleCurrent();
+        break;
+      case "enter":
+      case "s":
+        this.save();
     }
-    if (matchesKey(data, "up") || matchesKey(data, "down")) {
-      this.cursor = this.cursor === 0 ? 1 : 0;
-      this.message = "";
-      return;
-    }
-    if (matchesKey(data, "left") || matchesKey(data, "right") || matchesKey(data, "space")) {
-      this.toggleCurrent();
-      return;
-    }
-    if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "s") this.save();
   }
 
   renderContent(): string[] {
@@ -87,8 +94,6 @@ class SfSkillsConfigPanel implements Focusable {
   render(): string[] {
     return this.renderContent();
   }
-
-  invalidate(): void {}
 
   private toggleCurrent(): void {
     if (this.cursor === 0) {

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
+import { currentTheme, setCurrentTheme, ThemeController } from "@oh-my-pi/pi-tui/theme/runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderBottomBarParts, type BottomBarState, type BarTheme } from "../lib/bottom-bar.ts";
 
@@ -13,19 +13,19 @@ const stubTheme: BarTheme = {
 };
 
 const ESC = "\u001b";
-let priorCapabilities: ReturnType<typeof getCapabilities>;
+let priorTheme: ReturnType<typeof currentTheme>;
 
 beforeEach(() => {
   // Render assertions must not depend on the launching terminal (NO_COLOR, Terminal.app).
   vi.stubEnv("NO_COLOR", undefined);
   vi.stubEnv("TERM_PROGRAM", undefined);
   vi.stubEnv("SF_PI_ASCII_ICONS", undefined);
-  priorCapabilities = getCapabilities();
-  setCapabilities({ ...priorCapabilities, trueColor: true });
+  priorTheme = currentTheme();
+  new ThemeController().initSync({ truecolor: true, colors: 16_777_216, dark: true });
 });
 
 afterEach(() => {
-  setCapabilities(priorCapabilities);
+  setCurrentTheme(priorTheme);
   vi.unstubAllEnvs();
 });
 

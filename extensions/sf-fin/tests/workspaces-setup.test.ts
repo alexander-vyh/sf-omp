@@ -4,8 +4,11 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { registerAuthOnlyProvider } from "../../../lib/common/auth-only-provider.ts";
+import { SF_PI_CREDENTIAL_KIND } from "../../../lib/common/pi-auth-status.ts";
 import { discoverRegion } from "../lib/region.ts";
 import { createAgentKeyStatusStore } from "../lib/agent-key.ts";
+import { createSfFinAgentAuthController, createSfFinAuthController } from "../lib/auth.ts";
 import { evaluateSetup, workspaceIdFromMcpText, type SetupFacts } from "../lib/setup.ts";
 import { createFinService } from "../lib/service.ts";
 import {
@@ -20,10 +23,22 @@ import {
   workspaceProviders,
 } from "../lib/workspaces.ts";
 
+// OMP's compatibility shim returns a provider's first active credential row.
+const omp = vi.hoisted(() => {
+  const rows = new Map<string, unknown>();
+  return { rows, readStoredCredential: vi.fn((provider: string) => rows.get(provider)) };
+});
+vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  readStoredCredential: omp.readStoredCredential,
+}));
+
 const TOKEN = "fin-personal-sentinel-token-11111111";
 const AGENT = "fin-agent-sentinel-key-000000000000";
 let dir: string;
 beforeEach(() => {
+  omp.rows.clear();
+  omp.readStoredCredential.mockClear();
   dir = mkdtempSync(path.join(tmpdir(), "sf-fin-ws-"));
   vi.stubEnv("PI_CODING_AGENT_DIR", dir);
   vi.stubEnv("INTERCOM_TOKEN", "");
@@ -218,16 +233,41 @@ describe("setup evaluation", () => {
 });
 
 describe("service.setup", () => {
+  /** What sf-fin's index.ts registers per workspace on the OMP host. */
+  function registerWorkspaceProviders(workspace: string): void {
+    const ompPi = { registerProvider: vi.fn() };
+    registerAuthOnlyProvider(
+      ompPi as never,
+      createSfFinAuthController(undefined, { workspace }).provider,
+    );
+    registerAuthOnlyProvider(
+      ompPi as never,
+      createSfFinAgentAuthController(undefined, { workspace }).provider,
+    );
+  }
+  /** Row OMP stores after `/login <provider>` with an SF Pi API-key provider. */
+  function ompApiKeyRow(provider: string, key: string, env?: Record<string, string>) {
+    return {
+      type: "oauth",
+      access: key,
+      refresh: "",
+      expires: 253_402_300_799_000,
+      accountId: provider,
+      [SF_PI_CREDENTIAL_KIND]: "api_key",
+      ...(env ? { env } : {}),
+    };
+  }
+  /** OMP host with the default workspace registered and its `/login` keys stored. */
   function ctxWith(keys: { personal?: string; agent?: string }, mcpText?: string) {
+    registerWorkspaceProviders("default");
+    if (keys.personal) {
+      omp.rows.set("sf-fin", ompApiKeyRow("sf-fin", keys.personal, { INTERCOM_REGION: "us" }));
+    }
+    if (keys.agent) omp.rows.set("sf-fin-agent", ompApiKeyRow("sf-fin-agent", keys.agent));
     return {
       cwd: dir,
       signal: undefined,
-      modelRegistry: {
-        getProviderAuth: vi.fn(async (provider: string) => {
-          const key = provider.startsWith("sf-fin-agent") ? keys.agent : keys.personal;
-          return key ? { auth: { apiKey: key }, env: { INTERCOM_REGION: "us" } } : undefined;
-        }),
-      },
+      modelRegistry: { getApiKeyForProvider: vi.fn() },
       executeTool: vi.fn(async () =>
         mcpText === undefined
           ? { isError: true, result: { content: [{ type: "text", text: "Tool not found" }] } }
@@ -305,6 +345,7 @@ describe("service.setup", () => {
   it("uses per-workspace sign-ins for a named workspace", async () => {
     const s = store();
     addWorkspace(s, "staging", "test");
+    registerWorkspaceProviders("staging");
     const service = createFinService({
       exec: vi.fn(async () => ({ code: 0, stdout: "", stderr: "" })) as never,
       fetch: fetchFor() as never,
@@ -312,14 +353,15 @@ describe("service.setup", () => {
     });
     const ctx = ctxWith({});
     const result = await service.setup(ctx as never, { workspace: "staging", wants: ["build"] });
-    expect(ctx.modelRegistry.getProviderAuth).toHaveBeenCalledWith("sf-fin-staging");
-    expect(ctx.modelRegistry.getProviderAuth).toHaveBeenCalledWith("sf-fin-agent-staging");
+    expect(omp.readStoredCredential).toHaveBeenCalledWith("sf-fin-staging");
+    expect(omp.readStoredCredential).toHaveBeenCalledWith("sf-fin-agent-staging");
     expect(result.text).toContain("/login sf-fin-staging");
   });
 
   it("routes credentialed actions to the requested workspace's sign-ins", async () => {
     const s = store();
     addWorkspace(s, "staging", "test");
+    registerWorkspaceProviders("staging");
     const service = createFinService({
       exec: vi.fn(async () => ({ code: 0, stdout: "", stderr: "" })) as never,
       workspaceStore: s,
@@ -332,8 +374,8 @@ describe("service.setup", () => {
     );
     expect(upload.ok).toBe(false);
     expect(upload.text).toContain("/login sf-fin-staging");
-    expect(ctx.modelRegistry.getProviderAuth).toHaveBeenCalledWith("sf-fin-staging");
-    expect(ctx.modelRegistry.getProviderAuth).not.toHaveBeenCalledWith("sf-fin");
+    expect(omp.readStoredCredential).toHaveBeenCalledWith("sf-fin-staging");
+    expect(omp.readStoredCredential).not.toHaveBeenCalledWith("sf-fin");
     const agent = await service.agent(ctx as never, { operation: "access" }, "staging");
     expect(agent.text).toContain("/login sf-fin-agent-staging");
     const unknown = await service.sdk(ctx as never, "manifest", "nope");

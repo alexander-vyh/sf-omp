@@ -31,7 +31,8 @@ export async function loadAgentforceSDK(): Promise<AgentforceSDK | null> {
   if (loadError) return null;
 
   try {
-    const mod = (await import(AGENTFORCE_SDK_PACKAGE)) as AgentforceSDK;
+    // OMP's extension loader resolves literal specifiers relative to this file.
+    const mod = await import("@sf-agentscript/agentforce");
 
     if (typeof mod.parse !== "function" || typeof mod.compileSource !== "function") {
       throw new Error("Official AgentScript SDK is missing parse() or compileSource() exports.");

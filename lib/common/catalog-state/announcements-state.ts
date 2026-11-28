@@ -10,7 +10,7 @@
  * legacy `state/sf-pi/` location so existing dismissals and remote-feed
  * caches survive the migration.
  *
- * Design mirrors recommendations-state.ts intentionally:
+ * Design:
  *   - Separate state file (don't pollute settings.json diffs)
  *   - Best-effort read/write — never throws
  *   - Sticky dismissals across manifest revisions; bumping `revision`

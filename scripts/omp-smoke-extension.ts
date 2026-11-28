@@ -317,11 +317,12 @@ export default async function smoke(pi: ExtensionAPI): Promise<void> {
       await run("omp.native.isolation", "runtime", async () => {
         const stateRoot = process.env.SF_OMP_SMOKE_STATE_ROOT;
         const expectedConfigRoot = process.env.SF_OMP_SMOKE_CONFIG_ROOT;
+        const expectedExecutable = process.env.SF_OMP_SMOKE_EXECUTABLE;
         const expectedCli = process.env.SF_OMP_SMOKE_CLI;
         const nativeConfigRoot = path.resolve(getConfigRootDir());
         const nativeAgentDir = path.resolve(getAgentDir());
         requireTrue(
-          stateRoot && expectedConfigRoot && expectedCli,
+          stateRoot && expectedConfigRoot && expectedExecutable,
           "Missing launcher isolation contract.",
         );
         requireTrue(
@@ -338,17 +339,24 @@ export default async function smoke(pi: ExtensionAPI): Promise<void> {
           nativeCacheRoot === path.join(stateRoot, "omp", "natives"),
           "Native addon cache escaped isolated stateRoot.",
         );
-        const actualCli = await realpath(process.argv[1] ?? "");
+        const executable = await realpath(process.execPath);
         requireTrue(
-          actualCli === (await realpath(expectedCli)),
-          `Unexpected OMP CLI entrypoint: ${actualCli}`,
+          executable === (await realpath(expectedExecutable)),
+          `Unexpected OMP executable: ${executable}`,
         );
+        const actualCli = expectedCli ? await realpath(process.argv[1] ?? "") : executable;
+        if (expectedCli) {
+          requireTrue(
+            actualCli === (await realpath(expectedCli)),
+            `Unexpected OMP CLI entrypoint: ${actualCli}`,
+          );
+        }
         return {
           nativeConfigRoot,
           nativeAgentDir,
           nativeCacheRoot,
           actualCli,
-          executable: process.execPath,
+          executable,
           home: process.env.HOME,
         };
       });
@@ -714,8 +722,8 @@ export default async function smoke(pi: ExtensionAPI): Promise<void> {
         .filter((name) => name.endsWith(".ts") && selected.includes(name.slice(0, -3)))
         .sort();
       for (const name of modules) {
-        // Check modules are discovered from disk per packaged extension.
-        const module: unknown = await import(path.join(CHECKS_DIR, name));
+        // Use the host loader for checks too: a compiled host supplies bundled native modules.
+        const module = await loadLegacyPiModule(path.join(CHECKS_DIR, name));
         const checksFor = record(module).default;
         if (typeof checksFor !== "function") {
           checks.push({

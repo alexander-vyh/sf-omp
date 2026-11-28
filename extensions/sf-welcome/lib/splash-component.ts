@@ -6,8 +6,7 @@
  *   - Two-column (default, termWidth ≥ SINGLE_COL_THRESHOLD):
  *       Left:  Gradient Pi logo, model info, optional gateway usage,
  *              environment checks, and release freshness rows
- *       Right: Announcements, loaded counts, recent sessions,
- *              recommended extensions, attribution
+ *       Right: Announcements, loaded counts, recent sessions, attribution
  *   - Single-column (narrow terminals): left block stacked above right block
  *     so no content gets squeezed or truncated with an ellipsis. See issue #17
  *     (macOS Terminal.app at ~92 cols was rendering the splash with a hard
@@ -18,8 +17,8 @@
  *   terminals that lack emoji font fallback (notably Terminal.app without
  *   an emoji-capable Nerd Font) get ASCII equivalents instead of tofu.
  */
-import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { ExtensionRows } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import { normalizeAnsiForTerminal } from "../../../lib/common/color-policy.ts";
 import { glyph, resolveGlyphMode, type GlyphMode } from "../../../lib/common/glyph-policy.ts";
 import {
@@ -225,7 +224,7 @@ function paintWordmarkRowsWithShadow(rows: string[], offset: number): string[] {
 
 function centerText(text: string, width: number): string {
   const visLen = visibleWidth(text);
-  if (visLen >= width) return truncateToWidth(text, width, "…");
+  if (visLen >= width) return truncate(text, width);
   const leftPad = Math.floor((width - visLen) / 2);
   const rightPad = width - visLen - leftPad;
   return " ".repeat(leftPad) + text + " ".repeat(rightPad);
@@ -260,7 +259,7 @@ function wrapPlainText(text: string, width: number): string[] {
 
 function fitToWidth(str: string, width: number): string {
   const visLen = visibleWidth(str);
-  if (visLen > width) return truncateToWidth(str, width, "…");
+  if (visLen > width) return truncate(str, width);
   return str + " ".repeat(width - visLen);
 }
 
@@ -310,7 +309,7 @@ function shouldRenderMonthlyUsage(data: SplashData): boolean {
 }
 
 const ICON_COL_WIDTH = 2;
-const LABEL_COL_WIDTH = "Herdr (Multiplexer)".length;
+const LABEL_COL_WIDTH = "Context Compaction".length;
 
 type SplashGlyphKey = Parameters<typeof glyph>[0];
 
@@ -629,44 +628,6 @@ function formatNodeRuntimeStatusValue(data: SplashData): string {
   return `${SF_ORANGE("?")} ${SF_ORANGE("Unknown")}`;
 }
 
-function compactHerdrRuntimeVersion(version: string): string {
-  const preview = version.match(/^(\d+\.\d+\.\d+-preview)/);
-  return preview?.[1] ?? version;
-}
-
-function formatHerdrRuntimeStatusValue(data: SplashData): string {
-  const herdr = data.herdrRuntime;
-  if (!herdr || herdr.loading) return MUTED("Checking");
-  if (herdr.kind === "ready") {
-    if (herdr.runtimeVersionLoading) {
-      return `${SF_GREEN("✓")} ${SF_GREEN("tools ready")} ${MUTED("· version checking")}`;
-    }
-    const version = herdr.runtimeVersion
-      ? compactHerdrRuntimeVersion(herdr.runtimeVersion)
-      : undefined;
-    if (herdr.piIntegration.kind !== "installed" && herdr.packageInstalled) {
-      const identity = version ? `${version} · ` : "";
-      return `${SF_ORANGE("!")} ${SF_ORANGE(`${identity}Pi bridge setup needed`)}`;
-    }
-    return version
-      ? `${SF_GREEN("✓")} ${SF_GREEN(version)} ${MUTED("· tools ready")}`
-      : `${SF_GREEN("✓")} ${SF_GREEN("tools ready")}`;
-  }
-  if (herdr.kind === "tool-only") {
-    return `${SF_ORANGE("!")} ${SF_ORANGE("Tools active")} ${MUTED("· start Pi inside Herdr")}`;
-  }
-  if (herdr.kind === "installed-not-active") {
-    const detail = herdr.activeControlEnv
-      ? "· reload or check package filters"
-      : "· start Pi inside Herdr";
-    return `${SF_ORANGE("!")} ${SF_ORANGE("Package installed")} ${MUTED(detail)}`;
-  }
-  if (herdr.kind === "disabled") {
-    return `${MUTED("○")} ${MUTED("Disabled")}`;
-  }
-  return `${SF_ORANGE("!")} ${SF_ORANGE("Not installed")} ${MUTED("· /sf-herdr doctor")}`;
-}
-
 function formatFontRuntimeStatusValue(data: SplashData, mode: GlyphMode): string {
   const font = data.fontRuntime;
   if (!font || font.loading || font.kind === "checking") {
@@ -766,11 +727,9 @@ function formatAutoUpdateStatusValue(data: SplashData, mode: GlyphMode): string 
   if (auto.status.running) {
     const labels: Record<string, string> = {
       "sf-cli": "SF CLI",
-      "pi-packages": "Pi packages",
       "sf-omp-checkout": "sf-omp checkout",
-      "pi-runtime": "Pi runtime",
     };
-    const target = labels[auto.status.currentTarget ?? "pi-runtime"] ?? "Pi runtime";
+    const target = labels[auto.status.currentTarget ?? "sf-omp-checkout"] ?? "sf-omp checkout";
     return MUTED(`${glyph("hourglass", mode)} Updating ${target}`);
   }
   if (!auto.enabled) return `${MUTED("○")} ${MUTED("Off · optional")}`;
@@ -791,7 +750,7 @@ function autoUpdateActionHint(data: SplashData): string | null {
   const auto = data.autoUpdate;
   if (!auto || !auto.enabled) return null;
   if (auto.status.lastResult === "failed") return "/sf-pi auto-update status";
-  if (auto.status.restartRecommended) return "restart pi to use updated runtime/extensions";
+  if (auto.status.restartRecommended) return "restart OMP to load the updated sf-omp checkout";
   return null;
 }
 
@@ -991,7 +950,7 @@ function buildLeftColumn(
   lines.push("");
 
   // Model info
-  const modelTruncated = truncateToWidth(data.modelName, colWidth - 4, "…");
+  const modelTruncated = truncate(data.modelName, colWidth - 4);
   lines.push(centerText(SF_BLUE(modelTruncated), colWidth));
   lines.push(centerText(MUTED(data.providerName), colWidth));
   // Trademark caption — anchored under the provider name and wrapped to fit
@@ -1051,7 +1010,7 @@ function buildLeftColumn(
     // row never adds boot-time work.
     if (data.caBundleNudge) {
       const hint = `${data.caBundleNudge.command} \u2014 ${data.caBundleNudge.message}`;
-      const truncated = truncateToWidth(hint, Math.max(10, colWidth - 4), "…");
+      const truncated = truncate(hint, Math.max(10, colWidth - 4));
       lines.push(`   ${SF_ORANGE("⚠")} ${MUTED(truncated)}`);
     }
   }
@@ -1067,7 +1026,7 @@ function buildLeftColumn(
     );
     const hint = compactionActionHint(data);
     if (hint) {
-      const truncated = truncateToWidth(hint, Math.max(10, colWidth - 4), "…");
+      const truncated = truncate(hint, Math.max(10, colWidth - 4));
       lines.push(`   ${MUTED(`→ ${truncated}`)}`);
     }
   }
@@ -1088,16 +1047,10 @@ function buildLeftColumn(
     );
   }
 
-  // Herdr always consumes exactly one startup row. Healthy protocol/control
-  // identity belongs in on-demand detail rather than a second gray sub-line.
-  lines.push(
-    formatGlyphInfoRow("herdr", mode, "Herdr (Multiplexer)", formatHerdrRuntimeStatusValue(data)),
-  );
-
   lines.push(formatGlyphInfoRow("fonts", mode, "Fonts", formatFontRuntimeStatusValue(data, mode)));
   const fontHint = fontActionHint(data);
   if (fontHint) {
-    const truncated = truncateToWidth(fontHint, Math.max(10, colWidth - 4), "…");
+    const truncated = truncate(fontHint, Math.max(10, colWidth - 4));
     lines.push(`   ${MUTED(`→ ${truncated}`)}`);
   }
 
@@ -1118,7 +1071,7 @@ function buildLeftColumn(
   );
   const browserHint = browserRuntimeActionHint(data);
   if (browserHint) {
-    const truncated = truncateToWidth(browserHint, Math.max(10, colWidth - 4), "…");
+    const truncated = truncate(browserHint, Math.max(10, colWidth - 4));
     lines.push(`   ${MUTED(`→ ${truncated}`)}`);
   }
 
@@ -1133,7 +1086,7 @@ function buildLeftColumn(
     );
     const codeAnalyzerHint = codeAnalyzerActionHint(data);
     if (codeAnalyzerHint) {
-      const truncated = truncateToWidth(codeAnalyzerHint, Math.max(10, colWidth - 4), "…");
+      const truncated = truncate(codeAnalyzerHint, Math.max(10, colWidth - 4));
       lines.push(`   ${MUTED(`→ ${truncated}`)}`);
     }
   }
@@ -1146,18 +1099,8 @@ function buildLeftColumn(
   );
   const nodeCertHint = nodeCertActionHint(data.nodeCert);
   if (nodeCertHint) {
-    const truncated = truncateToWidth(nodeCertHint, Math.max(10, colWidth - 4), "…");
+    const truncated = truncate(nodeCertHint, Math.max(10, colWidth - 4));
     lines.push(`   ${MUTED(`→ ${truncated}`)}`);
-  }
-
-  // Privacy / telemetry posture. sf-pi opts users out of pi's anonymous
-  // install/update ping by default. The row is always rendered so the
-  // posture is auditable at a glance — colored green for off, dim gray
-  // for on (informational, not a warning).
-  if (data.privacy) {
-    lines.push(
-      formatGlyphInfoRow("privacy", mode, "Privacy", formatPrivacyStatusValue(data.privacy)),
-    );
   }
 
   lines.push(
@@ -1165,7 +1108,7 @@ function buildLeftColumn(
   );
   const autoUpdateHint = autoUpdateActionHint(data);
   if (autoUpdateHint) {
-    const truncated = truncateToWidth(autoUpdateHint, Math.max(10, colWidth - 4), "…");
+    const truncated = truncate(autoUpdateHint, Math.max(10, colWidth - 4));
     lines.push(`   ${MUTED(`→ ${truncated}`)}`);
   }
 
@@ -1181,14 +1124,13 @@ function buildLeftColumn(
   // from the row's current state.
   const sfSkillsHint = sfSkillsActionHint(data.sfSkills);
   if (sfSkillsHint) {
-    const truncated = truncateToWidth(sfSkillsHint, Math.max(10, colWidth - 4), "…");
+    const truncated = truncate(sfSkillsHint, Math.max(10, colWidth - 4));
     lines.push(`   ${MUTED(`→ ${truncated}`)}`);
   }
 
-  // SF Pi release freshness sits under SF Skills. Pi owns Pi Runtime
-  // release checks and update guidance. The sf-pi row carries the extension
-  // active/total count, replacing the older top-level "sf-pi Extensions"
-  // row without losing the enablement signal.
+  // SF Pi release freshness sits under SF Skills. The sf-pi row carries the
+  // extension active/total count, replacing the older top-level "sf-pi
+  // Extensions" row without losing the enablement signal.
   lines.push(
     formatGlyphInfoRow(
       "extensions",
@@ -1199,30 +1141,13 @@ function buildLeftColumn(
   );
   const sfPiHint = releaseActionHint(data.sfPiRelease);
   if (sfPiHint) {
-    const truncated = truncateToWidth(sfPiHint, Math.max(10, colWidth - 4), "…");
+    const truncated = truncate(sfPiHint, Math.max(10, colWidth - 4));
     lines.push(`   ${MUTED(`→ ${truncated}`)}`);
   }
 
   lines.push("");
 
   return lines;
-}
-
-function formatPrivacyStatusValue(privacy: NonNullable<SplashData["privacy"]>): string {
-  const sourceLabel =
-    privacy.source === "sf-pi-default"
-      ? "sf-pi default"
-      : privacy.source === "user-override"
-        ? "user override"
-        : "unset";
-  // Lead with a ✓ glyph so this row aligns visually with the Slack /
-  // LLM Gateway / SF CLI rows above it. Color carries the semantics:
-  // green when telemetry is off (privacy-preserving), muted when on
-  // (informational, not a warning — see comment at call site).
-  if (privacy.telemetryEnabled) {
-    return `${MUTED("✓")} ${MUTED("telemetry on")} ${MUTED(`(${sourceLabel})`)}`;
-  }
-  return `${SF_GREEN("✓")} ${SF_GREEN("telemetry off")} ${MUTED(`(${sourceLabel})`)}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1234,10 +1159,10 @@ function buildRightColumn(data: SplashData, colWidth: number, mode: GlyphMode): 
 
   // --- Doctor nudge (startup/setup self-heal) ---
   // Render first so setup issues get a clear, actionable next step instead
-  // of being buried behind general announcements or recommendations.
+  // of being buried behind general announcements.
   if (data.doctor && data.doctor.issueCount > 0) {
     lines.push(` ${BOLD}${SF_ORANGE(`${glyph("warn", mode)} Setup check`)}${RESET}`);
-    const detail = truncateToWidth(data.doctor.message, Math.max(10, colWidth - 4), "…");
+    const detail = truncate(data.doctor.message, Math.max(10, colWidth - 4));
     lines.push(` ${SF_ORANGE("!")} ${MUTED(detail)}`);
     lines.push(` ${MUTED("→")} ${SF_CYAN(data.doctor.command)} ${MUTED("to repair")}`);
     lines.push(horizontalRule(colWidth));
@@ -1259,7 +1184,7 @@ function buildRightColumn(data: SplashData, colWidth: number, mode: GlyphMode): 
       const markerColor =
         item.severity === "critical" ? SF_RED : item.severity === "warn" ? SF_ORANGE : SF_CYAN;
       const marker = markerColor(announcementMarker(item.kind));
-      const truncated = truncateToWidth(item.title, Math.max(10, colWidth - 4), "…");
+      const truncated = truncate(item.title, Math.max(10, colWidth - 4));
       lines.push(` ${marker} ${MUTED(truncated)}`);
     }
     lines.push(horizontalRule(colWidth));
@@ -1302,37 +1227,6 @@ function buildRightColumn(data: SplashData, colWidth: number, mode: GlyphMode): 
     }
   }
   lines.push(horizontalRule(colWidth));
-
-  // --- Recommended extensions ---
-  // Replaces the legacy Salesforce AI block. Shows the install counter plus
-  // only the top four pending items so the splash stays scannable. Full
-  // detail, installed items, and declined decisions live in
-  // `/sf-pi recommended`.
-  const recs = data.recommendations;
-  if (recs && recs.total > 0) {
-    lines.push(
-      ` ${BOLD}${SF_BLUE(`${glyph("extensions", mode)} Recommended`)}${RESET}  ${SF_GREEN(`${recs.installedCount}`)}${MUTED(`/${recs.total} installed`)}`,
-    );
-    const pending = recs.items.filter((i) => i.status === "pending").slice(0, 4);
-    for (const item of pending) {
-      const truncated = truncateToWidth(item.name, Math.max(8, colWidth - 4), "…");
-      lines.push(` ${MUTED("○")} ${MUTED(truncated)}`);
-    }
-    if (recs.pendingCount > 0) {
-      const more =
-        recs.pendingCount > pending.length
-          ? ` ${MUTED(`(+${recs.pendingCount - pending.length} more)`)}`
-          : "";
-      lines.push(
-        ` ${MUTED("→")} ${MUTED(`Top ${pending.length} not installed`)} ${SF_CYAN("/sf-pi recommended")}${more}`,
-      );
-    } else if (recs.installedCount === recs.total) {
-      lines.push(` ${SF_GREEN("✓")} ${MUTED("All recommendations installed")}`);
-    } else {
-      lines.push(` ${SF_GREEN("✓")} ${MUTED("No pending recommendations")}`);
-    }
-    lines.push(horizontalRule(colWidth));
-  }
 
   // --- External skill sources (Claude Code / Codex / Cursor interop) ---
   //
@@ -1385,7 +1279,7 @@ function buildRightColumn(data: SplashData, colWidth: number, mode: GlyphMode): 
  *   - Never exceed the terminal. Keep a 2-col gutter when there is room so
  *     rounded corners do not sit on the pane edge.
  *   - No minimum box floor. A previous 80-col floor forced an 80-wide box
- *     into 60–79 col panes (typical Herdr vertical splits) and crashed Pi's
+ *     into 60–79 col panes (typical multiplexer vertical splits) and crashed Pi's
  *     TUI with `Rendered line N exceeds terminal width (80 > 78)`.
  *   - Maximum 220 so wide terminals fill instead of leaving a truncated-
  *     looking island with background text showing around it.
@@ -1411,7 +1305,7 @@ function getBoxWidth(termWidth: number): number {
 }
 
 function fitSplashLines(lines: string[], termWidth: number): string[] {
-  return lines.map((line) => truncateToWidth(normalizeAnsiForTerminal(line), termWidth, ""));
+  return lines.map((line) => truncate(normalizeAnsiForTerminal(line), termWidth, ""));
 }
 
 function getColumnWidths(boxWidth: number): { leftCol: number; rightCol: number } {
@@ -1496,7 +1390,7 @@ function renderSplashBox(
 // Splash overlay component
 // ═══════════════════════════════════════════════════════════════════════════
 
-export class SfWelcomeOverlay implements Component {
+export class SfWelcomeOverlay implements ExtensionRows {
   private data: SplashData;
   // Per-character color offset driven by the extension's animation
   // interval. Incremented each tick for the startup animation window,
@@ -1510,8 +1404,6 @@ export class SfWelcomeOverlay implements Component {
   setHeaderOffset(offset: number): void {
     this.headerOffset = offset;
   }
-
-  invalidate(): void {}
 
   render(termWidth: number): string[] {
     if (termWidth < ABSOLUTE_MIN_TERM_WIDTH) return [];
@@ -1541,7 +1433,7 @@ export class SfWelcomeOverlay implements Component {
 // Splash header component (persistent)
 // ═══════════════════════════════════════════════════════════════════════════
 
-export class SfWelcomeHeader implements Component {
+export class SfWelcomeHeader implements ExtensionRows {
   private data: SplashData;
   // Mirrors SfWelcomeOverlay.headerOffset so non-overlay renders (e.g.
   // the persistent header shown in session lists) can show the same
@@ -1555,8 +1447,6 @@ export class SfWelcomeHeader implements Component {
   setHeaderOffset(offset: number): void {
     this.headerOffset = offset;
   }
-
-  invalidate(): void {}
 
   render(termWidth: number): string[] {
     if (termWidth < ABSOLUTE_MIN_TERM_WIDTH) return [];

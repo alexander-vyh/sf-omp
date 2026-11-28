@@ -3,7 +3,7 @@
  * Compile diagnostics renderer.
  *
  * Two surfaces, one extractor:
- *   - renderCompileResult(...)  — pi-tui Text component (TUI)
+ *   - renderCompileResult(...)  — styled terminal rows (TUI)
  *   - compileResultMarkdown(...)— Markdown string (slash panels, reports)
  *
  * The LLM-facing summary text is unchanged (still produced by
@@ -11,8 +11,8 @@
  * the visual row that the human sees in the TUI.
  */
 
-import { Text } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionRows, ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
+import { textRows } from "../../../../lib/common/ui-rows.ts";
 import { padRightVisible, visibleWidth } from "./shared.ts";
 
 export interface CompileDiagnostic {
@@ -52,11 +52,11 @@ interface CompileArgs {
 
 // ─── renderCall ───────────────────────────────────────────────────────────────
 
-export function renderCompileCall(args: CompileArgs, theme: Theme): Text {
+export function renderCompileCall(args: CompileArgs, theme: Theme): ExtensionRows {
   const label = theme.fg("toolTitle", theme.bold("⚙  Agent Script compile "));
   const action = args.action ?? "check";
   const summary = `${action} · ${args.path ?? "?"}`;
-  return new Text(label + theme.fg("muted", summary), 0, 0);
+  return textRows(label + theme.fg("muted", summary));
 }
 
 // ─── renderResult ─────────────────────────────────────────────────────────────
@@ -70,17 +70,13 @@ export function renderCompileResult(
   result: { details?: CompileResultDetails | unknown; content?: unknown[] },
   opts: RenderOpts,
   theme: Theme,
-): Text {
-  if (opts.isPartial) return new Text(theme.fg("warning", "⚙  compile · running…"), 0, 0);
+): ExtensionRows {
+  if (opts.isPartial) return textRows(theme.fg("warning", "⚙  compile · running…"));
   const details = (result.details ?? {}) as CompileResultDetails;
   if (!details.ok) {
-    return new Text(
-      theme.fg("error", `✗ ${getFirstText(result.content) || "compile failed"}`),
-      0,
-      0,
-    );
+    return textRows(theme.fg("error", `✗ ${getFirstText(result.content) || "compile failed"}`));
   }
-  return new Text(formatCompileBody(details, theme), 0, 0);
+  return textRows(formatCompileBody(details, theme));
 }
 
 // ─── Markdown emitter ─────────────────────────────────────────────────────────

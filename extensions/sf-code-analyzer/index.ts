@@ -111,8 +111,7 @@ const CODE_ANALYZER_ACTIONS: SfPiCommandAction<CodeAnalyzerPanelAction>[] = [
   {
     value: "recipes",
     label: "Show scan recipes",
-    description:
-      "Show default automatic profiles, broader explicit scan presets, and Herdr handoff guidance.",
+    description: "Show default automatic profiles and broader explicit scan presets.",
     group: "Reference",
   },
   {
@@ -292,7 +291,7 @@ function buildCodeAnalyzerManagerActions(pi: ExtensionAPI): ManagerDetailAction[
       run: (ctx, scope) => handleAction(pi, ctx, action.value, true, scope),
       ...(action.value === "setup"
         ? {
-            createPanel: (theme, _cwd, _scope, done, ctx) =>
+            createPanel: (theme, _cwd, _scope, done, ctx, ui) =>
               createCodeAnalyzerConfirmPanel({
                 theme,
                 title: "Install/update Code Analyzer plugin",
@@ -300,19 +299,21 @@ function buildCodeAnalyzerManagerActions(pi: ExtensionAPI): ManagerDetailAction[
                   "This runs `sf plugins install code-analyzer` and changes your local Salesforce CLI plugin state.",
                 confirmLabel: "Install/update plugin",
                 onConfirm: () => setupCodeAnalyzerPlugin(pi, ctx),
+                requestRender: () => ui.requestRender(),
                 done,
               }),
           }
         : {}),
       ...(action.value === "apexguru-setup-start"
         ? {
-            createPanel: (theme, _cwd, _scope, done) =>
+            createPanel: (theme, _cwd, _scope, done, _ctx, ui) =>
               createCodeAnalyzerConfirmPanel({
                 theme,
                 title: "Start ApexGuru setup check with SF Browser",
                 detail: `${formatApexGuruSetupRunbook()}\n\nThis queues a normal agent follow-up that uses sf_browser tools visibly. No Setup enable/accept/save click should happen without a second explicit approval.`,
                 confirmLabel: "Queue browser setup check",
                 onConfirm: () => queueApexGuruBrowserSetup(pi),
+                requestRender: () => ui.requestRender(),
                 done,
               }),
           }
@@ -666,7 +667,7 @@ function buildHelpText(): string {
     "",
     "LLM tool actions:",
     "  code_analyzer action='doctor'       Check setup prerequisites.",
-    "  code_analyzer action='recipes'      Show scan recipes and Herdr handoff guidance.",
+    "  code_analyzer action='recipes'      Show scan recipes.",
     "  code_analyzer action='rules'        Preview rule selectors.",
     "  code_analyzer action='run'          Run a scan and parse JSON output.",
     "  code_analyzer action='config'       Write effective Code Analyzer config.",

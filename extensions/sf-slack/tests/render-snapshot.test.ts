@@ -32,8 +32,9 @@
  * eyeball the diff before committing.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import type { Text } from "@earendil-works/pi-tui";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import type { UiNode } from "@oh-my-pi/pi-tui";
+import { wrap } from "@oh-my-pi/pi-tui/text/width";
 import { renderCall, renderResult } from "../lib/render.ts";
 import { resetPreferences, setPreferences } from "../lib/preferences.ts";
 import { getUserCache, getChannelCache } from "../lib/api.ts";
@@ -46,13 +47,13 @@ const passthroughTheme = {
   bold: (text: string) => text,
   italic: (text: string) => text,
   strikethrough: (text: string) => text,
-} as unknown as Theme;
+} as ExtensionTheme;
 
-/** Render a Text widget to a single multi-line string. Strips trailing
- *  whitespace from each line so right-padding does not leak into snapshots. */
-function renderToString(text: Text, width = 120): string {
-  const lines = text.render(width);
-  return lines.map((line) => line.replace(/\s+$/u, "")).join("\n");
+/** Exercise the native ANSI node's wrapping; trailing padding is not visual content. */
+function renderToString(node: UiNode<"ansi">, width = 120): string {
+  return wrap(node.props().text ?? "", width)
+    .map((line) => line.trimEnd())
+    .join("\n");
 }
 
 // ─── Fixtures (all values are synthetic) ────────────────────────────────────
@@ -159,6 +160,24 @@ describe("renderResult visual snapshots", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2099-01-01T00:00:00Z"));
 
+    // Use a consistent default locale for snapshots, without replacing the
+    // native formatting or overriding an explicit locale from the renderer.
+    const { toLocaleDateString, toLocaleTimeString } = Date.prototype;
+    vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(function (
+      this: Date,
+      locales,
+      options,
+    ) {
+      return toLocaleDateString.call(this, locales === undefined ? "en-US" : locales, options);
+    });
+    vi.spyOn(Date.prototype, "toLocaleTimeString").mockImplementation(function (
+      this: Date,
+      locales,
+      options,
+    ) {
+      return toLocaleTimeString.call(this, locales === undefined ? "en-US" : locales, options);
+    });
+
     getUserCache().clear();
     getChannelCache().clear();
     resetPreferences();
@@ -169,6 +188,7 @@ describe("renderResult visual snapshots", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -481,4 +501,13 @@ describe("renderResult visual snapshots", () => {
     );
     expect(renderToString(text)).toMatchInlineSnapshot(`"🔎 No results for "nothing-here""`);
   });
+});
+
+it("renders timestamps in the host locale outside the snapshot fixture", () => {
+  const date = new Date(Number(TS_PARENT) * 1_000);
+  const day = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const text = renderCall({ action: "permalink", ts: TS_PARENT }, passthroughTheme);
+
+  expect(renderToString(text)).toContain(` · ${day} · ${time}`);
 });

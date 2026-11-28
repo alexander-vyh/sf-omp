@@ -34,7 +34,7 @@ export function evaluateInstructionBehaviorScenario(
   observation: InstructionBehaviorObservation,
 ): InstructionBehaviorScenarioResult {
   const observedTools = observation.calls.map((call) => call.tool);
-  const localContextTools = new Set(["read", "grep", "find", "ls", "bash"]);
+  const localContextTools = new Set(["read", "grep", "glob", "find", "bash"]);
   const hasFirstToolContract = scenario.expected_first_tools.length > 0;
   const expectedLocalTool = scenario.expected_first_tools.some((tool) =>
     localContextTools.has(tool),

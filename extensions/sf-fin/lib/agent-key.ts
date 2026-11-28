@@ -2,7 +2,7 @@
 /**
  * Fin Agent API key safety: storage, source detection, and cached checks.
  *
- * The key is a second Pi-owned credential (`/login sf-fin-agent`), held to the
+ * The key is a second OMP-owned credential (`/login sf-fin-agent`), held to the
  * same rules as the personal token (ADR 0087 proof set) plus two of its own:
  *
  * - Separation: it must not be the personal token. The two have different

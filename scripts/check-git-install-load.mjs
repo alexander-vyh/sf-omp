@@ -1,39 +1,24 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /* SPDX-License-Identifier: Apache-2.0 */
 /**
  * Git-install load smoke test.
  *
- * Reproduces how Pi installs SF Pi from git: copy the tracked tree into a
- * temporary directory, run `npm install --omit=dev --legacy-peer-deps`
- * (devDependencies and peerDependencies absent), then load every extension
- * through Pi's real extension loader, which aliases Pi's bundled modules.
+ * Copy the git package into a temporary directory, run
+ * `npm install --omit=dev --legacy-peer-deps`, then load every extension
+ * through OMP's published extension loader, which aliases its host modules.
  * A runtime import that only resolves in this repo's dev install fails here
  * the same way it fails for users.
  *
- * Uses this repo's dev copy of @earendil-works/pi-coding-agent as the host.
+ * Uses the pinned OMP dev package as the host, never the git package's dev deps.
  * Network: npm registry (production dependencies only).
  */
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const loaderPath = path.join(
-  repoRoot,
-  "node_modules",
-  "@earendil-works",
-  "pi-coding-agent",
-  "dist",
-  "core",
-  "extensions",
-  "loader.js",
-);
-if (!existsSync(loaderPath)) {
-  console.error("❌ Pi's extension loader is missing; run npm ci first.");
-  process.exit(1);
-}
 
 const work = mkdtempSync(path.join(tmpdir(), "sf-pi-git-install-"));
 const keep = process.argv.includes("--keep");
@@ -57,13 +42,14 @@ try {
     ["install", "--omit=dev", "--legacy-peer-deps", "--no-audit", "--no-fund", "--ignore-scripts"],
     { cwd: work, stdio: ["ignore", "ignore", "inherit"] },
   );
-  for (const devOnly of ["typebox", "typescript", "vitest"]) {
+  for (const devOnly of ["@oh-my-pi/pi-coding-agent", "@oh-my-pi/pi-tui", "typescript", "vitest"]) {
     if (existsSync(path.join(work, "node_modules", devOnly))) {
-      throw new Error(`${devOnly} is present after --omit=dev; the install does not match Pi's.`);
+      throw new Error(`${devOnly} is present after --omit=dev; the git fixture includes dev deps.`);
     }
   }
 
-  const { loadExtensions } = await import(pathToFileURL(loaderPath).href);
+  const { loadExtensions } =
+    await import("@oh-my-pi/pi-coding-agent/extensibility/extensions/loader");
   const entries = readdirSync(path.join(work, "extensions"))
     .map((name) => path.join(work, "extensions", name, "index.ts"))
     .filter((file) => existsSync(file))

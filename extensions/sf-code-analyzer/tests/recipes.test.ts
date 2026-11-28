@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 import {
   CODE_ANALYZER_RECIPES,
   buildScanRecipeGuidance,
-  herdrHandoffsForRecipes,
   renderBroaderRecipeSuggestion,
   suggestBroaderRecipes,
 } from "../lib/recipes.ts";
@@ -35,7 +34,6 @@ describe("Code Analyzer recipes", () => {
     });
 
     expect(guidance.suggestions).toEqual([]);
-    expect(guidance.herdrHandoffs).toEqual([]);
   });
 
   it("suggests CPD guidance for many changed targets", () => {
@@ -45,7 +43,6 @@ describe("Code Analyzer recipes", () => {
     });
 
     expect(guidance.suggestions.map((recipe) => recipe.id)).toEqual(["cpd"]);
-    expect(guidance.herdrHandoffs.map((handoff) => handoff.recipeId)).toEqual(["cpd"]);
   });
 
   it("suggests RetireJS guidance for dependency manifest changes", () => {
@@ -55,7 +52,6 @@ describe("Code Analyzer recipes", () => {
     });
 
     expect(guidance.suggestions.map((recipe) => recipe.id)).toEqual(["retire-js"]);
-    expect(guidance.herdrHandoffs.map((handoff) => handoff.recipeId)).toEqual(["retire-js"]);
     expect(guidance.text).toContain("retire-js:Recommended");
   });
 
@@ -80,16 +76,12 @@ describe("Code Analyzer recipes", () => {
     });
 
     expect(guidance.suggestions.map((recipe) => recipe.id)).toEqual(["security", "sfge"]);
-    expect(guidance.herdrHandoffs.map((handoff) => handoff.recipeId)).toEqual(["security", "sfge"]);
     expect(guidance.text).toContain("not run automatically");
-    expect(guidance.text).toContain("sf_herdr_plan");
   });
 
-  it("includes broad scan Herdr handoff metadata", () => {
+  it("keeps the AppExchange recipe selector", () => {
     const appexchange = CODE_ANALYZER_RECIPES.find((recipe) => recipe.id === "appexchange");
     expect(appexchange?.ruleSelector).toEqual(["AppExchange"]);
-    expect(appexchange?.herdrRecommended).toBe(true);
-    expect(appexchange?.herdrReason).toContain("long-running");
   });
 
   it("suggests broader recipes from changed target context", () => {
@@ -109,23 +101,5 @@ describe("Code Analyzer recipes", () => {
     expect(rendered).toContain("Broader scan suggestions");
     expect(rendered).toContain("security");
     expect(rendered).toContain("sfge");
-  });
-
-  it("builds plan-focused Herdr workflow handoff metadata", () => {
-    const [handoff] = herdrHandoffsForRecipes(["appexchange"]);
-    expect(handoff).toMatchObject({
-      recipeId: "appexchange",
-      label: "Plan a Herdr lane for AppExchange security review scan",
-      commandSource: "owning-extension",
-      plan: { intent: "verify", primaryWorkflow: "generic" },
-    });
-    expect(JSON.stringify(handoff)).not.toContain("suggestedCommand");
-    expect(JSON.stringify(handoff)).not.toContain("expectedDuration");
-  });
-
-  it("infers Apex workflow for Apex-specific Herdr handoffs", () => {
-    const [handoff] = herdrHandoffsForRecipes(["sfge"]);
-    expect(handoff.plan.primaryWorkflow).toBe("apex");
-    expect(handoff.plan.intent).toBe("verify");
   });
 });

@@ -6,16 +6,12 @@
  * `sfPi.guardrail`. Advanced custom rule overrides stay in the expert override
  * file and are rendered as rule definition sources, not edited as raw JSON.
  */
-import {
-  Input,
-  type Focusable,
-  matchesKey,
-  truncateToWidth,
-  visibleWidth,
-} from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
 import { globalSettingsPath } from "../../../lib/common/sf-pi-settings.ts";
+import { RowsTextField } from "../../../lib/common/ui-field.ts";
+import { decodeRowKey, matchesKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import { loadConfig, userConfigPath } from "./config.ts";
 import { readGuardrailPiSettings, setGuardrailPowerToolSettings } from "./guardrail-settings.ts";
 import {
@@ -68,14 +64,16 @@ interface RuleRow {
   behaviorSource: RuleBehaviorSource;
 }
 
-class SfGuardrailConfigPanel implements Focusable {
+class SfGuardrailConfigPanel implements RowsPanel {
   private _focused = false;
   private page: SettingsPage = { kind: "home" };
   private selectedByPage: Record<string, number> = {};
   private lastSavedMessage = "";
   private config: GuardrailConfig;
   private source: string;
-  private aliasInput: Input | undefined;
+  private aliasInput: RowsTextField | undefined;
+  private filterInput: RowsTextField | undefined;
+  private activeRow: number | undefined;
 
   get focused(): boolean {
     return this._focused;
@@ -83,6 +81,7 @@ class SfGuardrailConfigPanel implements Focusable {
   set focused(value: boolean) {
     this._focused = value;
     if (this.aliasInput) this.aliasInput.focused = value;
+    if (this.filterInput) this.filterInput.focused = value;
   }
 
   constructor(
@@ -97,7 +96,7 @@ class SfGuardrailConfigPanel implements Focusable {
 
   handleInput(data: string): void {
     if (this.scope === "project") {
-      if (matchesKey(data, "escape") || data === "q") this.done(undefined);
+      if (matchesKey(data, "escape") || matchesKey(data, "q")) this.done(undefined);
       return;
     }
 
@@ -111,7 +110,7 @@ class SfGuardrailConfigPanel implements Focusable {
       return;
     }
 
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.goBack();
       return;
     }
@@ -143,7 +142,8 @@ class SfGuardrailConfigPanel implements Focusable {
   renderContent(width: number): string[] {
     const t = this.theme;
     const lines: string[] = [];
-    const pad = (content = "") => padAnsi(truncateToWidth(content, width, ""), width);
+    const pad = (content = "") => padAnsi(truncate(content, width, ""), width);
+    this.activeRow = undefined;
 
     if (this.scope === "project") {
       return this.renderProjectScope(width).map(pad);
@@ -154,15 +154,16 @@ class SfGuardrailConfigPanel implements Focusable {
 
     switch (this.page.kind) {
       case "home":
-        lines.push(...this.renderHome(width));
+        lines.push(...this.renderHome(width, lines.length));
         break;
       case "rules":
-        lines.push(...this.renderRulesPage(width, this.page.section));
+        lines.push(...this.renderRulesPage(width, this.page.section, lines.length));
         break;
       case "rule-detail":
         lines.push(...this.renderRuleDetail(width, this.page.section, this.page.ruleId));
         break;
       case "aliases":
+        if (this.page.editing) this.activeRow = lines.length + 3;
         lines.push(...this.renderAliases(width));
         break;
       case "power":
@@ -186,7 +187,20 @@ class SfGuardrailConfigPanel implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {}
+  capturesNavigation(): boolean {
+    return !!(this.aliasInput || this.filterInput);
+  }
+
+  getActiveRow(): number | undefined {
+    return this.activeRow;
+  }
+
+  dispose(): void {
+    this.aliasInput?.dispose();
+    this.filterInput?.dispose();
+    this.aliasInput = undefined;
+    this.filterInput = undefined;
+  }
 
   private renderProjectScope(width: number): string[] {
     const t = this.theme;
@@ -212,10 +226,10 @@ class SfGuardrailConfigPanel implements Focusable {
     const text = suffix
       ? `SF Pi › SF Guardrail › Settings › ${suffix}`
       : "SF Pi › SF Guardrail › Settings";
-    return [` ${t.fg("accent", themeBold(t, truncateToWidth(text, width - 2, "…")))}`];
+    return [` ${t.fg("accent", themeBold(t, truncate(text, width - 2)))}`];
   }
 
-  private renderHome(width: number): string[] {
+  private renderHome(width: number, offset: number): string[] {
     const t = this.theme;
     const lines = [
       ` ${t.fg("muted", "Routine preferences:")} ${t.fg("dim", globalSettingsPath())}`,
@@ -233,26 +247,27 @@ class SfGuardrailConfigPanel implements Focusable {
       const item = SECTION_ITEMS[i];
       if (!item) continue;
       const isSelected = i === selected;
+      if (isSelected) this.activeRow = offset + lines.length;
       const cursor = isSelected ? t.fg("accent", "→") : " ";
       const label = isSelected ? t.fg("accent", item.label) : t.fg("text", item.label);
       lines.push(` ${cursor} ${label}`);
-      lines.push(
-        `    ${t.fg("dim", truncateToWidth(item.description, Math.max(20, width - 6), "…"))}`,
-      );
+      lines.push(`    ${t.fg("dim", truncate(item.description, Math.max(20, width - 6)))}`);
     }
     return lines;
   }
 
-  private renderRulesPage(width: number, section: RulePanelSection): string[] {
+  private renderRulesPage(width: number, section: RulePanelSection, offset: number): string[] {
     const t = this.theme;
     const rows = this.filteredRuleRows(section);
     const selected = Math.min(this.selected(section), Math.max(0, rows.length - 1));
     const lines: string[] = [];
-    if (this.page.kind === "rules" && this.page.filter) {
-      lines.push(
-        ` ${t.fg("muted", "Filter:")} ${t.fg("accent", this.page.filter)} ${t.fg("dim", `(${rows.length})`)}`,
-      );
-      lines.push("");
+    if (this.page.kind === "rules" && (this.page.filter || this.filterInput)) {
+      if (this.filterInput) this.activeRow = offset;
+      const count = `(${rows.length})`;
+      const query = this.filterInput
+        ? (this.filterInput.render(Math.max(1, width - visibleWidth(count) - 11))[0] ?? "")
+        : t.fg("accent", this.page.filter);
+      lines.push(` ${t.fg("muted", "Filter:")} ${query} ${t.fg("dim", count)}`, "");
     }
     lines.push(
       ` ${t.fg("accent", themeBold(t, "Rule id"))}${" ".repeat(31)}${t.fg("accent", themeBold(t, "Behavior"))}${" ".repeat(4)}${t.fg("accent", themeBold(t, "Source"))}`,
@@ -264,6 +279,7 @@ class SfGuardrailConfigPanel implements Focusable {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       if (!row) continue;
+      if (i === selected && !this.filterInput) this.activeRow = offset + lines.length;
       lines.push(this.renderRuleLine(row, i === selected, width));
       if (i === selected) lines.push(...this.ruleSummaryLines(row, width));
     }
@@ -296,7 +312,7 @@ class SfGuardrailConfigPanel implements Focusable {
     const t = this.theme;
     const current = productionAliasesText(this.config);
     if (this.page.kind === "aliases" && this.page.editing) {
-      const inputRows = this.aliasInput?.render(Math.max(20, width - 4)) ?? [this.page.draft];
+      const inputRows = this.aliasInput?.render(Math.max(1, width - 4)) ?? [this.page.draft];
       return [
         ` ${t.fg("accent", themeBold(t, "Edit aliases"))}`,
         `   ${t.fg("dim", "Comma-separated aliases to treat as production-level risk targets.")}`,
@@ -416,7 +432,10 @@ class SfGuardrailConfigPanel implements Focusable {
     else if (matchesKey(data, "return") || matchesKey(data, "enter")) {
       const row = rows[this.selected(this.page.section)];
       if (row) this.page = { kind: "rule-detail", section: this.page.section, ruleId: row.id };
-    } else if (data === "/") {
+    } else if (matchesKey(data, "/")) {
+      this.filterInput = new RowsTextField();
+      this.filterInput.setValue(this.page.filter);
+      this.filterInput.focused = this.focused;
       this.page = { ...this.page, filtering: true };
     }
   }
@@ -432,9 +451,9 @@ class SfGuardrailConfigPanel implements Focusable {
 
   private handleAliasesInput(data: string): void {
     if (this.page.kind !== "aliases") return;
-    if (data === "e" || data === "E") {
+    if (matchesKey(data, "e") || matchesKey(data, "shift+e")) {
       this.startAliasEdit();
-    } else if (data === "c" || data === "C") {
+    } else if (matchesKey(data, "c") || matchesKey(data, "shift+c")) {
       updateProductionAliasesFromText("");
       this.reload("Protected org aliases cleared.");
       this.page = { kind: "aliases", editing: false, draft: "" };
@@ -442,18 +461,27 @@ class SfGuardrailConfigPanel implements Focusable {
   }
 
   private handleAliasEditInput(data: string): void {
-    if (this.page.kind !== "aliases" || !this.page.editing) return;
-    this.aliasInput?.handleInput(data);
+    if (!this.aliasInput) return;
+    if (matchesKey(data, "enter")) {
+      this.saveAliasEdit(this.aliasInput.getValue());
+    } else if (matchesKey(data, "escape")) {
+      this.cancelAliasEdit();
+    } else {
+      this.aliasInput.handleInput(data);
+    }
   }
 
   private handlePowerInput(data: string): void {
     if (this.page.kind !== "power") return;
     const current = readGuardrailPiSettings().powerTool ?? { mode: "off" as const };
-    if (data === "o" || data === "O") {
+    const key = decodeRowKey(data);
+    if (!key || key.kind === "release") return;
+    const shortcut = key.text?.toLowerCase();
+    if (shortcut === "o") {
       this.savePowerTool({ ...current, mode: "off" }, "Power Tool Mode disabled.");
       return;
     }
-    if (data === "n" || data === "N") {
+    if (shortcut === "n") {
       this.confirmPowerTool(
         {
           ...current,
@@ -464,7 +492,7 @@ class SfGuardrailConfigPanel implements Focusable {
       );
       return;
     }
-    if (data === "a" || data === "A") {
+    if (shortcut === "a") {
       this.confirmPowerTool(
         {
           ...current,
@@ -475,7 +503,7 @@ class SfGuardrailConfigPanel implements Focusable {
       );
       return;
     }
-    if (data === "p" || data === "P") {
+    if (shortcut === "p") {
       const next = { ...current, productionUnknown: current.productionUnknown !== true };
       this.confirmPowerTool(
         next,
@@ -485,7 +513,7 @@ class SfGuardrailConfigPanel implements Focusable {
       );
       return;
     }
-    const index = Number(data) - 1;
+    const index = Number(shortcut) - 1;
     if (Number.isInteger(index) && index >= 0 && index < NATIVE_TOOL_FAMILIES.length) {
       const family = NATIVE_TOOL_FAMILIES[index];
       if (!family) return;
@@ -505,7 +533,7 @@ class SfGuardrailConfigPanel implements Focusable {
       this.savePowerTool(this.page.next, "Power Tool Mode saved.");
       return;
     }
-    if (matchesKey(data, "escape") || data === "q") {
+    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
       this.page = { kind: "power" };
     }
   }
@@ -531,17 +559,16 @@ class SfGuardrailConfigPanel implements Focusable {
 
   private startAliasEdit(): void {
     const draft = productionAliasesText(this.config);
-    const input = new Input();
+    const input = new RowsTextField();
     input.setValue(draft);
     input.focused = this.focused;
-    input.onSubmit = (value) => this.saveAliasEdit(value);
-    input.onEscape = () => this.cancelAliasEdit();
     this.aliasInput = input;
     this.page = { kind: "aliases", editing: true, draft };
   }
 
   private saveAliasEdit(value: string): void {
     const aliases = updateProductionAliasesFromText(value);
+    this.aliasInput?.dispose();
     this.aliasInput = undefined;
     this.reload(
       aliases.length > 0
@@ -552,25 +579,21 @@ class SfGuardrailConfigPanel implements Focusable {
   }
 
   private cancelAliasEdit(): void {
+    this.aliasInput?.dispose();
     this.aliasInput = undefined;
     this.page = { kind: "aliases", editing: false, draft: productionAliasesText(this.config) };
   }
 
   private handleRuleFilterInput(data: string): void {
-    if (this.page.kind !== "rules") return;
-    if (matchesKey(data, "escape")) {
-      this.page = { ...this.page, filtering: false, filter: "" };
-      return;
+    if (this.page.kind !== "rules" || !this.filterInput) return;
+    const cancel = matchesKey(data, "escape");
+    if (cancel || matchesKey(data, "enter")) {
+      this.page = { ...this.page, filtering: false, filter: cancel ? "" : this.page.filter };
+      this.filterInput.dispose();
+      this.filterInput = undefined;
+    } else if (this.filterInput.handleInput(data)) {
+      this.page.filter = this.filterInput.getValue();
     }
-    if (matchesKey(data, "return") || matchesKey(data, "enter")) {
-      this.page = { ...this.page, filtering: false };
-      return;
-    }
-    if (matchesKey(data, "backspace")) {
-      this.page = { ...this.page, filter: this.page.filter.slice(0, -1) };
-      return;
-    }
-    if (isPrintable(data)) this.page = { ...this.page, filter: this.page.filter + data };
   }
 
   private goBack(): void {
@@ -639,11 +662,11 @@ class SfGuardrailConfigPanel implements Focusable {
     const prefix = selected ? t.fg("accent", " → ") : "   ";
     const behavior = displayValue(preferenceValue(this.config, row.descriptor.key));
     const idWidth = Math.max(20, width - 28);
-    const id = truncateToWidth(row.id, idWidth, "…");
+    const id = truncate(row.id, idWidth);
     const idPadding = " ".repeat(Math.max(1, idWidth - visibleWidth(id) + 1));
     const source = sourceLabel(row.definitionSource, row.behaviorSource);
     const text = `${prefix}${selected ? t.fg("accent", id) : id}${idPadding}${t.fg(selected ? "accent" : "muted", behavior.padEnd(10))}${t.fg("dim", source)}`;
-    return truncateToWidth(text, width, "");
+    return truncate(text, width, "");
   }
 
   private ruleSummaryLines(row: RuleRow, width: number): string[] {
@@ -656,7 +679,7 @@ class SfGuardrailConfigPanel implements Focusable {
     ]
       .filter((line): line is string => !!line)
       .join(" · ");
-    return [`     ${t.fg("dim", truncateToWidth(summary, Math.max(20, width - 6), "…"))}`];
+    return [`     ${t.fg("dim", truncate(summary, Math.max(20, width - 6)))}`];
   }
 
   private cycleRule(section: RulePanelSection, rows: RuleRow[], direction: -1 | 1): void {
@@ -751,7 +774,7 @@ class SfGuardrailConfigPanel implements Focusable {
     return text
       .split("\n")
       .slice(0, 12)
-      .map((line) => truncateToWidth(line, Math.max(20, width - 5), "…"));
+      .map((line) => truncate(line, Math.max(20, width - 5)));
   }
 }
 
@@ -786,10 +809,6 @@ function wrapLines(text: string, width: number): string[] {
   }
   if (current) lines.push(current);
   return lines.length > 0 ? lines : [""];
-}
-
-function isPrintable(data: string): boolean {
-  return data.length === 1 && data >= " " && data !== "\x7f";
 }
 
 function themeBold(theme: Theme, text: string): string {

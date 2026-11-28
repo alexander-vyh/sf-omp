@@ -1,93 +1,39 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/**
- * Top-right passive overlay for the SF Skills HUD.
- *
- * The component never captures input. Pi keeps it anchored to the viewport while
- * chat content scrolls underneath.
- */
-import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
-import type { TUI } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+/** Right-aligned, passive composer widget for skills in context. */
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import type { SkillsHudState } from "./skill-state.ts";
 
-export class SkillsHudComponent {
-  constructor(
-    private readonly tui: TUI,
-    private readonly theme: Theme,
-    private state: SkillsHudState,
-  ) {}
-
-  setState(state: SkillsHudState): void {
-    this.state = state;
-    this.tui.requestRender();
-  }
-
-  render(width: number): string[] {
-    const innerWidth = Math.max(24, width - 2);
-    const lines: string[] = [];
-
-    const row = (content = "") => {
-      const truncated = truncateToWidth(content, innerWidth, "", true);
-      const padding = " ".repeat(Math.max(0, innerWidth - visibleWidth(truncated)));
-      return `${this.theme.fg("border", "│")}${truncated}${padding}${this.theme.fg("border", "│")}`;
-    };
-
-    lines.push(this.theme.fg("border", `╭${"─".repeat(innerWidth)}╮`));
-
-    const title = this.theme.fg("accent", this.theme.bold("🔒 SF Skills HUD"));
-    const summary = this.theme.fg("dim", buildSummaryText(this.state));
-    const gap = Math.max(1, innerWidth - visibleWidth(title) - visibleWidth(summary));
-    lines.push(row(`${title}${" ".repeat(gap)}${summary}`));
-
-    if (this.state.live.length > 0) {
-      lines.push(
-        ...renderSection(
-          this.theme,
-          row,
-          "In context",
-          this.state.live.map((skill) => skill.name),
-          "accent",
-          innerWidth,
-        ),
-      );
-    }
-
-    lines.push(this.theme.fg("border", `╰${"─".repeat(innerWidth)}╯`));
-    return lines;
-  }
-
-  invalidate(): void {}
-
-  dispose(): void {}
-}
-
-function buildSummaryText(state: SkillsHudState): string {
-  const parts: string[] = [];
-
-  if (state.live.length > 0) {
-    parts.push(`${state.live.length} in context`);
-  }
-
-  return parts.join(" · ");
-}
-
-function renderSection(
-  theme: Theme,
-  row: (content?: string) => string,
-  label: string,
-  names: string[],
-  accentColor: ThemeColor,
+export function renderSkillsHud(
   width: number,
+  theme: ExtensionTheme,
+  state: SkillsHudState,
 ): string[] {
-  const wrapped = wrapSkillList(`${label}: `, names, width);
-  return wrapped.map((line, index) => {
-    if (index === 0) {
-      const prefix = `${label}: `;
-      const content = line.slice(prefix.length);
-      return row(`${theme.fg(accentColor, prefix)}${content}`);
-    }
-    return row(line);
-  });
+  if (width < 3 || state.live.length === 0) return [];
+  const hudWidth = Math.min(width, Math.max(36, Math.floor(width * 0.3)));
+  const left = " ".repeat(Math.max(0, width - hudWidth - 2));
+  const inner = hudWidth - 2;
+  const side = theme.fg("border", "│");
+  const rule = "─".repeat(inner);
+  const row = (text: string) => `${left}${side}${truncate(text, inner, "", true)}${side}`;
+
+  const title = theme.fg("accent", theme.bold("🔒 SF Skills HUD"));
+  const summary = theme.fg("dim", `${state.live.length} in context`);
+  const gap = Math.max(1, inner - visibleWidth(title) - visibleWidth(summary));
+  const prefix = "In context: ";
+  const skills = wrapSkillList(
+    prefix,
+    state.live.map((skill) => skill.name),
+    inner,
+  );
+  return [
+    left + theme.fg("border", `╭${rule}╮`),
+    row(`${title}${" ".repeat(gap)}${summary}`),
+    ...skills.map((line, index) =>
+      row(index === 0 ? theme.fg("accent", prefix) + line.slice(prefix.length) : line),
+    ),
+    left + theme.fg("border", `╰${rule}╯`),
+  ];
 }
 
 function wrapSkillList(prefix: string, names: string[], width: number): string[] {

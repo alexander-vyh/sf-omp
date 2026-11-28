@@ -6,6 +6,7 @@
  * pi Theme); these helpers are the non-trivial pieces.
  */
 import { describe, it, expect, beforeEach } from "vitest";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import { __internals } from "../lib/render.ts";
 import { resetPreferences, setPreferences } from "../lib/preferences.ts";
 
@@ -24,7 +25,7 @@ const {
 // Minimal theme stub compatible with theme.fg(name, text)
 const stubTheme = {
   fg: (_name: string, text: string) => text,
-} as unknown as import("@earendil-works/pi-coding-agent").Theme;
+} as ExtensionTheme;
 
 describe("render helpers", () => {
   beforeEach(() => resetPreferences());

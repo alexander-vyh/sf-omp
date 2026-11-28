@@ -61,10 +61,11 @@ retains user/agent utterances, route path, state changes, latency, action
 activity, and response-integrity evidence without copying full prompts or action
 payloads into model context.
 
-`/sf-agentscript evals` opens the local-first Eval Studio for repository EvalSpec
-JSON and persisted run evidence. It supports reviewed suite/scenario runs, exact
-reruns, cancellation, release-contract execution, reports, and authoring
-handoffs. Source remains JSON and is not edited directly inside the Studio.
+`/sf-agentscript evals` opens the local-first Eval Studio in a fullscreen terminal
+overlay. It shows repository EvalSpec JSON and persisted run evidence and
+supports reviewed suite/scenario runs, exact reruns, cancellation,
+release-contract execution, reports, and authoring handoffs. Source remains
+JSON and is not edited directly inside the Studio.
 
 Eval seed profiles can resolve one bounded read-only SOQL row from dedicated test
 fixtures into context variables at run preflight. Zero, ambiguous, unsafe, or

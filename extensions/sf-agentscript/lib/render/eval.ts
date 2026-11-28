@@ -13,8 +13,8 @@
  * step-row formatting via `digest.timeline`).
  */
 
-import { Text } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionRows, ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
+import { textRows } from "../../../../lib/common/ui-rows.ts";
 import { clipLine, fmtMs, padRightVisible, rowDetail, styleForStep, stepLabel } from "./shared.ts";
 import type { TraceDigest } from "../preview/trace-digest.ts";
 import type { TurnResponseSequence } from "../llm-response-sequence.ts";
@@ -102,7 +102,7 @@ interface EvalArgs {
 
 // ─── renderCall ───────────────────────────────────────────────────────────────
 
-export function renderEvalCall(args: EvalArgs, theme: Theme): Text {
+export function renderEvalCall(args: EvalArgs, theme: Theme): ExtensionRows {
   const label = theme.fg("toolTitle", theme.bold("🧪 Agent Script eval "));
   const action = args.action ?? "run";
   let summary: string;
@@ -123,7 +123,7 @@ export function renderEvalCall(args: EvalArgs, theme: Theme): Text {
     default:
       summary = action;
   }
-  return new Text(label + theme.fg("muted", summary), 0, 0);
+  return textRows(label + theme.fg("muted", summary));
 }
 
 // ─── renderResult ─────────────────────────────────────────────────────────────
@@ -132,29 +132,19 @@ export function renderEvalRunResult(
   result: { details?: EvalRunDetails | unknown; content?: unknown[] },
   opts: { isPartial?: boolean; expanded?: boolean },
   theme: Theme,
-): Text {
+): ExtensionRows {
   if (opts.isPartial) {
-    return new Text(
-      theme.fg("warning", getFirstText(result.content) || "🧪 eval · running…"),
-      0,
-      0,
-    );
+    return textRows(theme.fg("warning", getFirstText(result.content) || "🧪 eval · running…"));
   }
   const details = (result.details ?? {}) as EvalRunDetails;
   if (!details.run_id) {
-    return new Text(
-      theme.fg("error", `✗ ${getFirstText(result.content) || "eval run failed"}`),
-      0,
-      0,
-    );
+    return textRows(theme.fg("error", `✗ ${getFirstText(result.content) || "eval run failed"}`));
   }
   // The inline failures live in the LLM `content[0].text` JSON blob; reparse
   // it (cheap, single string) so the human can see the per-test rows.
   const inlineFailures = parseInlineFailures(result.content);
-  return new Text(
+  return textRows(
     formatRunBody(details, inlineFailures, theme, /*ansi=*/ true, opts.expanded ?? false),
-    0,
-    0,
   );
 }
 
@@ -162,17 +152,17 @@ export function renderEvalGetFailureResult(
   result: { details?: EvalGetFailureDetails | unknown; content?: unknown[] },
   opts: { isPartial?: boolean; expanded?: boolean },
   theme: Theme,
-): Text {
-  if (opts.isPartial) return new Text(theme.fg("warning", "🧪 eval get_failure · running…"), 0, 0);
+): ExtensionRows {
+  if (opts.isPartial) return textRows(theme.fg("warning", "🧪 eval get_failure · running…"));
   const details = (result.details ?? {}) as EvalGetFailureDetails;
   if (details.failure) {
-    return new Text(formatFailureCard(details.failure, theme), 0, 0);
+    return textRows(formatFailureCard(details.failure, theme));
   }
   if (details.failures && details.failures.length > 0) {
     const lines = details.failures.map((f) => formatFailureCard(f, theme)).join("\n\n");
-    return new Text(lines, 0, 0);
+    return textRows(lines);
   }
-  return new Text(theme.fg("success", `✓ run ${details.run_id ?? "?"} has no failures`), 0, 0);
+  return textRows(theme.fg("success", `✓ run ${details.run_id ?? "?"} has no failures`));
 }
 
 // ─── Markdown emitters ────────────────────────────────────────────────────────

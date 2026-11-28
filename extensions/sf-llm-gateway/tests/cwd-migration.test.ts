@@ -14,12 +14,12 @@ function readSource(file: string): string {
 describe("Gateway session cwd guards", () => {
   const indexSource = readSource("index.ts");
 
-  it("registers the complete Provider without consulting process.cwd()", () => {
+  it("registers the OMP provider without consulting process.cwd()", () => {
     const factoryStart = indexSource.indexOf("export default function");
     const firstEventHandler = indexSource.indexOf('pi.on("session_start"');
     const factoryBody = indexSource.slice(factoryStart, firstEventHandler);
 
-    expect(factoryBody).toContain("pi.registerProvider(gatewayProviderRuntime.provider)");
+    expect(factoryBody).toContain("registerOmpGatewayProvider(");
     expect(factoryBody).not.toContain("process.cwd()");
   });
 

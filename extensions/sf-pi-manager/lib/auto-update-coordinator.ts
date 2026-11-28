@@ -17,11 +17,11 @@ import {
 } from "../../../lib/common/auto-update/store.ts";
 import type { HumanOnlyCommandOutput } from "../../../lib/common/human-only-command-output.ts";
 import type { ManualAutoUpdateRunner } from "./auto-update-command.ts";
-import { runNativeAutoUpdate, type NativeAutoUpdateRunOptions } from "./auto-update-runner.ts";
+import { runNativeAutoUpdate } from "./auto-update-runner.ts";
 import { appendAutoUpdateTranscript } from "./auto-update-transcript.ts";
 
 export interface AgentSettledUpdateCoordinator extends ManualAutoUpdateRunner {
-  onSessionStart(reason: string, ctx: ExtensionContext): void;
+  onSessionStart(ctx: ExtensionContext): void;
   onAgentStart(): void;
   onAgentSettled(ctx: ExtensionContext, aborted?: boolean): Promise<void>;
   onSessionShutdown(): void;
@@ -29,7 +29,6 @@ export interface AgentSettledUpdateCoordinator extends ManualAutoUpdateRunner {
 
 export function createAgentSettledUpdateCoordinator(
   pi: ExtensionAPI,
-  deps: { planPackages?: NativeAutoUpdateRunOptions["planPackages"] } = {},
 ): AgentSettledUpdateCoordinator {
   let pending = false;
   let running = false;
@@ -49,7 +48,7 @@ export function createAgentSettledUpdateCoordinator(
     if (!safeIsIdle(ctx)) {
       return markAutoUpdateResult({
         result: "skipped",
-        message: "Auto Update skipped because Pi is not idle.",
+        message: "Auto Update skipped because OMP is not idle.",
         restartRecommended: false,
       });
     }
@@ -68,29 +67,19 @@ export function createAgentSettledUpdateCoordinator(
     try {
       const status = await runNativeAutoUpdate(pi, ctx, {
         signal: abortController.signal,
-        planPackages: deps.planPackages,
         onPlan: automatic
           ? (plan) => {
-              const eligible = plan.packages.eligibleCount;
+              const checkout = plan.offline === false ? plan.checkout : undefined;
               append({
                 title: "Auto Update planned",
                 body: [
-                  ...(plan.checkout
-                    ? [
-                        "OMP runtime: pinned by the sf-omp checkout lockfile",
-                        `sf-omp checkout: ${plan.checkout.message}${plan.checkout.state === "behind" ? " Will run git pull --ff-only + npm ci." : ""}`,
-                      ]
-                    : [
-                        "Pi runtime: user-managed; stable pre-2.0 releases remain loadable",
-                        plan.offline
-                          ? "Pi packages: skip because PI_OFFLINE is active"
-                          : eligible > 0
-                            ? `Pi packages: ${eligible} compatible package update${eligible === 1 ? "" : "s"} through Pi`
-                            : "Pi packages: no compatible updates available",
-                      ]),
-                  plan.offline
-                    ? "Salesforce CLI: skip because PI_OFFLINE is active"
-                    : "Salesforce CLI: update the stable channel",
+                  "OMP runtime: native omp on PATH; update it with `omp update`",
+                  checkout
+                    ? `sf-omp checkout: ${checkout.message}${checkout.state === "behind" ? " Will run git pull --ff-only + npm ci." : ""}`
+                    : "sf-omp checkout: skip because PI_OFFLINE is active",
+                  checkout
+                    ? "Salesforce CLI: update the stable channel"
+                    : "Salesforce CLI: skip because PI_OFFLINE is active",
                 ].join("\n"),
                 severity: "info",
               });
@@ -126,9 +115,11 @@ export function createAgentSettledUpdateCoordinator(
   };
 
   return {
-    onSessionStart(reason, ctx) {
+    onSessionStart(ctx) {
       disposed = false;
-      pending = reason === "startup" && ctx.hasUI && shouldRunAutoUpdate();
+      // OMP fires session_start once per runtime start (session changes arrive
+      // as session_switch), so every session_start is the startup boundary.
+      pending = ctx.hasUI && shouldRunAutoUpdate();
       if (pending) markAutoUpdatePending();
     },
     onAgentStart() {
@@ -147,9 +138,9 @@ export function createAgentSettledUpdateCoordinator(
         await execute(ctx, true);
         return;
       }
-      // A terminal agent_end can precede host idleness (Pi awaits its handlers
-      // before settling; OMP notifies while the prompt unwinds). Never block
-      // the handler: poll briefly in the background and give up on a new run.
+      // A terminal agent_end can precede host idleness (OMP notifies while the
+      // prompt unwinds). Never block the handler: poll briefly in the background
+      // and give up on a new run.
       let attempts = 0;
       const retry = (): void => {
         if (agentActive || disposed || running || !pending) return;

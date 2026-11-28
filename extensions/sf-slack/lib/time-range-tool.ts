@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Register slack_time_range, a deterministic date normalizer for Slack tools. */
-import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { callLabel, registerSlackUiTool, slackText } from "./render.ts";
 import type { SfPiToolResultEnvelope } from "../../../lib/common/display/types.ts";
 import { SlackTimeRangeParams } from "./types.ts";
 import { resolveSlackTimeRange, type SlackTimeRangeInput } from "./time-range.ts";
@@ -32,16 +32,8 @@ interface TimeRangeToolRenderResult {
   };
 }
 
-function callLabel(label: string, summary: string, theme: Theme): Text {
-  return new Text(
-    theme.fg("toolTitle", theme.bold(label + " ")) + theme.fg("muted", summary),
-    0,
-    0,
-  );
-}
-
 export function registerTimeRangeTool(pi: ExtensionAPI): void {
-  pi.registerTool<typeof SlackTimeRangeParams>({
+  registerSlackUiTool<typeof SlackTimeRangeParams>(pi, {
     name: "slack_time_range",
     label: "Slack Time Range",
     description:
@@ -71,7 +63,7 @@ export function registerTimeRangeTool(pi: ExtensionAPI): void {
       return args as never;
     },
 
-    renderCall(args: TimeRangeToolCallArgs, theme: Theme) {
+    renderCall(args: TimeRangeToolCallArgs, _options, theme) {
       const bits = [args.expression ? `"${args.expression}"` : "?"];
       if (args.timezone) bits.push(args.timezone);
       if (args.week_starts_on) bits.push(`week:${args.week_starts_on}`);
@@ -79,17 +71,15 @@ export function registerTimeRangeTool(pi: ExtensionAPI): void {
       return callLabel("Slack Time Range", bits.join(" · "), theme);
     },
 
-    renderResult(result: TimeRangeToolRenderResult, _opts, theme: Theme) {
+    renderResult(result: TimeRangeToolRenderResult, _opts, theme) {
       const details = result.details || {};
       if (!details.ok) {
-        return new Text(
+        return slackText(
           theme.fg("error", "✗ " + (getFirstText(result.content) || "Time range failed")),
-          0,
-          0,
         );
       }
       const suffix = details.slack?.search?.query_suffix || "";
-      return new Text(theme.fg("success", "✓ ") + theme.fg("muted", suffix), 0, 0);
+      return slackText(theme.fg("success", "✓ ") + theme.fg("muted", suffix));
     },
 
     async execute(_toolCallId, params) {

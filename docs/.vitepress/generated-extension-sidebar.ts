@@ -20,7 +20,6 @@ export const extensionSidebarItems = [
   { text: "SF Data 360", link: "/extensions/sf-data360" },
   { text: "SF Brain", link: "/extensions/sf-brain" },
   { text: "SF Guardrail", link: "/extensions/sf-guardrail" },
-  { text: "SF Herdr", link: "/extensions/sf-herdr" },
   { text: "SF Plannotator", link: "/extensions/sf-planreview" },
   { text: "SF Feedback", link: "/extensions/sf-feedback" },
   { text: "SF Slack", link: "/extensions/sf-slack" },

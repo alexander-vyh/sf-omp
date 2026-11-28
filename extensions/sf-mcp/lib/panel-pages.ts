@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Pure renderers for SF MCP's embedded Manager workflow pages. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import type { ConflictPlan } from "./conflict-planner.ts";
 import type { ManagedServerStatus } from "./managed-state.ts";
 import type { McpServerConfig } from "./mcp-config.ts";
@@ -53,7 +53,7 @@ export function renderCatalogPage(input: {
     ` ${t.fg("accent", t.bold("☁  Salesforce MCPs"))}`,
     ` ${t.fg("dim", "Salesforce-published presets. Nothing connects until you explicitly enable it.")}`,
     "",
-    ` ${t.fg("accent", "▰")} ${t.fg("muted", `${input.scope.toUpperCase()} SCOPE`)}  ${t.fg("dim", `· ${enabled}/${input.states.length} enabled · Pi native MCP`)}`,
+    ` ${t.fg("accent", "▰")} ${t.fg("muted", `${input.scope.toUpperCase()} SCOPE`)}  ${t.fg("dim", `· ${enabled}/${input.states.length} enabled · OMP native MCP`)}`,
     "",
   ];
 
@@ -211,7 +211,7 @@ export function renderConnectionsPage(input: {
     ` ${t.fg("accent", t.bold(`${configured.length} configured connection${configured.length === 1 ? "" : "s"}`))}`,
     ` ${t.fg("success", "🔗")} ${t.fg("text", `${orgBound.length} org-bound`)}  ${t.fg("warning", "⚠")} ${t.fg("text", `${unbound.length} org not recorded`)}`,
     ...wrapText(
-      "SF CLI aliases prove org identity during setup. Pi MCP keeps separate OAuth credentials for every native connection name and URL.",
+      "SF CLI aliases prove org identity during setup. OMP MCP keeps separate OAuth credentials for every native connection name and URL.",
       Math.max(24, width - 3),
     ).map((line) => ` ${t.fg("dim", line)}`),
     "",
@@ -225,7 +225,7 @@ export function renderConnectionsPage(input: {
     lines.push(
       ` ${t.fg("warning", "▰")} ${t.fg("muted", "⚠ EXISTING CONNECTION · ORG NOT RECORDED")}`,
       ...wrapText(
-        "This is not proof of another Salesforce org. SF MCP has no stored org mapping for this existing connection; Pi /mcp may still hold its OAuth grant.",
+        "This is not proof of another Salesforce org. SF MCP has no stored org mapping for this existing connection; OMP /mcp may still hold its OAuth grant.",
         Math.max(24, width - 3),
       ).map((line) => ` ${t.fg("dim", line)}`),
       "",
@@ -235,7 +235,7 @@ export function renderConnectionsPage(input: {
   if (configured.length === 0) lines.push(` ${t.fg("muted", "No configured connections")}`, "");
 
   lines.push(
-    ` ${t.fg("dim", "OAuth status and grant time remain in Pi's native /mcp runtime.")}`,
+    ` ${t.fg("dim", "OAuth status and grant time remain in OMP's native /mcp runtime.")}`,
     ` ${t.fg("accent", "❯ [ Back to overview ]")}`,
     "",
     ` ${t.fg("dim", "Enter/Esc continue")}`,
@@ -283,10 +283,8 @@ export function renderToolListPage(input: {
         : "documented"
       : "observed only · unapproved";
     const exposure = configuredToolExposure(input.runtime.managed.config, tool.name, tool.exposure);
-    const heading = `${selected ? "❯" : " "} ${tool.name}`;
-    lines.push(
-      ` ${selected ? t.fg("accent", t.bold(truncateToWidth(heading, Math.max(20, width - 2)))) : t.fg("text", truncateToWidth(heading, Math.max(20, width - 2)))}`,
-    );
+    const heading = truncate(`${selected ? "❯" : " "} ${tool.name}`, Math.max(20, width - 2));
+    lines.push(` ${selected ? t.fg("accent", t.bold(heading)) : t.fg("text", heading)}`);
     lines.push(
       ...wrapText(
         `${tool.capability} · ${riskLabel(tool.risk)} risk · ${exposure} · ${status}`,
@@ -469,7 +467,7 @@ export function renderConnectionPage(input: {
     "",
     ` ${t.fg("accent", "▰")} ${t.fg("muted", "BOUNDARY")}`,
     `    ${t.fg("success", "✓")} Connection changes are reviewed separately from tool access`,
-    `    ${t.fg("success", "✓")} OAuth consent and tokens remain owned by Pi`,
+    `    ${t.fg("success", "✓")} OAuth consent and tokens remain owned by OMP`,
     `    ${t.fg("success", "✓")} New connections start with tools hidden`,
     "",
     ` ${t.fg("muted", "Actions")}`,
@@ -552,7 +550,7 @@ export function renderReviewPage(input: {
   const lines = [
     ` ${t.fg("accent", t.bold(`← Esc back   ☁ SF MCP › ${input.preset.label} › Review`))}`,
     "",
-    ` ${t.fg("muted", "Review the native Pi MCP configuration before applying it.")}`,
+    ` ${t.fg("muted", "Review the native OMP MCP configuration before applying it.")}`,
     "",
     ` ${t.fg("accent", "▰")} ${t.fg("muted", "TARGET")}`,
     `    Scope              ${t.fg("text", input.scope)}`,
@@ -608,7 +606,7 @@ export function renderReviewPage(input: {
     "",
     ` ${t.fg("accent", "▰")} ${t.fg("muted", "SAFETY")}`,
     `    ${t.fg("success", "✓")} Existing entries change only after explicit diff review`,
-    `    ${t.fg("success", "✓")} OAuth and connection state remain Pi-owned`,
+    `    ${t.fg("success", "✓")} OAuth and connection state remain OMP-owned`,
     `    ${t.fg("success", "✓")} Guardrail mediates managed mutation surfaces`,
   );
   if (input.preset.supportNote) {
@@ -650,7 +648,7 @@ export function renderTogglePage(input: {
     ...wrapText(
       input.enable
         ? "This re-enables the existing unchanged native MCP entry."
-        : "This persists enabled=false. The entry stays available in Pi's native /mcp manager.",
+        : "This persists enabled=false. The entry stays available in OMP's native /mcp manager.",
       Math.max(24, input.width - 3),
     ).map((line) => ` ${t.fg("dim", line)}`),
     "",
@@ -682,7 +680,7 @@ export function renderResultPage(input: {
     lines.push(
       ` ${t.fg("muted", "Next")}`,
       `   ${t.fg("text", "1. Press Enter to return to the extension detail")}`,
-      `   ${t.fg("text", "2. Close the Manager to reload Pi")}`,
+      `   ${t.fg("text", "2. Close the Manager to reload OMP")}`,
       `   ${t.fg("text", "3. Open /mcp to connect or sign in")}`,
       "",
       ` ${t.fg("accent", "❯ [ Continue — reload pending ]")}`,
@@ -878,7 +876,7 @@ function renderConnectionInstance(
     : "Not linked to an SF CLI alias · this connection is independent of the org-bound entries";
   const setupMethod = state.managed.record
     ? `SF MCP managed preset · ${resolutionLabel(state.managed.record.resolution)}`
-    : "Existing Pi native MCP configuration · not managed by SF MCP";
+    : "Existing OMP native MCP configuration · not managed by SF MCP";
   const lines = [
     `    ${theme.fg(headingTone, headingIcon)} ${theme.fg("text", theme.bold(label))}`,
   ];
@@ -918,7 +916,7 @@ function renderConnectionInstance(
       width,
       "🕒",
       "Authorization time",
-      "Not exposed to SF MCP · Pi native /mcp owns the OAuth grant",
+      "Not exposed to SF MCP · OMP native /mcp owns the OAuth grant",
       "dim",
     ),
     ...renderConnectionDetail(theme, width, "◇", "Native name", name, "dim"),
@@ -945,9 +943,9 @@ function renderConnectionDetail(
 }
 
 function authenticationMethod(config: McpServerConfig | undefined): string {
-  if (!config) return "Unknown · inspect Pi native /mcp";
+  if (!config) return "Unknown · inspect OMP native /mcp";
   if ("oauth" in config && config.oauth) {
-    return "OAuth 2.0 Authorization Code + PKCE · Pi native token store";
+    return "OAuth 2.0 Authorization Code + PKCE · OMP native token store";
   }
   if ("headers" in config && config.headers && Object.keys(config.headers).length > 0) {
     return "Configured HTTP authorization header";
@@ -1011,7 +1009,7 @@ function selectedDetail(state: PresetRuntimeState): string {
     return "Managed entry changed outside SF MCP; review it before repair.";
   }
   if (state.managed.status === "project-override") {
-    return state.managed.message ?? "Pi applies a project override to the matching global entry.";
+    return state.managed.message ?? "OMP applies a project override to the matching global entry.";
   }
   if (state.managed.status === "managed-outdated") {
     return "A newer reviewed preset revision is available.";

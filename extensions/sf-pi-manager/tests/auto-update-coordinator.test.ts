@@ -8,46 +8,76 @@ import {
   readAutoUpdateStatus,
   writeAutoUpdateEnabled,
 } from "../../../lib/common/auto-update/store.ts";
+import type * as WindowsSpawn from "../../../lib/common/windows-spawn.ts";
 import { createAgentSettledUpdateCoordinator } from "../lib/auto-update-coordinator.ts";
 import { AUTO_UPDATE_ENTRY_TYPE } from "../lib/auto-update-transcript.ts";
+import { CHECKOUT_UPDATE, behindCheckoutReply, type ExecResult } from "./checkout-exec.ts";
 
 // Exec expectations below use bare command names; Windows command resolution
-// is covered by lib/common/tests/windows-spawn.test.ts and the real-Pi proof.
+// is covered by lib/common/tests/windows-spawn.test.ts and the native OMP proof.
 vi.mock("../../../lib/common/windows-spawn.ts", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../../lib/common/windows-spawn.ts")>()),
+  ...(await importOriginal<typeof WindowsSpawn>()),
   spawnCommand: (name: string, args: readonly string[]) => [name, [...args]],
 }));
 
 const PI_AGENT_ENV = "PI_CODING_AGENT_DIR";
+const PULL = "git pull --ff-only --quiet";
 
 let tmpDir: string;
 let previousAgentDir: string | undefined;
+let previousOffline: string | undefined;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(path.join(os.tmpdir(), "sf-pi-update-coordinator-"));
   mkdirSync(tmpDir, { recursive: true });
   previousAgentDir = process.env[PI_AGENT_ENV];
   process.env[PI_AGENT_ENV] = tmpDir;
+  // The coordinator runs with the process env; keep a developer's offline mode out.
+  previousOffline = process.env.PI_OFFLINE;
+  delete process.env.PI_OFFLINE;
 });
 
 afterEach(() => {
   if (previousAgentDir === undefined) delete process.env[PI_AGENT_ENV];
   else process.env[PI_AGENT_ENV] = previousAgentDir;
+  if (previousOffline !== undefined) process.env.PI_OFFLINE = previousOffline;
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-const compatiblePackagePlan = async () => ({
-  sources: ["npm:@ogulcancelik/pi-herdr"],
-  configuredCount: 1,
-  eligibleCount: 1,
-  currentCount: 0,
-  skippedCount: 0,
-});
-
-function makeCoordinator(pi: ExtensionAPI) {
-  return createAgentSettledUpdateCoordinator(pi, {
-    planPackages: compatiblePackagePlan,
+/** A behind checkout whose exec records each command line and runs `onCall` first. */
+function recordingPi(onCall: (line: string) => void = () => undefined) {
+  const calls: string[] = [];
+  const appendEntry = vi.fn();
+  const exec = vi.fn(async (command: string, args: string[]) => {
+    const line = [command, ...args].join(" ");
+    calls.push(line);
+    onCall(line);
+    return behindCheckoutReply(command, args);
   });
+  return { pi: { exec, appendEntry } as unknown as ExtensionAPI, exec, appendEntry, calls };
+}
+
+/** A behind checkout whose `git pull` hangs until the run's signal aborts. */
+function hangingPullPi() {
+  const calls: string[] = [];
+  const appendEntry = vi.fn();
+  const exec = vi.fn(
+    (command: string, args: string[], options?: { signal?: AbortSignal }) =>
+      new Promise<ExecResult>((resolve) => {
+        const line = [command, ...args].join(" ");
+        calls.push(line);
+        if (line !== PULL) {
+          resolve(behindCheckoutReply(command, args));
+          return;
+        }
+        options?.signal?.addEventListener(
+          "abort",
+          () => resolve({ stdout: "", stderr: "", code: 1, killed: true }),
+          { once: true },
+        );
+      }),
+  );
+  return { pi: { exec, appendEntry } as unknown as ExtensionAPI, appendEntry, calls };
 }
 
 function context(idle: boolean = true): ExtensionContext {
@@ -62,54 +92,47 @@ function context(idle: boolean = true): ExtensionContext {
 describe("Agent-Settled Update Coordinator", () => {
   it("does not schedule automatic mutations in headless sessions", async () => {
     writeAutoUpdateEnabled(true);
-    const pi = { exec: vi.fn(), appendEntry: vi.fn() } as unknown as ExtensionAPI;
-    const updateCoordinator = makeCoordinator(pi);
+    const { pi, exec } = recordingPi();
+    const updateCoordinator = createAgentSettledUpdateCoordinator(pi);
     const ctx = { ...context(), hasUI: false } as ExtensionContext;
 
-    updateCoordinator.onSessionStart("startup", ctx);
+    updateCoordinator.onSessionStart(ctx);
     await updateCoordinator.onAgentSettled(ctx);
 
-    expect(pi.exec).not.toHaveBeenCalled();
+    expect(exec).not.toHaveBeenCalled();
     expect(readAutoUpdateStatus().pending).not.toBe(true);
   });
 
   it("records due work at startup and waits for agent_settled before mutating", async () => {
     writeAutoUpdateEnabled(true);
-    const calls: string[] = [];
-    const pi = {
-      exec: vi.fn(async (command: string, args: string[]) => {
-        calls.push([command, ...args].join(" "));
-        return { stdout: "ok", stderr: "", code: 0, killed: false };
-      }),
-      appendEntry: vi.fn(),
-    } as unknown as ExtensionAPI;
-    const coordinator = makeCoordinator(pi);
+    const { pi, appendEntry, calls } = recordingPi();
+    const coordinator = createAgentSettledUpdateCoordinator(pi);
     const ctx = context();
 
-    coordinator.onSessionStart("startup", ctx);
+    coordinator.onSessionStart(ctx);
 
     expect(calls).toEqual([]);
     expect(readAutoUpdateStatus()).toMatchObject({ pending: true, running: false });
 
     await coordinator.onAgentSettled(ctx);
 
-    expect(calls).toEqual([
-      "pi update --extension npm:@ogulcancelik/pi-herdr --no-approve",
-      "sf update stable",
-    ]);
-    expect(pi.appendEntry).toHaveBeenCalledWith(
+    expect(calls).toEqual([...CHECKOUT_UPDATE, "sf update stable"]);
+    expect(calls.filter((call) => /^(?:omp|pi) /.test(call))).toEqual([]);
+    expect(appendEntry).toHaveBeenCalledWith(
       AUTO_UPDATE_ENTRY_TYPE,
       expect.objectContaining({
         title: "Auto Update planned",
-        body: expect.stringMatching(/Pi runtime: user-managed[\s\S]*1 compatible package update/),
+        body: expect.stringMatching(
+          /OMP runtime: native omp on PATH[\s\S]*sf-omp checkout: main is 2 commit\(s\) behind origin\/main\. Will run git pull --ff-only \+ npm ci\.[\s\S]*Salesforce CLI: update the stable channel/,
+        ),
       }),
     );
-    expect(pi.appendEntry).toHaveBeenCalledWith(
+    expect(appendEntry).toHaveBeenCalledWith(
       AUTO_UPDATE_ENTRY_TYPE,
       expect.objectContaining({
         title: "Auto Update complete",
         body: expect.stringMatching(
-          /pi-runtime: skipped[\s\S]*pi-packages: success[\s\S]*sf-cli: success[\s\S]*Restart recommended: yes/,
+          /pi-runtime: skipped[\s\S]*sf-omp-checkout: success[\s\S]*sf-cli: success[\s\S]*Restart recommended: yes/,
         ),
       }),
     );
@@ -117,19 +140,12 @@ describe("Agent-Settled Update Coordinator", () => {
 
   it("waits in the background for idleness after a settled turn, without blocking", async () => {
     writeAutoUpdateEnabled(true);
-    const calls: string[] = [];
-    const pi = {
-      exec: vi.fn(async (command: string, args: string[]) => {
-        calls.push([command, ...args].join(" "));
-        return { stdout: "ok", stderr: "", code: 0, killed: false };
-      }),
-      appendEntry: vi.fn(),
-    } as unknown as ExtensionAPI;
-    const coordinator = makeCoordinator(pi);
+    const { pi, calls } = recordingPi();
+    const coordinator = createAgentSettledUpdateCoordinator(pi);
     let idle = false;
     const ctx = { ...context(), isIdle: () => idle } as ExtensionContext;
 
-    coordinator.onSessionStart("startup", ctx);
+    coordinator.onSessionStart(ctx);
     await coordinator.onAgentSettled(ctx);
     expect(calls).toEqual([]);
 
@@ -139,17 +155,14 @@ describe("Agent-Settled Update Coordinator", () => {
 
   it("drops the background idle wait when a new agent run starts", async () => {
     writeAutoUpdateEnabled(true);
-    const pi = {
-      exec: vi.fn(async () => ({ stdout: "ok", stderr: "", code: 0, killed: false })),
-      appendEntry: vi.fn(),
-    } as unknown as ExtensionAPI;
-    const coordinator = makeCoordinator(pi);
+    const { pi, exec } = recordingPi();
+    const coordinator = createAgentSettledUpdateCoordinator(pi);
     let idle = false;
     const ctx = { ...context(), isIdle: () => idle } as ExtensionContext;
 
     vi.useFakeTimers();
     try {
-      coordinator.onSessionStart("startup", ctx);
+      coordinator.onSessionStart(ctx);
       await coordinator.onAgentSettled(ctx);
       coordinator.onAgentStart();
       idle = true;
@@ -158,85 +171,100 @@ describe("Agent-Settled Update Coordinator", () => {
       vi.useRealTimers();
     }
 
-    expect(pi.exec).not.toHaveBeenCalled();
+    expect(exec).not.toHaveBeenCalled();
     expect(readAutoUpdateStatus()).toMatchObject({ pending: true, running: false });
   });
 
   it("defers pending automatic work after an aborted settlement", async () => {
     writeAutoUpdateEnabled(true);
-    const pi = {
-      exec: vi.fn(async () => ({ stdout: "ok", stderr: "", code: 0, killed: false })),
-      appendEntry: vi.fn(),
-    } as unknown as ExtensionAPI;
-    const coordinator = makeCoordinator(pi);
+    const { pi, exec, calls } = recordingPi();
+    const coordinator = createAgentSettledUpdateCoordinator(pi);
     const ctx = context();
 
-    coordinator.onSessionStart("startup", ctx);
+    coordinator.onSessionStart(ctx);
     await coordinator.onAgentSettled(ctx, true);
 
-    expect(pi.exec).not.toHaveBeenCalled();
+    expect(exec).not.toHaveBeenCalled();
     expect(readAutoUpdateStatus()).toMatchObject({ pending: true, running: false });
 
     await coordinator.onAgentSettled(ctx, false);
-    expect(pi.exec).toHaveBeenCalledTimes(2);
+    expect(calls).toEqual([...CHECKOUT_UPDATE, "sf update stable"]);
   });
 
   it("prevents overlapping runs across coordinator instances", async () => {
     writeAutoUpdateEnabled(true);
-    let finishFirst: (() => void) | undefined;
+    let releaseFirst: (() => void) | undefined;
+    let firstCall = true;
     const firstPi = {
-      exec: vi.fn(
-        () =>
-          new Promise((resolve) => {
-            finishFirst = () => resolve({ stdout: "ok", stderr: "", code: 0, killed: false });
-          }),
-      ),
+      exec: vi.fn((command: string, args: string[]) => {
+        const reply = behindCheckoutReply(command, args);
+        if (!firstCall) return Promise.resolve(reply);
+        firstCall = false;
+        return new Promise<ExecResult>((resolve) => {
+          releaseFirst = () => resolve(reply);
+        });
+      }),
       appendEntry: vi.fn(),
     } as unknown as ExtensionAPI;
-    const secondPi = {
-      exec: vi.fn(),
-      appendEntry: vi.fn(),
-    } as unknown as ExtensionAPI;
-    const first = makeCoordinator(firstPi);
-    const second = makeCoordinator(secondPi);
+    const second = recordingPi();
+    const first = createAgentSettledUpdateCoordinator(firstPi);
+    const secondCoordinator = createAgentSettledUpdateCoordinator(second.pi);
     const ctx = context();
 
-    first.onSessionStart("startup", ctx);
-    second.onSessionStart("startup", ctx);
+    first.onSessionStart(ctx);
+    secondCoordinator.onSessionStart(ctx);
     const firstRun = first.onAgentSettled(ctx);
     await vi.waitFor(() => expect(firstPi.exec).toHaveBeenCalledOnce());
 
-    await second.onAgentSettled(ctx);
-    expect(secondPi.exec).not.toHaveBeenCalled();
+    await secondCoordinator.onAgentSettled(ctx);
+    expect(second.exec).not.toHaveBeenCalled();
 
-    finishFirst?.();
-    await vi.waitFor(() => expect(firstPi.exec).toHaveBeenCalledTimes(2));
-    finishFirst?.();
+    releaseFirst?.();
     await firstRun;
+    expect(firstPi.exec).toHaveBeenCalledTimes(CHECKOUT_UPDATE.length + 1);
   });
 
   it("rechecks opt-in before later targets and stops when consent is revoked", async () => {
     writeAutoUpdateEnabled(true);
-    const calls: string[] = [];
-    const pi = {
-      exec: vi.fn(async (command: string, args: string[]) => {
-        calls.push([command, ...args].join(" "));
-        if (command === "pi") writeAutoUpdateEnabled(false);
-        return { stdout: "ok", stderr: "", code: 0, killed: false };
-      }),
-      appendEntry: vi.fn(),
-    } as unknown as ExtensionAPI;
-    const coordinator = makeCoordinator(pi);
+    const { pi, calls } = recordingPi((line) => {
+      if (line === "npm ci") writeAutoUpdateEnabled(false);
+    });
+    const coordinator = createAgentSettledUpdateCoordinator(pi);
     const ctx = context();
 
-    coordinator.onSessionStart("startup", ctx);
+    coordinator.onSessionStart(ctx);
     await coordinator.onAgentSettled(ctx);
 
-    expect(calls).toEqual(["pi update --extension npm:@ogulcancelik/pi-herdr --no-approve"]);
+    expect(calls).toEqual(CHECKOUT_UPDATE);
     expect(readAutoUpdateStatus()).toMatchObject({
       pending: false,
       lastResult: "skipped",
+      restartRecommended: true,
       targets: expect.arrayContaining([
+        expect.objectContaining({ target: "sf-omp-checkout", result: "success" }),
+        expect.objectContaining({ target: "sf-cli", result: "skipped" }),
+      ]),
+    });
+  });
+
+  it("rechecks opt-in after planning and never pulls once consent is revoked", async () => {
+    writeAutoUpdateEnabled(true);
+    const { pi, calls } = recordingPi((line) => {
+      if (line === "git fetch --quiet origin") writeAutoUpdateEnabled(false);
+    });
+    const coordinator = createAgentSettledUpdateCoordinator(pi);
+    const ctx = context();
+
+    coordinator.onSessionStart(ctx);
+    await coordinator.onAgentSettled(ctx);
+
+    expect(calls).toEqual(CHECKOUT_UPDATE.slice(0, 6));
+    expect(readAutoUpdateStatus()).toMatchObject({
+      pending: false,
+      lastResult: "skipped",
+      restartRecommended: false,
+      targets: expect.arrayContaining([
+        expect.objectContaining({ target: "sf-omp-checkout", result: "skipped" }),
         expect.objectContaining({ target: "sf-cli", result: "skipped" }),
       ]),
     });
@@ -244,82 +272,50 @@ describe("Agent-Settled Update Coordinator", () => {
 
   it("aborts a running target when a new agent turn starts and defers the remainder", async () => {
     writeAutoUpdateEnabled(true);
-    const calls: string[] = [];
-    const pi = {
-      exec: vi.fn((command: string, args: string[], options?: { signal?: AbortSignal }) => {
-        calls.push([command, ...args].join(" "));
-        return new Promise((resolve) => {
-          options?.signal?.addEventListener(
-            "abort",
-            () => resolve({ stdout: "", stderr: "", code: 1, killed: true }),
-            { once: true },
-          );
-        });
-      }),
-      appendEntry: vi.fn(),
-    } as unknown as ExtensionAPI;
-    const coordinator = makeCoordinator(pi);
+    const { pi, calls } = hangingPullPi();
+    const coordinator = createAgentSettledUpdateCoordinator(pi);
     const ctx = context();
 
-    coordinator.onSessionStart("startup", ctx);
+    coordinator.onSessionStart(ctx);
     const running = coordinator.onAgentSettled(ctx);
-    await vi.waitFor(() =>
-      expect(calls).toEqual(["pi update --extension npm:@ogulcancelik/pi-herdr --no-approve"]),
-    );
+    await vi.waitFor(() => expect(calls).toContain(PULL));
 
     coordinator.onAgentStart();
     await running;
 
-    expect(calls).toEqual(["pi update --extension npm:@ogulcancelik/pi-herdr --no-approve"]);
+    expect(calls).toEqual(CHECKOUT_UPDATE.slice(0, 7));
     expect(readAutoUpdateStatus()).toMatchObject({ pending: true, running: false });
   });
 
   it("aborts running work on session shutdown without leaving it pending", async () => {
     writeAutoUpdateEnabled(true);
-    const pi = {
-      exec: vi.fn(
-        (_command: string, _args: string[], options?: { signal?: AbortSignal }) =>
-          new Promise((resolve) => {
-            options?.signal?.addEventListener(
-              "abort",
-              () => resolve({ stdout: "", stderr: "", code: 1, killed: true }),
-              { once: true },
-            );
-          }),
-      ),
-      appendEntry: vi.fn(),
-    } as unknown as ExtensionAPI;
-    const coordinator = makeCoordinator(pi);
+    const { pi, appendEntry, calls } = hangingPullPi();
+    const coordinator = createAgentSettledUpdateCoordinator(pi);
     const ctx = context();
 
-    coordinator.onSessionStart("startup", ctx);
+    coordinator.onSessionStart(ctx);
     const running = coordinator.onAgentSettled(ctx);
-    await vi.waitFor(() => expect(pi.exec).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(calls).toContain(PULL));
 
     coordinator.onSessionShutdown();
     await running;
 
-    expect(pi.exec).toHaveBeenCalledOnce();
+    expect(calls).toEqual(CHECKOUT_UPDATE.slice(0, 7));
     expect(readAutoUpdateStatus()).toMatchObject({ pending: false, running: false });
-    expect(
-      (pi.appendEntry as ReturnType<typeof vi.fn>).mock.calls.map(([, data]) => data.title),
-    ).toEqual(["Auto Update planned"]);
+    expect(appendEntry.mock.calls.map(([, data]) => data.title)).toEqual(["Auto Update planned"]);
   });
 
   it("cancels pending work when the user revokes opt-in before settlement", async () => {
     writeAutoUpdateEnabled(true);
-    const pi = {
-      exec: vi.fn(),
-      appendEntry: vi.fn(),
-    } as unknown as ExtensionAPI;
-    const coordinator = makeCoordinator(pi);
+    const { pi, exec } = recordingPi();
+    const coordinator = createAgentSettledUpdateCoordinator(pi);
     const ctx = context();
 
-    coordinator.onSessionStart("startup", ctx);
+    coordinator.onSessionStart(ctx);
     writeAutoUpdateEnabled(false);
     await coordinator.onAgentSettled(ctx);
 
-    expect(pi.exec).not.toHaveBeenCalled();
+    expect(exec).not.toHaveBeenCalled();
     expect(readAutoUpdateStatus()).toMatchObject({
       pending: false,
       running: false,

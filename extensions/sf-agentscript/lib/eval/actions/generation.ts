@@ -2,7 +2,7 @@
 /** Eval generation actions: resolve target ids and generate a starter spec. */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue } from "@oh-my-pi/pi-coding-agent/tools/file-mutation-queue";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { connFromAlias } from "../../../../../lib/common/sf-conn/index.ts";
 import { agentFileEvent, withAgentScriptBranchState } from "../../branch-state.ts";

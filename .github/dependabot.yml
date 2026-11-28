@@ -41,8 +41,8 @@ updates:
     # audit-edge change. Ignore every update type, not just majors.
     ignore:
       - dependency-name: "@earendil-works/*"
-      # OMP and Bun are pinned for the local launcher; scripts/patch-local-omp.mjs
-      # refuses other OMP versions. Upgrade them together in a dedicated change.
+      # Upgrade OMP fixture/auth SDK packages and Bun together against the
+      # pinned native release in a dedicated proof change.
       - dependency-name: "@oh-my-pi/*"
       - dependency-name: "bun"
       # typescript stays on 6.x for the typescript-eslint compiler API; the

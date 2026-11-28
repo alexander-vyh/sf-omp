@@ -1,8 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Visible Browser Evidence rendering for SF Browser command output. */
-import type { ExtensionCommandContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
-import { Image, matchesKey, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { type KeyEvent, UiNode } from "@oh-my-pi/pi-tui";
+import { wrap } from "@oh-my-pi/pi-tui/text/width";
+import { nativeUi } from "../../../lib/common/ui-rows.ts";
+import { evidenceImage } from "./evidence-image.ts";
 
 export interface SplitEvidenceContent {
   text: string;
@@ -25,86 +28,39 @@ export async function openEvidencePanel(
   ctx: ExtensionCommandContext,
   options: { title: string; text: string; image: ImageContent },
 ): Promise<void> {
-  await ctx.ui.custom<void>(
-    (_tui, theme, _keybindings, done) => {
-      const panel = new EvidencePanelComponent(theme, options, done);
-      return {
-        render: (width: number) => panel.render(width),
-        invalidate: () => panel.invalidate(),
-        handleInput: (data: string) => panel.handleInput(data),
+  await nativeUi(ctx.ui).custom<void>(
+    (ui, _theme, _keybindings, done) => {
+      const label = (t: string, s?: string) => new UiNode("text", { spans: [{ t, s }] });
+      const { image, text, title } = options;
+      const previewRows = () => {
+        const { columns, rows } = ui.size();
+        // Reserve space for the title, evidence details, preview label, hint, and gaps.
+        return Math.max(1, Math.min(32, rows - wrap(text, Math.max(1, columns)).length - 6));
       };
+      return new UiNode("col", {
+        gap: "xs",
+        onKey: (key: KeyEvent) => {
+          if (
+            key.kind === "release" ||
+            (key.id !== "escape" && key.id !== "enter" && key.id !== "q")
+          )
+            return false;
+          done();
+          return true;
+        },
+        children: [
+          label(`📸 ${title}`, "success strong"),
+          label(text),
+          new UiNode("col", {
+            children: [
+              label("Screenshot preview", "toolTitle strong"),
+              evidenceImage(Buffer.from(image.data, "base64"), image.mimeType, 100, previewRows),
+            ],
+          }),
+          label("Enter/Esc/q to close", "dim"),
+        ],
+      });
     },
-    {
-      overlay: true,
-      overlayOptions: {
-        width: "72%",
-        minWidth: 72,
-        maxHeight: "90%",
-        anchor: "center",
-        margin: 2,
-      },
-    },
+    { overlay: true },
   );
-}
-
-class EvidencePanelComponent {
-  private imageComponent?: Image;
-
-  constructor(
-    private readonly theme: Theme,
-    private readonly options: { title: string; text: string; image: ImageContent },
-    private readonly done: () => void,
-  ) {}
-
-  handleInput(data: string): void {
-    if (
-      matchesKey(data, "escape") ||
-      matchesKey(data, "enter") ||
-      matchesKey(data, "return") ||
-      data === "q"
-    ) {
-      this.done();
-    }
-  }
-
-  invalidate(): void {
-    this.imageComponent?.invalidate();
-  }
-
-  render(width: number): string[] {
-    const innerWidth = Math.max(20, width - 4);
-    const lines: string[] = [];
-    lines.push(this.theme.fg("success", this.theme.bold(`📸 ${this.options.title}`)));
-    lines.push("");
-
-    for (const rawLine of this.options.text.split(/\r?\n/)) {
-      if (!rawLine.trim()) {
-        lines.push("");
-        continue;
-      }
-      for (const wrapped of wrapTextWithAnsi(rawLine, innerWidth)) {
-        lines.push(this.theme.fg("text", wrapped));
-      }
-    }
-
-    lines.push("");
-    lines.push(this.theme.fg("toolTitle", this.theme.bold("Screenshot preview")));
-    lines.push(...this.image().render(innerWidth));
-    lines.push("");
-    lines.push(this.theme.fg("dim", "Enter/Esc/q to close"));
-
-    return lines.map((line) => truncateToWidth(line, width, ""));
-  }
-
-  private image(): Image {
-    if (!this.imageComponent) {
-      this.imageComponent = new Image(
-        this.options.image.data,
-        this.options.image.mimeType,
-        { fallbackColor: (value: string) => this.theme.fg("muted", value) },
-        { maxWidthCells: 100, maxHeightCells: 32 },
-      );
-    }
-    return this.imageComponent;
-  }
 }

@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-const SAFE_LOCAL_CONTEXT_TOOLS = new Set(["read", "grep", "find", "ls"]);
+const SAFE_LOCAL_CONTEXT_TOOLS = new Set(["read", "grep", "glob", "find"]);
 type ObservedCall = { tool: string; action?: string; context_only?: boolean };
 
 export default function instructionBehaviorProbe(pi: ExtensionAPI): void {

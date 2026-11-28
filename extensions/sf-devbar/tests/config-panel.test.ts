@@ -4,11 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import { DEVBAR_COLOR_DESCRIPTORS } from "../lib/colors.ts";
 import {
   createConfigPanel,
-  normalizeTextInput,
   parseDevbarColorInput,
   parsePaletteInput,
 } from "../lib/config-panel.ts";
@@ -49,10 +48,6 @@ describe("DevBar config panel parsers", () => {
     expect(parsePaletteInput('["#123", "#456789"]')).toEqual(["#112233", "#456789"]);
     expect(parsePaletteInput("#123, nope")).toBeUndefined();
   });
-
-  it("strips terminal controls from text input", () => {
-    expect(normalizeTextInput("#123\u001b[200~#456\u001b[201~\u001b[B\n")).toBe("#123#456");
-  });
 });
 
 describe("DevBar config panel", () => {
@@ -65,10 +60,12 @@ describe("DevBar config panel", () => {
       result = value;
     });
 
-    panel.handleInput("enter");
+    panel.handleInput("\r");
     expect(panel.renderContent(100).join("\n")).toContain("Edit Folder path");
-    panel.handleInput("#abc");
-    panel.handleInput("enter");
+    panel.handleInput("\x1b[200~#ab\x1b[31md\x1b[201~");
+    panel.handleInput("\x7f");
+    panel.handleInput("\x1b[99u"); // Kitty "c".
+    panel.handleInput("\r");
 
     const listView = panel.renderContent(100).join("\n");
     expect(listView).toContain("unsaved changes");
@@ -92,11 +89,11 @@ describe("DevBar config panel", () => {
     const paletteIndex = DEVBAR_COLOR_DESCRIPTORS.findIndex(
       (item) => item.key === "gatewayRainbow",
     );
-    for (let i = 0; i < paletteIndex; i++) panel.handleInput("down");
+    for (let i = 0; i < paletteIndex; i++) panel.handleInput("\x1b[B");
 
-    panel.handleInput("enter");
+    panel.handleInput("\r");
     panel.handleInput("#123, #456789");
-    panel.handleInput("enter");
+    panel.handleInput("\r");
     panel.handleInput("s");
 
     expect(result).toBeUndefined();
@@ -124,10 +121,10 @@ describe("DevBar config panel", () => {
       result = value;
     });
 
-    panel.handleInput("enter");
-    for (let i = 0; i < 7; i++) panel.handleInput("backspace");
+    panel.handleInput("\r");
+    for (let i = 0; i < 7; i++) panel.handleInput("\x7f");
     panel.handleInput("not-a-color");
-    panel.handleInput("enter");
+    panel.handleInput("\r");
 
     const rendered = panel.renderContent(100).join("\n");
     expect(result).toBeUndefined();
@@ -139,7 +136,7 @@ describe("DevBar config panel", () => {
     const cwd = makeTempDir("devbar-config-panel-");
     const panel = makePanel(cwd);
     const orgWarningIndex = DEVBAR_COLOR_DESCRIPTORS.findIndex((item) => item.key === "orgWarning");
-    for (let i = 0; i < orgWarningIndex; i++) panel.handleInput("down");
+    for (let i = 0; i < orgWarningIndex; i++) panel.handleInput("\x1b[B");
 
     const rendered = panel.renderContent(100).join("\n");
 
@@ -155,9 +152,9 @@ describe("DevBar config panel", () => {
       result = value;
     });
 
-    panel.handleInput("enter");
+    panel.handleInput("\r");
     panel.handleInput("#abc");
-    panel.handleInput("escape");
+    panel.handleInput("\x1b");
 
     const rendered = panel.renderContent(100).join("\n");
     expect(result).toBeUndefined();

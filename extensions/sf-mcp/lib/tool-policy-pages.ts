@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Pure Manager pages for reviewed per-tool MCP exposure policy. */
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
 import type { ManagedServerStatus } from "./managed-state.ts";
 import type { McpPreset } from "./presets.ts";
 import type { McpToolDetail } from "./tool-catalog.ts";
@@ -126,7 +126,7 @@ export function renderToolPolicyPage(input: {
     const badgeText = exposureBadgeText(exposure);
     const heading = `${selected ? "❯" : " "} ${index + 1}. ${tool.name}`;
     const headingWidth = Math.max(18, contentWidth - visibleWidth(badgeText) - 3);
-    const renderedHeading = truncateToWidth(heading, headingWidth);
+    const renderedHeading = truncate(heading, headingWidth);
     const gap = Math.max(
       2,
       contentWidth - visibleWidth(renderedHeading) - visibleWidth(badgeText) - 1,
@@ -140,7 +140,7 @@ export function renderToolPolicyPage(input: {
         ...wrapText(tool.description, descriptionWidth).map((line) => `    ${t.fg("text", line)}`),
       );
     } else {
-      lines.push(`    ${t.fg("dim", truncateToWidth(tool.description, descriptionWidth))}`);
+      lines.push(`    ${t.fg("dim", truncate(tool.description, descriptionWidth))}`);
     }
     lines.push(
       ...wrapText(

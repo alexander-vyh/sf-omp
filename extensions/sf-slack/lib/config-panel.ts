@@ -5,8 +5,9 @@
  * Shows connection status plus mutable Slack rendering preferences backed by
  * Pi settings under `sfPi.slack`.
  */
-import { type Focusable, matchesKey, visibleWidth } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { padTo } from "@oh-my-pi/pi-tui/text/width";
+import { decodeRowKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
 import { ENV_TOKEN, ENV_TEAM_ID } from "./types.ts";
 import { type TokenSource, detectTokenSource, oauthScopes } from "./auth.ts";
@@ -23,15 +24,9 @@ import {
   type SlackPreferences,
 } from "./preferences.ts";
 
-// ─── Helpers ────────────────────────────────────────────────────────────────────
-
-function padAnsi(text: string, width: number): string {
-  return `${text}${" ".repeat(Math.max(0, width - visibleWidth(text)))}`;
-}
-
 // ─── Panel component ────────────────────────────────────────────────────────────
 
-class SlackConfigPanelComponent implements Focusable {
+class SlackConfigPanelComponent implements RowsPanel {
   focused = false;
 
   private cursor = 0;
@@ -41,7 +36,7 @@ class SlackConfigPanelComponent implements Focusable {
   private message = "";
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: ExtensionTheme,
     private readonly cwd: string,
     private readonly scope: SlackPreferenceScope,
     private readonly done: (result: ConfigPanelResult | undefined) => void,
@@ -54,35 +49,36 @@ class SlackConfigPanelComponent implements Focusable {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || matchesKey(data, "q")) {
-      this.done(undefined);
-      return;
-    }
-    if (matchesKey(data, "up")) {
-      this.move(-1);
-      return;
-    }
-    if (matchesKey(data, "down")) {
-      this.move(1);
-      return;
-    }
-    if (matchesKey(data, "left")) {
-      this.cycle(-1);
-      return;
-    }
-    if (matchesKey(data, "right") || matchesKey(data, "space")) {
-      this.cycle(1);
-      return;
-    }
-    if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "s") {
-      this.save();
+    const key = decodeRowKey(data);
+    if (!key || key.kind === "release") return;
+    switch (key.id) {
+      case "escape":
+      case "q":
+        this.done(undefined);
+        break;
+      case "up":
+        this.move(-1);
+        break;
+      case "down":
+        this.move(1);
+        break;
+      case "left":
+        this.cycle(-1);
+        break;
+      case "right":
+      case "space":
+        this.cycle(1);
+        break;
+      case "enter":
+      case "s":
+        this.save();
     }
   }
 
   renderContent(width: number): string[] {
     const lines: string[] = [];
     const t = this.theme;
-    const pad = (content: string) => padAnsi(content, width);
+    const pad = (content: string) => padTo(content, width);
 
     lines.push(...this.renderConnectionStatus(width));
     lines.push(pad(""));
@@ -103,7 +99,7 @@ class SlackConfigPanelComponent implements Focusable {
       const cursor = selected ? t.fg("accent", "→") : " ";
       const label = selected ? t.fg("accent", descriptor.label) : t.fg("text", descriptor.label);
       const value = String(this.draft[descriptor.key]);
-      lines.push(pad(`   ${cursor} ${label.padEnd(26)} ${t.fg("muted", value)}`));
+      lines.push(pad(`   ${cursor} ${padTo(label, 26)} ${t.fg("muted", value)}`));
       if (selected) lines.push(pad(`      ${t.fg("dim", descriptor.description)}`));
     }
 
@@ -118,12 +114,10 @@ class SlackConfigPanelComponent implements Focusable {
     return this.renderContent(width);
   }
 
-  invalidate(): void {}
-
   private renderConnectionStatus(width: number): string[] {
     const lines: string[] = [];
     const t = this.theme;
-    const pad = (content: string) => padAnsi(content, width);
+    const pad = (content: string) => padTo(content, width);
     const source = detectTokenSource();
     const teamId = process.env[ENV_TEAM_ID]?.trim() || "";
 
@@ -155,7 +149,7 @@ class SlackConfigPanelComponent implements Focusable {
 
     lines.push(pad(` ${t.fg("error", "●")} ${t.fg("text", "Not configured")}`));
     lines.push(
-      pad(`   ${t.fg("warning", "Run /login sf-slack for fixed-mask Pi-owned credential setup.")}`),
+      pad(`   ${t.fg("warning", "Run /login sf-slack for masked credential setup in OMP.")}`),
     );
     lines.push(
       pad(

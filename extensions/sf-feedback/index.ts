@@ -26,7 +26,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { buildExecFn } from "../../lib/common/exec-adapter.ts";
 import type { ExecFn } from "../../lib/common/sf-environment/detect.ts";
-import { getInstalledPiVersion, isOmpHost, requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { getInstalledPiVersion, requirePiVersion } from "../../lib/common/pi-compat.ts";
 import { withSafeCommandHandler } from "../../lib/common/safe-command-handler.ts";
 import {
   type SfPiCommandAction,
@@ -135,10 +135,10 @@ function buildFeedbackManagerActions(pi: ExtensionAPI): ManagerDetailAction[] {
       run: (ctx) => handleCommand(pi, ctx, buildExecFn(pi, ctx.cwd), action.value),
       ...(issueKind
         ? {
-            createPanel: (theme, _cwd, _scope, done, ctx, tui) =>
+            createPanel: (theme, _cwd, _scope, done, ctx, ui) =>
               createFeedbackWizardPanel(
                 theme,
-                tui,
+                ui,
                 issueKind,
                 (draft) => prepareFeedbackPreview(pi, ctx, buildExecFn(pi, ctx.cwd), draft),
                 (preview) => submitPreparedFeedback(pi, ctx, buildExecFn(pi, ctx.cwd), preview),
@@ -191,7 +191,7 @@ async function handleCommand(
 
   ctx.ui.setStatus(STATUS_KEY, "Feedback: collecting diagnostics…");
   try {
-    const diagnostics = await collectDiagnostics(exec, ctx.cwd, hostRuntimeLabel(pi));
+    const diagnostics = await collectDiagnostics(exec, ctx.cwd, hostRuntimeLabel());
 
     if (subcommand === "diagnostics") {
       await emitCommandOutput(
@@ -223,9 +223,9 @@ async function handleCommand(
   }
 }
 
-/** Names the host that is actually running SF Pi; issue reports need OMP vs Pi. */
-function hostRuntimeLabel(pi: ExtensionAPI): string {
-  return `${isOmpHost(pi) ? "OMP" : "Pi"} ${getInstalledPiVersion() ?? "unknown"}`;
+/** Names the in-process OMP host version for issue reports. */
+function hostRuntimeLabel(): string {
+  return `OMP ${getInstalledPiVersion() ?? "unknown"}`;
 }
 
 async function prepareFeedbackPreview(
@@ -243,7 +243,7 @@ async function prepareFeedbackPreview(
   const { buildIssueBody, labelForKind, normalizeIssueTitle } = issueTemplate;
   const { buildIssueUrl } = github;
   const diagnostics =
-    existingDiagnostics ?? (await collectDiagnostics(exec, ctx.cwd, hostRuntimeLabel(pi)));
+    existingDiagnostics ?? (await collectDiagnostics(exec, ctx.cwd, hostRuntimeLabel()));
   const title = normalizeIssueTitle(draft.kind, draft.title);
   const labels = labelForKind(draft.kind);
   const body = buildIssueBody(draft, diagnostics);

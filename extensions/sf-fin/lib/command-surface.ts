@@ -96,7 +96,7 @@ export const SF_FIN_ACTIONS: SfPiCommandAction<SfFinCommandAction>[] = [
     value: "admin",
     label: "Fin admin pages",
     description:
-      "Open or read verified Fin admin pages in the SF Pi browser (masked; no screenshots of secret pages). sign-in prefills /login sf-fin-browser; Pi saves the sign-in.",
+      "Open or read verified Fin admin pages in the SF Pi browser (masked; no screenshots of secret pages). sign-in prefills /login sf-fin-browser; OMP saves the sign-in.",
     group: "Connection",
   },
   {
@@ -157,7 +157,7 @@ export function renderHelp(): string {
     `4. \`/${COMMAND_NAME} doctor\`.`,
     "",
     "Credential boundary:",
-    `- Pi owns persistence; \`/logout ${PROVIDER_NAME}\` removes the saved credential.`,
+    `- OMP owns persistence; \`/logout ${PROVIDER_NAME}\` removes the saved credential.`,
     "- The token reaches the CLI only through its child-process environment, with an SF Pi-private CLI config directory.",
     `- \`${ENV_TOKEN}\` and \`${ENV_REGION}\` remain automation fallbacks.`,
   ].join("\n");

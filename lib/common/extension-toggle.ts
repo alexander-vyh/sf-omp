@@ -7,8 +7,8 @@
  * - 11 of 13 bundled extensions consume this helper from their own
  *   command panels. Once a helper crosses two consumers it belongs in
  *   lib/common, not inside another extension.
- * - The WRITE-side filter-list logic lives next to it in
- *   ./sf-pi-package-state.ts. Together they form the small "manager
+ * - The WRITE-side state logic lives next to it in
+ *   ./omp-extension-state.ts. Together they form the small "manager
  *   surface" that any extension can call to disable or re-enable
  *   itself.
  *
@@ -18,29 +18,20 @@
  *   depending on the current state. Returns `null` for `alwaysActive`
  *   extensions so callers can spread the result into an actions array
  *   without an extra branch.
- * - {@link performToggleExtension}: flips the disabled set in the
- *   appropriate scope (project > global, mirroring
- *   {@link resolveEffectiveScope}), notifies the user, and triggers a
- *   reload so the change takes effect. Under OMP the state lives in
- *   OMP-native `disabledExtensions` YAML and applies on the next OMP start
- *   (see ./omp-extension-state.ts).
+ * - {@link performToggleExtension}: flips the extension's entry in
+ *   OMP-native `disabledExtensions` YAML (project > global, see
+ *   ./omp-extension-state.ts) and notifies the user; the change applies on
+ *   the next OMP start.
  */
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { SF_PI_REGISTRY } from "../../catalog/registry.ts";
-import { isExtensionDisabledInOmpConfig, isSfPiExtensionEnabled } from "./sf-pi-extension-state.ts";
-import { isOmpRuntime } from "./pi-compat.ts";
+import { isExtensionDisabledInOmpConfig } from "./sf-pi-extension-state.ts";
 import {
   readOmpDisabledExtensionFiles,
   resolveOmpConfigScope,
   writeOmpDisabledExtensionFiles,
 } from "./omp-extension-state.ts";
 import type { CommandPanelAction } from "./command-panel.ts";
-import {
-  applyExtensionState,
-  findPackageInSettings,
-  getDisabledExtensions,
-  resolveEffectiveScope,
-} from "./sf-pi-package-state.ts";
 
 /**
  * Stable group label used by every panel that adopts the shared toggle
@@ -59,13 +50,9 @@ export type LifecycleActionId = "lifecycle.toggle";
  * Predicate for `CommandPanelOptions.closeBeforeAction`.
  *
  * Every panel that wires `lifecycle.toggle` to {@link performToggleExtension}
- * MUST pass this as `closeBeforeAction`. The toggle action calls
- * `ctx.reload()` which invalidates `ctx`; running it while the panel is
- * still mounted leaves the underlying `ctx.ui.custom()` promise dangling
- * (pi's reload-time UI teardown unmounts the panel but never calls `done`),
- * which strands the surrounding slash-command handler. Specialized panel
- * tests must cover this close-before-reload contract when they use
- * {@link performToggleExtension}.
+ * passes this as `closeBeforeAction`, so the toggle runs after the panel has
+ * closed instead of leaving a panel whose toggle row no longer matches the
+ * OMP config.
  *
  * Generic in `A` so TypeScript still infers each panel's narrow action
  * union from `onAction` instead of widening the inferred `T` to `string`
@@ -97,32 +84,26 @@ export function buildToggleExtensionAction(
   if (!ext) return null;
   if (ext.alwaysActive) return null;
 
-  const omp = isOmpRuntime();
-  const enabled = omp
-    ? !isExtensionDisabledInOmpConfig(ext.id, options.cwd)
-    : isSfPiExtensionEnabled(options.cwd, ext.id);
-  const where = omp ? "OMP config and restart OMP" : "sf-pi settings and reload";
+  const enabled = !isExtensionDisabledInOmpConfig(ext.id, options.cwd);
   return {
     value: "lifecycle.toggle",
     label: enabled ? "Disable this extension" : "Enable this extension",
     description: enabled
-      ? `Add an exclusion for ${ext.id} to your ${where}. Re-enable later with /sf-pi enable ${ext.id}.`
-      : `Remove the exclusion for ${ext.id} from your ${where} so its tools, skills, and commands return.`,
+      ? `Add an exclusion for ${ext.id} to your OMP config and restart OMP. Re-enable later with /sf-pi enable ${ext.id}.`
+      : `Remove the exclusion for ${ext.id} from your OMP config and restart OMP so its tools, skills, and commands return.`,
     group: LIFECYCLE_GROUP,
   };
 }
 
 /**
- * Flip the disabled state for the given extension in the appropriate
- * settings scope (project > global), notify the user, and trigger a
- * reload so pi re-reads the filter list.
+ * Flip the given extension's entry in OMP-native `disabledExtensions` YAML
+ * (project > global) and notify the user. OMP never rebinds extension
+ * factories on `ctx.reload()`; the `requirePiVersion()` gate applies the
+ * change on the next OMP start.
  *
- * Behavior:
- * - `alwaysActive` extensions are a no-op; we surface a warning so panels
- *   that incorrectly forward the toggle still produce a clear message
- *   instead of silently doing nothing.
- * - When sf-pi is not installed in either scope, we surface a friendly
- *   warning that points at /sf-pi instead of crashing.
+ * `alwaysActive` extensions are a no-op; we surface a warning so panels
+ * that incorrectly forward the toggle still produce a clear message
+ * instead of silently doing nothing.
  */
 export async function performToggleExtension(
   ctx: ExtensionCommandContext,
@@ -138,42 +119,14 @@ export async function performToggleExtension(
     return;
   }
 
-  if (isOmpRuntime()) {
-    // OMP never rebinds extension factories on ctx.reload(); the
-    // requirePiVersion gate applies the change on the next OMP start.
-    const scope = resolveOmpConfigScope(ctx.cwd);
-    const disabledFiles = readOmpDisabledExtensionFiles(ctx.cwd, scope);
-    const wasEnabled = !disabledFiles.has(ext.file);
-    if (wasEnabled) disabledFiles.add(ext.file);
-    else disabledFiles.delete(ext.file);
-    const configPath = writeOmpDisabledExtensionFiles(ctx.cwd, scope, disabledFiles);
-    ctx.ui.notify(
-      `${ext.name} ${wasEnabled ? "disabled" : "enabled"} in ${configPath}. Restart OMP to apply.`,
-      "info",
-    );
-    return;
-  }
-
-  const scope = resolveEffectiveScope(ctx.cwd);
-  const match = findPackageInSettings(ctx.cwd, scope);
-  if (!match) {
-    ctx.ui.notify(
-      `sf-pi package not found in project or global settings. Install with: pi install . (project) or pi install -g <source> (global).`,
-      "warning",
-    );
-    return;
-  }
-
-  const disabledFiles = getDisabledExtensions(match.settingsPath);
+  const scope = resolveOmpConfigScope(ctx.cwd);
+  const disabledFiles = readOmpDisabledExtensionFiles(ctx.cwd, scope);
   const wasEnabled = !disabledFiles.has(ext.file);
-  if (wasEnabled) {
-    disabledFiles.add(ext.file);
-  } else {
-    disabledFiles.delete(ext.file);
-  }
-  applyExtensionState(match, disabledFiles);
-
-  const verb = wasEnabled ? "disabled" : "enabled";
-  ctx.ui.notify(`${ext.name} ${verb}. Reloading…`, "info");
-  await ctx.reload();
+  if (wasEnabled) disabledFiles.add(ext.file);
+  else disabledFiles.delete(ext.file);
+  const configPath = writeOmpDisabledExtensionFiles(ctx.cwd, scope, disabledFiles);
+  ctx.ui.notify(
+    `${ext.name} ${wasEnabled ? "disabled" : "enabled"} in ${configPath}. Restart OMP to apply.`,
+    "info",
+  );
 }

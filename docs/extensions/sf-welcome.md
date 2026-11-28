@@ -10,7 +10,7 @@ editLink: false
 
 ## What it does
 
-Non-blocking startup header with model/environment status, cache-only dedicated-compaction readiness, one-line LSP and Herdr readiness, optional gateway usage, SF Pi package freshness, announcements, recommended extensions, and recent sessions. Pi owns Pi Runtime release checks and updates. SF Welcome mode is independent from Pi's native quietStartup setting; /sf-welcome and /sf-setup-fonts remain available on demand.
+Non-blocking startup header with model/environment status, cache-only dedicated-compaction readiness, one-line LSP readiness, optional gateway usage, SF Pi package freshness, announcements, skill sources, and recent sessions. OMP itself updates with omp update. SF_PI_SAFE_START=1 keeps the non-blocking header for recovery launches; /sf-welcome and /sf-setup-fonts remain available on demand.
 
 ## Start
 

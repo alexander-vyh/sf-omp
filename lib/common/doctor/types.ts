@@ -21,7 +21,7 @@ export interface SkillLocation {
 }
 
 export type SkillRootKind =
-  "pi" | "agents" | "claude" | "codex" | "cursor" | "project-pi" | "project-agents" | "settings";
+  "omp" | "agents" | "claude" | "codex" | "cursor" | "project-omp" | "project-agents" | "settings";
 
 export interface SkillCollision {
   name: string;
@@ -42,33 +42,17 @@ export interface AvailableSkillRoot {
   skillCount: number;
 }
 
-export interface SfPiPackageDuplicate {
-  settingsPath: string;
-  entries: string[];
-}
-
 export interface RuntimeDiagnostics {
-  piVersion?: string;
-  requiredPiVersion: string;
+  /** Native OMP host version (`getInstalledPiVersion()`). */
+  ompVersion?: string;
   nodeVersion: string;
-  nodePath?: string;
-  npmPath?: string;
-  piPath?: string;
-  allPiPaths: string[];
-  npmGlobalRoot?: string;
-  npmBefore?: string;
-  npmMinReleaseAge?: string;
-  npmMinimumReleaseAge?: string;
-  installedPiPackageVersion?: string;
-  latestPiPackageVersion?: string;
-  updateAdvice: string[];
+  nodePath: string;
 }
 
 export interface DoctorReport {
-  piVersion?: string;
+  ompVersion?: string;
   nodeVersion: string;
   runtime: RuntimeDiagnostics;
-  quietStartup?: boolean;
   welcomeMode?: string;
   safeStartRequested: boolean;
   welcomeDisabled: boolean;
@@ -76,14 +60,12 @@ export interface DoctorReport {
   skillCollisions: SkillCollision[];
   staleSkillPaths: StaleSkillPath[];
   availableSkillRoots: AvailableSkillRoot[];
-  sfPiPackageDuplicates: SfPiPackageDuplicate[];
 }
 
 export interface StartupDoctorNudge {
   issueCount: number;
   collisionCount: number;
   staleSkillPathCount: number;
-  packageDuplicateCount: number;
   safeStartRequested: boolean;
   message: string;
   command: string;

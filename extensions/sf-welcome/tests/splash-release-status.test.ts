@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Render-level checks for the SF Pi package freshness row. */
 import { describe, expect, it } from "vitest";
+import { detectSfPiReleaseStatus } from "../lib/release-status.ts";
 import type { ReleaseStatusInfo, SplashData } from "../lib/types.ts";
 
 const ANSI_ESCAPE = String.fromCharCode(27);
@@ -26,7 +27,6 @@ function baseData(overrides: Partial<SplashData> = {}): SplashData {
     monthlyCost: 0,
     monthlyBudget: 3000,
     sfCli: { installed: true, freshness: "latest", loading: false, installedVersion: "2.134.6" },
-    privacy: { telemetryEnabled: false, source: "sf-pi-default" },
     sfSkills: {
       installKind: "managed",
       freshness: "latest",
@@ -99,16 +99,20 @@ describe("release freshness splash row", () => {
           latestVersion: "0.141.1",
           freshness: "update-available",
           loading: false,
-          updateCommand: "pi update git:github.com/salesforce/sf-pi",
+          updateCommand: "/sf-pi auto-update run",
         },
       }),
     );
 
     expect(findStatusLine(rendered, "sf-pi")).toContain("update available");
-    expect(rendered).toContain("→ pi update git:github.com/salesforce/sf-pi");
+    expect(rendered).toContain("→ /sf-pi auto-update run");
   });
 
-  it("leaves Pi Runtime release checks and update guidance to Pi", async () => {
+  it("points SF Pi updates at the sf-omp checkout Auto Update", () => {
+    expect(detectSfPiReleaseStatus().updateCommand).toBe("/sf-pi auto-update run");
+  });
+
+  it("renders no host runtime release row", async () => {
     const rendered = await render(baseData());
 
     expect(() => findStatusLine(rendered, "Pi")).toThrow("Could not find Pi status row");

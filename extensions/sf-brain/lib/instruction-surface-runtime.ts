@@ -1,94 +1,77 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Public-Pi runtime adapter for the pure Instruction Surface Report module. */
+/** OMP runtime adapter for the pure Instruction Surface Report module. */
 import {
   buildInstructionSurfaceReport,
   type InstructionSurfaceContextMessage,
   type InstructionSurfaceReport,
-  type InstructionSurfaceSkill,
   type InstructionSurfaceTool,
+  type InstructionSurfaceUnavailable,
 } from "./instruction-surface-report.ts";
 
-interface RuntimeTool extends InstructionSurfaceTool {
-  sourceInfo?: { source?: string };
-}
-
-interface RuntimeSkill extends InstructionSurfaceSkill {
-  sourceInfo?: { source?: string };
-}
-
 export interface InstructionSurfaceRuntimePi {
-  getAllTools(): RuntimeTool[];
+  getAllTools(): InstructionSurfaceTool[];
+  getActiveTools(): string[];
 }
 
 export interface InstructionSurfaceRuntimeContext {
-  cwd: string;
-  getSystemPrompt(): string;
-  getSystemPromptOptions(): {
-    selectedTools?: string[];
-    toolSnippets?: Record<string, string>;
-    skills?: RuntimeSkill[];
-  };
+  /** OMP returns the effective system prompt as ordered policy blocks. */
+  getSystemPrompt(): string[];
   sessionManager: {
-    buildContextEntries(): unknown[];
+    getBranch(): unknown[];
   };
 }
 
 export interface CaptureInstructionSurfaceOptions {
   sfPiPackageRoot: string;
   sfPiToolNames: readonly string[];
-  externalSalesforceSkillRoots?: readonly string[];
   piRuntimeVersion?: string;
   sfPiVersion?: string;
   mode?: "current_session" | "bundled_baseline";
   supplementalContextMessages?: readonly InstructionSurfaceContextMessage[];
 }
 
+/** Surfaces OMP does not expose to extensions; reported, never estimated. */
+export const OMP_UNAVAILABLE_SURFACES: readonly InstructionSurfaceUnavailable[] = [
+  {
+    surface: "skills",
+    reason: "OMP exposes no skill list to extensions, so skill contributions are not measured.",
+  },
+  {
+    surface: "tool_guidance",
+    reason:
+      "OMP tool metadata exposes neither prompt snippets nor prompt guidelines, so tool guidance is not measured.",
+  },
+];
+
 export function captureInstructionSurfaceReport(
   pi: InstructionSurfaceRuntimePi,
   ctx: InstructionSurfaceRuntimeContext,
   options: CaptureInstructionSurfaceOptions,
 ): InstructionSurfaceReport {
-  const promptOptions = ctx.getSystemPromptOptions();
-  const snippets = promptOptions.toolSnippets ?? {};
   const tools = pi.getAllTools().map((tool) => ({
     name: tool.name,
     description: tool.description,
     parameters: tool.parameters,
-    promptSnippet: tool.promptSnippet ?? snippets[tool.name],
-    promptGuidelines: tool.promptGuidelines,
   }));
-  const skills = promptOptions.skills ?? [];
 
   return buildInstructionSurfaceReport({
     mode: options.mode ?? "current_session",
-    systemPrompt: ctx.getSystemPrompt(),
-    selectedTools: promptOptions.selectedTools ?? [],
+    // OMP joins policy blocks with a blank line when it sends the prompt.
+    systemPrompt: ctx.getSystemPrompt().join("\n\n"),
+    selectedTools: pi.getActiveTools(),
     tools,
-    skills,
+    skills: [],
+    unavailable: OMP_UNAVAILABLE_SURFACES,
     contextMessages: latestMessagesByType([
       ...(options.supplementalContextMessages ?? []),
-      ...latestContextMessages(ctx.sessionManager.buildContextEntries()),
+      ...latestContextMessages(ctx.sessionManager.getBranch()),
     ]),
     sfPiToolNames: options.sfPiToolNames,
     sfPiPackageRoot: options.sfPiPackageRoot,
-    externalSalesforceSkillRoots:
-      options.externalSalesforceSkillRoots ?? inferExternalSalesforceSkillRoots(skills),
+    externalSalesforceSkillRoots: [],
     piRuntimeVersion: options.piRuntimeVersion,
     sfPiVersion: options.sfPiVersion,
   });
-}
-
-export function inferExternalSalesforceSkillRoots(
-  skills: readonly Pick<InstructionSurfaceSkill, "filePath">[],
-): string[] {
-  const roots = new Set<string>();
-  for (const skill of skills) {
-    const normalized = skill.filePath.replace(/\\/g, "/");
-    const marker = "/afv-library/skills/";
-    const index = normalized.indexOf(marker);
-    if (index >= 0) roots.add(normalized.slice(0, index + marker.length - 1));
-  }
-  return [...roots].sort();
 }
 
 function latestMessagesByType(
@@ -99,6 +82,7 @@ function latestMessagesByType(
   return [...latest.values()];
 }
 
+/** Latest model-visible custom message of each type on OMP's active session branch. */
 function latestContextMessages(entries: readonly unknown[]): InstructionSurfaceContextMessage[] {
   const latest = new Map<string, InstructionSurfaceContextMessage>();
   for (const entry of entries) {
@@ -107,9 +91,11 @@ function latestContextMessages(entries: readonly unknown[]): InstructionSurfaceC
       type?: unknown;
       customType?: unknown;
       content?: unknown;
+      excludeFromContext?: unknown;
     };
     if (
       candidate.type !== "custom_message" ||
+      candidate.excludeFromContext === true ||
       typeof candidate.customType !== "string" ||
       (typeof candidate.content !== "string" && !Array.isArray(candidate.content))
     ) {

@@ -3,7 +3,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { markLatestBrowserSnapshotStale } from "../../../lib/common/sf-browser-snapshot-state.ts";
-import { renderBrowserToolCall, renderBrowserToolResult } from "./browser-render.ts";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
+import { browserToolRenderers } from "./browser-render.ts";
 import { runAgentBrowser } from "./agent-browser.ts";
 import {
   type AcceptedBrowserDialog,
@@ -21,7 +22,7 @@ import { okText } from "./tool-support.ts";
 export const SF_BROWSER_CLICK_TOOL_NAME = "sf_browser_click";
 
 export function registerSfBrowserClickTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool(pi, {
     name: SF_BROWSER_CLICK_TOOL_NAME,
     label: "SF Browser Click",
     description:
@@ -30,9 +31,7 @@ export function registerSfBrowserClickTool(pi: ExtensionAPI): void {
     promptGuidelines: [
       "Use sf_browser_click only with refs from the latest sf_browser_snapshot; wait and snapshot again after page-changing Salesforce clicks.",
     ],
-    renderCall: (args, theme) => renderBrowserToolCall(SF_BROWSER_CLICK_TOOL_NAME, args, theme),
-    renderResult: (result, options, theme, context) =>
-      renderBrowserToolResult(SF_BROWSER_CLICK_TOOL_NAME, result, options, theme, context),
+    ...browserToolRenderers(SF_BROWSER_CLICK_TOOL_NAME),
     parameters: Type.Object({
       ref: Type.String({ description: "Element ref from sf_browser_snapshot, for example @e3." }),
       reason: Type.Optional(

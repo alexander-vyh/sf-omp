@@ -2,7 +2,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 // Guardrail for sf-pi's boot-path contract.
 //
-// Pi loads every extension entry point before session_start. In this repo,
+// OMP loads extension entry points before session_start. In this repo,
 // extension entry points import a shared lib/common tree, so a single heavy
 // runtime import in that tree can silently become startup work for many
 // extensions. This lint walks the runtime static-import graph starting at each

@@ -243,7 +243,8 @@ import {
   createStaleUsageRefreshState,
   maybeAutoRefreshStaleUsage,
 } from "./lib/stale-usage-refresh.ts";
-import { isOmpHost, requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { requirePiVersion } from "../../lib/common/pi-compat.ts";
+import { nativeUi } from "../../lib/common/ui-rows.ts";
 import { markBootStep } from "../../lib/common/boot-timing.ts";
 import { globalAgentPath } from "../../lib/common/pi-paths.ts";
 import { handlePriorityCommand } from "./lib/priority-command.ts";
@@ -329,22 +330,16 @@ export default function sfLlmGatewayInternalExtension(pi: ExtensionAPI) {
   // refresher without leaking stale callbacks across reloads/resumes.
   let unregisterMonthlyUsage: (() => void) | null = null;
 
-  // Register one complete Provider. The host owns auth application, provider-scoped
+  // Register the provider by name + config. OMP owns auth application, provider-scoped
   // model persistence, refresh coordination, and API dispatch from this point on.
-  // OMP registers providers by name + config instead of a Provider object.
-  if (isOmpHost(pi)) {
-    // isOmpHost proved the OMP ExtensionAPI; Pi's declarations type the other shape.
-    const ompHost = pi as unknown as OmpProviderHost;
-    registerOmpGatewayProvider(ompHost, gatewayProviderRuntime, {
-      // OMP ignores message_end rewrites, so normalize at the stream boundary.
-      normalizeError: async (message) => {
-        const cwd = gatewayProviderRuntime.authController.getActiveCwd();
-        return cwd ? normalizeGatewayAssistantError(message, cwd) : undefined;
-      },
-    });
-  } else {
-    pi.registerProvider(gatewayProviderRuntime.provider);
-  }
+  // Pi's declarations type the Provider-object shape; the running host is OMP.
+  registerOmpGatewayProvider(pi as unknown as OmpProviderHost, gatewayProviderRuntime, {
+    // OMP ignores message_end rewrites, so normalize at the stream boundary.
+    normalizeError: async (message) => {
+      const cwd = gatewayProviderRuntime.authController.getActiveCwd();
+      return cwd ? normalizeGatewayAssistantError(message, cwd) : undefined;
+    },
+  });
 
   pi.on("message_end", handleGatewayRequestDiagnostics);
   pi.on("session_before_compact", handleGatewayCompaction);
@@ -1820,7 +1815,7 @@ async function runSetupWizard(
   ctx: ExtensionCommandContext,
   scope: "global" | "project",
 ): Promise<void> {
-  if (!ctx.hasUI) {
+  if (!ctx.hasUI || ctx.mode !== "tui") {
     await emitCommandOutput(
       pi,
       ctx,
@@ -1832,18 +1827,10 @@ async function runSetupWizard(
   }
 
   while (true) {
-    const result = await ctx.ui.custom<SetupOverlayResult | undefined>(
-      (_tui, theme, _keybindings, done) =>
-        new GatewaySetupOverlayComponent(theme, scope, ctx.cwd, done, ctx.isProjectTrusted()),
-      {
-        overlay: true,
-        // Use function form for responsive sizing on terminal resize
-        overlayOptions: () => ({
-          anchor: "center" as const,
-          width: "82%",
-          minWidth: 84,
-        }),
-      },
+    const result = await nativeUi(ctx.ui).custom<SetupOverlayResult | undefined>(
+      (ui, theme, _keybindings, done) =>
+        new GatewaySetupOverlayComponent(theme, scope, ctx.cwd, done, ui, ctx.isProjectTrusted()),
+      { overlay: true },
     );
 
     if (!result) {

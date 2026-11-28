@@ -4,8 +4,8 @@
  *
  * The only write surface in sf-slack.
  */
-import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { callLabel, registerSlackUiTool, slackText } from "./render.ts";
 import {
   SlackCanvasParams,
   type ApiErr,
@@ -76,16 +76,8 @@ type CanvasCriteriaValidation =
 
 const VALID_CANVAS_SECTION_TYPES = new Set<string>(["h1", "h2", "h3", "any_header"]);
 
-function callLabel(label: string, summary: string, theme: Theme): Text {
-  return new Text(
-    theme.fg("toolTitle", theme.bold(label + " ")) + theme.fg("muted", summary),
-    0,
-    0,
-  );
-}
-
 export function registerCanvasTool(pi: ExtensionAPI): void {
-  pi.registerTool<typeof SlackCanvasParams>({
+  registerSlackUiTool<typeof SlackCanvasParams>(pi, {
     name: "slack_canvas",
     label: "Slack Canvas",
     description:
@@ -96,7 +88,7 @@ export function registerCanvasTool(pi: ExtensionAPI): void {
     promptSnippet: "Read Slack canvas content, create new canvases, or edit existing ones",
     parameters: SlackCanvasParams,
 
-    renderCall(args: CanvasToolCallArgs, theme: Theme) {
+    renderCall(args: CanvasToolCallArgs, _options, theme) {
       const action = args.action || "read";
       switch (action) {
         case "read": {
@@ -121,45 +113,35 @@ export function registerCanvasTool(pi: ExtensionAPI): void {
       }
     },
 
-    renderResult(
-      result: CanvasToolRenderResult,
-      opts: { expanded: boolean; isPartial: boolean },
-      theme: Theme,
-    ) {
+    renderResult(result: CanvasToolRenderResult, opts, theme) {
       if (opts.isPartial) {
-        return new Text(theme.fg("warning", "Slack canvas operation running…"), 0, 0);
+        return slackText(theme.fg("warning", "Slack canvas operation running…"));
       }
 
       const details = result.details || {};
       if (!details.ok) {
-        return new Text(
+        return slackText(
           theme.fg("error", "✗ " + (getFirstText(result.content) || "Canvas call failed")),
-          0,
-          0,
         );
       }
       const action = details.action || "read";
 
       if (action === "create") {
-        return new Text(
+        return slackText(
           theme.fg("success", "✓ Canvas created ") + theme.fg("accent", details.canvas_id || ""),
-          0,
-          0,
         );
       }
       if (action === "edit") {
-        return new Text(
+        return slackText(
           theme.fg("success", "✓ ") +
             theme.fg("text", "Canvas updated") +
             theme.fg("dim", ` (${details.operation || "?"})`),
-          0,
-          0,
         );
       }
 
       if (details.mode === "metadata") {
         const file = details.fileData;
-        if (!file) return new Text(theme.fg("warning", "No canvas metadata"), 0, 0);
+        if (!file) return slackText(theme.fg("warning", "No canvas metadata"));
 
         let text = theme.fg("success", "✓ Canvas ") + theme.fg("accent", file.name || "unknown");
         text += "\n" + theme.fg("borderMuted", "  ─────────────────────────────────────");
@@ -168,7 +150,7 @@ export function registerCanvasTool(pi: ExtensionAPI): void {
         text += "\n  " + theme.fg("muted", "Size:   ") + theme.fg("text", file.size || "?");
         text += "\n  " + theme.fg("muted", "Author: ") + theme.fg("warning", file.sharedBy || "?");
         text += "\n" + theme.fg("borderMuted", "  ─────────────────────────────────────");
-        return new Text(text, 0, 0);
+        return slackText(text);
       }
 
       const sections = details.sections || [];
@@ -183,7 +165,7 @@ export function registerCanvasTool(pi: ExtensionAPI): void {
           theme.fg("dim", ` [${section.type || "?"}]`);
         text += "\n  " + theme.fg("text", section.content || "(empty)");
       }
-      return new Text(text, 0, 0);
+      return slackText(text);
     },
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {

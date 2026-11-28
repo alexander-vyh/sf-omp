@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { describe, expect, it } from "vitest";
-import { shouldShowFloatingHud } from "../index.ts";
+import { shouldShowSkillsHud } from "../index.ts";
 import type { SkillUsage, SkillsHudState } from "../lib/skill-state.ts";
 
 function usage(name: string): SkillUsage {
@@ -18,10 +18,10 @@ function state(partial: Partial<SkillsHudState>): SkillsHudState {
   };
 }
 
-describe("sf-skills floating HUD visibility", () => {
+describe("sf-skills HUD widget visibility", () => {
   it("hides when skill usage is only earlier in the session", () => {
     expect(
-      shouldShowFloatingHud(
+      shouldShowSkillsHud(
         state({
           earlier: [usage("generating-apex")],
           hasAny: true,
@@ -35,7 +35,7 @@ describe("sf-skills floating HUD visibility", () => {
 
   it("shows when at least one skill is still in context", () => {
     expect(
-      shouldShowFloatingHud(
+      shouldShowSkillsHud(
         state({
           live: [usage("generating-apex")],
           hasAny: true,
@@ -49,7 +49,7 @@ describe("sf-skills floating HUD visibility", () => {
 
   it("stays hidden on small terminals", () => {
     expect(
-      shouldShowFloatingHud(
+      shouldShowSkillsHud(
         state({
           live: [usage("generating-apex")],
           hasAny: true,

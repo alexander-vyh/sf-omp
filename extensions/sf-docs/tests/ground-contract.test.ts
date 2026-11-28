@@ -7,16 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let tempAgentDir: string;
 
-vi.mock("@earendil-works/pi-coding-agent", async () => {
-  const actual = await vi.importActual<typeof import("@earendil-works/pi-coding-agent")>(
-    "@earendil-works/pi-coding-agent",
-  );
-  return { ...actual, getAgentDir: () => tempAgentDir };
-});
-
 describe("sf_docs deterministic ground workflow", () => {
   beforeEach(() => {
     tempAgentDir = mkdtempSync(path.join(tmpdir(), "sf-docs-ground-"));
+    vi.stubEnv("PI_CODING_AGENT_DIR", tempAgentDir);
     vi.stubEnv("SF_DOCS_MCP_ENDPOINT", "https://docs.example.test/");
     vi.stubEnv("SF_DOCS_MCP_TOKEN", "sfmcp-test-token");
   });

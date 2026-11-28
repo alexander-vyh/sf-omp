@@ -11,8 +11,14 @@
  * Layout matches the agreed ASCII spec: a narrowing funnel strip, a tab bar,
  * a scrolling body, a pending-changes status line, and a key-hint footer.
  */
-import { type Focusable, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionRows,
+  ExtensionTheme,
+  ExtensionUiHost,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { padTo, truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
+import { RowsTextField } from "../../../../lib/common/ui-field.ts";
+import { decodeRowKey } from "../../../../lib/common/ui-rows.ts";
 import type { CatalogConflict, CatalogSkill, CatalogSource } from "../catalog.ts";
 import { jumpToEnd, jumpToStart, slice, step, viewportSize, type SliceResult } from "./viewport.ts";
 import { fitColumns, renderColumns, type Cell, type ColumnSpec } from "./layout.ts";
@@ -36,9 +42,7 @@ type ConflictNavRow =
   | { type: "copy"; conflict: CatalogConflict; copy: CatalogSkill };
 
 // Cap the content width so the table stays scannable on ultrawide monitors
-// while still expanding to show full paths on normal-to-wide terminals. Pi
-// re-calls render(width) on resize, so columns reflow between these bounds.
-const MIN_INNER = 84;
+// while still expanding to show full paths on normal-to-wide terminals.
 const MAX_INNER = 150;
 const LAYOUT = { gap: 1, leftPad: 1, rightPad: 2 } as const;
 
@@ -77,9 +81,7 @@ function skillGateColumns(scopeLabel: string): ColumnSpec[] {
   ];
 }
 
-export class SkillFunnelViewComponent implements Focusable {
-  focused = false;
-
+export class SkillFunnelViewComponent implements ExtensionRows {
   private tab: FunnelTab = "catalog";
   private cursor: Record<FunnelTab, number> = {
     catalog: 0,
@@ -96,18 +98,16 @@ export class SkillFunnelViewComponent implements Focusable {
     conflicts: 0,
   };
 
-  private filterText = "";
-  private filterFocused = false;
-  private addText = "";
-  private addFocused = false;
+  private readonly filterField = new RowsTextField();
+  private readonly addField = new RowsTextField();
   private notice = "";
-  private showLegend = false;
+  private legend: { lines: string[]; offset: number } | undefined;
 
   private staged = new Map<string, FunnelAction>();
-  private lastTerminalRows = 28;
 
   constructor(
-    private readonly theme: Theme,
+    private readonly ui: ExtensionUiHost,
+    private readonly theme: ExtensionTheme,
     private readonly props: FunnelViewProps,
     private readonly done: (result: FunnelResult) => void,
   ) {}
@@ -117,94 +117,98 @@ export class SkillFunnelViewComponent implements Focusable {
   // -----------------------------------------------------------------------------------------------
 
   handleInput(data: string): void {
-    if (this.filterFocused) return this.handleTextInput(data, "filter");
-    if (this.addFocused) return this.handleTextInput(data, "add");
-
+    const key = decodeRowKey(data);
+    if (key?.kind === "release") return;
+    if (this.filterField.focused) return this.handleTextInput(data, key?.id, "filter");
+    if (this.addField.focused) return this.handleTextInput(data, key?.id, "add");
+    if (!key) return;
     this.notice = "";
 
-    // The legend is a modal read: any key dismisses it.
-    if (this.showLegend) {
-      this.showLegend = false;
-      return;
-    }
-    if (data === "?") {
-      this.showLegend = true;
-      return;
-    }
-
-    if (matchesKey(data, "escape") || data === "q") {
-      this.done({ kind: "cancel" });
-      return;
-    }
-    if (matchesKey(data, "return") || matchesKey(data, "enter")) {
-      this.done({ kind: "apply", actions: [...this.staged.values()] });
-      return;
-    }
-    if (matchesKey(data, "tab") || matchesKey(data, "right") || data === "l") {
-      this.switchTab(+1);
-      return;
-    }
-    if (matchesKey(data, "left") || data === "h") {
-      this.switchTab(-1);
-      return;
-    }
-    if (data >= "1" && data <= "5") {
-      const tab = FUNNEL_TABS[Number(data) - 1];
-      if (tab) this.tab = tab.id;
-      return;
-    }
-    if (data === "/") {
-      this.filterFocused = true;
-      return;
-    }
-    if (data === "a" && this.tab === "sources") {
-      this.addFocused = true;
-      this.addText = "";
-      return;
-    }
-
-    const view = this.viewportInfo();
-    if (matchesKey(data, "up") || data === "k") return this.applyStep(-1, view);
-    if (matchesKey(data, "down") || data === "j") return this.applyStep(+1, view);
-    if (matchesKey(data, "pageUp")) return this.applyStep(-view.viewport, view);
-    if (matchesKey(data, "pageDown")) return this.applyStep(+view.viewport, view);
-    if (matchesKey(data, "home")) return this.jump(jumpToStart(view.total, view.viewport));
-    if (matchesKey(data, "end")) return this.jump(jumpToEnd(view.total, view.viewport));
-
-    if (data === "g" || data === "G" || matchesKey(data, "space")) {
-      if (this.tab === "sources") this.toggleSourceGateAtCursor();
-      else this.toggleSkillGateAtCursor("global");
-      return;
-    }
-    if (data === "p" || data === "P") {
-      if (this.tab !== "sources") this.toggleSkillGateAtCursor("project");
-      return;
-    }
-    if (data === "w" || data === "W") {
-      if (this.tab === "conflicts") this.pickWinnerAtCursor();
-      return;
-    }
-    if (data === "r" || data === "R") {
-      if (this.tab === "conflicts") this.resolveByFileAtCursor();
-      return;
-    }
-    if (data === "c" || data === "C") {
-      if (this.tab === "conflicts") {
-        if (this.staged.size > 0) {
-          this.notice = "apply or cancel pending changes before consolidating";
-          return;
-        }
-        this.done({ kind: "consolidate" });
+    if (this.legend) {
+      const height = Math.max(1, this.ui.size().rows - 3);
+      const lastOffset = Math.max(0, this.legend.lines.length - height);
+      if (lastOffset && (key.id === "up" || key.id === "down")) {
+        const offset = this.legend.offset + (key.id === "up" ? -1 : 1);
+        this.legend.offset = Math.max(0, Math.min(lastOffset, offset));
+      } else {
+        this.legend = undefined;
       }
       return;
     }
-    if (data === "m") {
-      this.rescopeAtCursor();
+    if (key.text === "?") {
+      this.legend = { lines: this.buildLegend(this.theme), offset: 0 };
       return;
     }
-    if (data === "M") {
-      this.rescopeAllGlobal();
+
+    switch (key.id) {
+      case "escape":
+      case "ctrl+c":
+      case "q":
+        this.done({ kind: "cancel" });
+        return;
+      case "enter":
+        this.done({ kind: "apply", actions: [...this.staged.values()] });
+        return;
+      case "tab":
+      case "right":
+      case "l":
+        this.switchTab(1);
+        return;
+      case "left":
+      case "h":
+        this.switchTab(-1);
+        return;
+      case "up":
+      case "k":
+        this.applyStep(-1, this.viewportInfo());
+        return;
+      case "down":
+      case "j":
+        this.applyStep(1, this.viewportInfo());
+        return;
+      case "pageUp":
+      case "pageDown": {
+        const view = this.viewportInfo();
+        this.applyStep(key.id === "pageUp" ? -view.viewport : view.viewport, view);
+        return;
+      }
+      case "home":
+      case "end": {
+        const view = this.viewportInfo();
+        const jump = key.id === "home" ? jumpToStart : jumpToEnd;
+        this.jump(jump(view.total, view.viewport));
+        return;
+      }
+    }
+    const tab = FUNNEL_TABS[Number(key.id) - 1];
+    if (tab) {
+      this.tab = tab.id;
       return;
+    }
+    const letter = key.text;
+    if (letter === "/") {
+      this.filterField.focused = true;
+    } else if (letter === "a" && this.tab === "sources") {
+      this.addField.setValue("");
+      this.addField.focused = true;
+    } else if (letter === "g" || letter === "G" || key.id === "space") {
+      if (this.tab === "sources") this.toggleSourceGateAtCursor();
+      else this.toggleSkillGateAtCursor("global");
+    } else if (letter === "p" || letter === "P") {
+      if (this.tab !== "sources") this.toggleSkillGateAtCursor("project");
+    } else if (letter === "w" || letter === "W") {
+      if (this.tab === "conflicts") this.pickWinnerAtCursor();
+    } else if (letter === "r" || letter === "R") {
+      if (this.tab === "conflicts") this.resolveByFileAtCursor();
+    } else if (letter === "c" || letter === "C") {
+      if (this.tab !== "conflicts") return;
+      if (this.staged.size > 0)
+        this.notice = "apply or cancel pending changes before consolidating";
+      else this.done({ kind: "consolidate" });
+    } else if (letter === "m") {
+      this.rescopeAtCursor();
+    } else if (letter === "M") {
+      this.rescopeAllGlobal();
     }
   }
 
@@ -272,42 +276,29 @@ export class SkillFunnelViewComponent implements Focusable {
     this.done({ kind: "resolve", name: row.conflict.name, winnerPath: row.copy.filePath });
   }
 
-  private handleTextInput(data: string, which: "filter" | "add"): void {
-    const get = () => (which === "filter" ? this.filterText : this.addText);
-    const set = (v: string) => {
-      if (which === "filter") this.filterText = v;
-      else this.addText = v;
-    };
-    if (matchesKey(data, "escape")) {
-      set("");
-      if (which === "filter") this.filterFocused = false;
-      else this.addFocused = false;
-      this.resetCursor();
+  private handleTextInput(data: string, key: string | undefined, which: "filter" | "add"): void {
+    const field = which === "filter" ? this.filterField : this.addField;
+    if (key === "escape") {
+      field.setValue("");
+      field.focused = false;
+      if (which === "filter") this.resetFilterPosition();
       return;
     }
-    if (matchesKey(data, "return") || matchesKey(data, "enter")) {
-      if (which === "filter") {
-        this.filterFocused = false;
-      } else {
-        const value = this.addText.trim();
+    if (key === "enter") {
+      field.focused = false;
+      if (which === "add") {
+        const value = field.getValue().trim();
         if (value) {
           this.stage({ kind: "add-source", value, scope: "global" });
           this.notice = `staged add source ${value}`;
         }
-        this.addFocused = false;
-        this.addText = "";
+        field.setValue("");
       }
       return;
     }
-    if (matchesKey(data, "backspace")) {
-      set(get().slice(0, -1));
-      if (which === "filter") this.resetCursor();
-      return;
-    }
-    if (data.length === 1 && data >= " " && data !== "\x7f") {
-      set(get() + data);
-      if (which === "filter") this.resetCursor();
-    }
+    const before = field.getValue();
+    field.handleInput(data);
+    if (which === "filter" && field.getValue() !== before) this.resetFilterPosition();
   }
 
   private switchTab(delta: number): void {
@@ -315,9 +306,11 @@ export class SkillFunnelViewComponent implements Focusable {
     this.tab = FUNNEL_TABS[(idx + delta + FUNNEL_TABS.length) % FUNNEL_TABS.length]?.id ?? this.tab;
   }
 
-  private resetCursor(): void {
-    this.cursor[this.tab] = 0;
-    this.offset[this.tab] = 0;
+  private resetFilterPosition(): void {
+    for (const { id } of FUNNEL_TABS) {
+      this.cursor[id] = 0;
+      this.offset[id] = 0;
+    }
   }
 
   private jump(r: SliceResult): void {
@@ -409,41 +402,50 @@ export class SkillFunnelViewComponent implements Focusable {
   // -----------------------------------------------------------------------------------------------
 
   render(width: number): string[] {
-    const innerWidth = Math.min(Math.max(MIN_INNER, width - 2), MAX_INNER);
-    const view = this.viewportInfo();
-    this.lastTerminalRows = view.terminalRows;
+    if (width < 3) return [];
+    const innerWidth = Math.min(width - 2, MAX_INNER);
     const theme = this.theme;
     const row = (c = "") => boxRow(theme, innerWidth, c);
-    const sep = () =>
-      `${theme.fg("border", "├")}${theme.fg("border", "─".repeat(innerWidth))}${theme.fg("border", "┤")}`;
+    const rule = "─".repeat(innerWidth);
+    const top = theme.fg("border", `╭${rule}╮`);
+    const bottom = theme.fg("border", `╰${rule}╯`);
+    if (this.legend) {
+      const height = Math.max(1, this.ui.size().rows - 3);
+      const maxOffset = Math.max(0, this.legend.lines.length - height);
+      const offset = Math.min(this.legend.offset, maxOffset);
+      const hint = maxOffset ? "  ↑↓ scroll · any other key closes" : "  press any key to close";
+      return [
+        top,
+        ...this.legend.lines.slice(offset, offset + height).map(row),
+        row(theme.fg("dim", hint)),
+        bottom,
+      ];
+    }
 
-    const out: string[] = [];
-    out.push(
-      `${theme.fg("border", "╭")}${theme.fg("border", "─".repeat(innerWidth))}${theme.fg("border", "╮")}`,
-    );
-    out.push(row(""));
-    out.push(row(this.renderFunnelStrip(theme)));
-    out.push(row(""));
-    out.push(row(this.renderTabStrip(theme, innerWidth)));
-    out.push(row(this.renderCaption(theme)));
-    out.push(sep());
-    out.push(
-      ...(this.showLegend
-        ? this.renderLegend(theme, view, row)
-        : this.renderBody(theme, innerWidth, view, row)),
-    );
-    out.push(sep());
-    out.push(row(this.renderStatusLine(theme, view)));
-    out.push(row(this.renderHints(theme)));
-    out.push(
-      `${theme.fg("border", "╰")}${theme.fg("border", "─".repeat(innerWidth))}${theme.fg("border", "╯")}`,
-    );
-    return out;
+    const view = this.viewportInfo();
+    const sep = theme.fg("border", `├${rule}┤`);
+    return [
+      top,
+      row(""),
+      row(this.renderFunnelStrip(theme)),
+      row(""),
+      row(this.renderTabStrip(theme, innerWidth)),
+      row(this.renderCaption(theme)),
+      sep,
+      ...this.renderBody(theme, innerWidth, view, row),
+      sep,
+      row(this.renderStatusLine(theme, innerWidth, view)),
+      row(this.renderHints(theme)),
+      bottom,
+    ];
   }
 
-  invalidate(): void {}
+  dispose(): void {
+    this.filterField.dispose();
+    this.addField.dispose();
+  }
 
-  private renderFunnelStrip(theme: Theme): string {
+  private renderFunnelStrip(theme: ExtensionTheme): string {
     const c = funnelCounts(this.props.catalog);
     const arrow = theme.fg("border", " ─► ");
     const seg = (label: string, n: number) =>
@@ -457,7 +459,7 @@ export class SkillFunnelViewComponent implements Focusable {
   }
 
   /** One-line, plain-language description of the current tab + its columns. */
-  private renderCaption(theme: Theme): string {
+  private renderCaption(theme: ExtensionTheme): string {
     const text: Record<FunnelTab, string> = {
       catalog:
         "Every skill found everywhere. Funnel = where it lands · Scope = G/P/default · Used = invocations.",
@@ -473,12 +475,11 @@ export class SkillFunnelViewComponent implements Focusable {
     return ` ${theme.fg("dim", `${text[this.tab]}  ·  ? legend`)}`;
   }
 
-  /** Full legend overlay (toggled with ?). Explains every funnel term once. */
-  private renderLegend(theme: Theme, view: ViewportInfo, row: (c?: string) => string): string[] {
+  private buildLegend(theme: ExtensionTheme): string[] {
     const h = (s: string) => theme.fg("toolTitle", s);
     const k = (s: string) => theme.fg("accent", s);
     const d = (s: string) => theme.fg("dim", s);
-    const lines = [
+    return [
       "",
       `  ${h("The funnel")}  ${d("the catalog narrows left → right to what Pi actually loads")}`,
       `    ${k("Catalog")}    every skill found on disk, across every source`,
@@ -500,15 +501,10 @@ export class SkillFunnelViewComponent implements Focusable {
       `  ${h("Scope flags")}   ${k("G")} global · ${k("P")} project · ${d("default")} auto-discovered · ${d("—")} not wired`,
       `  ${h("Move")}          ${k("m")} move skill/source global→project · ${k("M")} move all global → this project`,
       `  ${h("Conflicts")}     ${k("RESOLVABLE")} rewire (w) · ${theme.fg("warning", "REPORT-ONLY")} file action (r) · ${k("c")} consolidate global+project dupes`,
-      "",
-      d("  press any key to close"),
     ];
-    const out = lines.map((l) => row(l));
-    while (out.length < view.viewport + 2) out.push(row(""));
-    return out;
   }
 
-  private renderTabStrip(theme: Theme, innerWidth: number): string {
+  private renderTabStrip(theme: ExtensionTheme, innerWidth: number): string {
     // Compact form (no per-tab counts, keep the conflict badge) when the full
     // strip would overflow a narrow terminal.
     const build = (withCounts: boolean): string => {
@@ -527,7 +523,7 @@ export class SkillFunnelViewComponent implements Focusable {
   }
 
   private renderBody(
-    theme: Theme,
+    theme: ExtensionTheme,
     innerWidth: number,
     view: ViewportInfo,
     row: (c?: string) => string,
@@ -567,7 +563,7 @@ export class SkillFunnelViewComponent implements Focusable {
     for (let i = view.offset; i < view.end; i++) emit(i);
   }
 
-  private renderHeader(theme: Theme, innerWidth: number, widths: number[]): string {
+  private renderHeader(theme: ExtensionTheme, innerWidth: number, widths: number[]): string {
     if (this.tab === "conflicts") {
       return ` ${theme.fg("muted", "Conflicts — ● winner · ○ loser · w rewire winner · r resolve by file")}`;
     }
@@ -580,7 +576,7 @@ export class SkillFunnelViewComponent implements Focusable {
 
   // ---- skill rows (catalog / global / project) ----
   private renderSkillRow(
-    theme: Theme,
+    theme: ExtensionTheme,
     innerWidth: number,
     widths: number[],
     r: CatalogSkill,
@@ -626,7 +622,7 @@ export class SkillFunnelViewComponent implements Focusable {
   }
 
   private renderSourceRow(
-    theme: Theme,
+    theme: ExtensionTheme,
     innerWidth: number,
     widths: number[],
     r: CatalogSource,
@@ -663,21 +659,19 @@ export class SkillFunnelViewComponent implements Focusable {
 
   /** Pad the row body to the inner width and pin a scroll glyph in the right gutter. */
   private composeScrollRow(
-    theme: Theme,
+    theme: ExtensionTheme,
     innerWidth: number,
     body: string,
     index: number,
     view: ViewportInfo,
     isCursor: boolean,
   ): string {
-    const target = Math.max(0, innerWidth - 2);
-    const w = visibleWidth(body);
-    const padded = w >= target ? truncateToWidth(body, target, "…") : body + " ".repeat(target - w);
+    const padded = truncate(body, Math.max(0, innerWidth - 2), "…", true);
     const line = `${padded} ${this.scrollGlyph(theme, view, index)}`;
     return isCursor ? theme.fg("accent", line) : line;
   }
 
-  private scrollGlyph(theme: Theme, view: ViewportInfo, index: number): string {
+  private scrollGlyph(theme: ExtensionTheme, view: ViewportInfo, index: number): string {
     if (view.total <= view.viewport) return " ";
     if (index === view.offset && view.canScrollUp) return theme.fg("accent", "▲");
     if (index === view.end - 1 && view.canScrollDown) return theme.fg("accent", "▼");
@@ -685,7 +679,7 @@ export class SkillFunnelViewComponent implements Focusable {
   }
 
   private renderConflictRow(
-    theme: Theme,
+    theme: ExtensionTheme,
     innerWidth: number,
     r: ConflictNavRow,
     index: number,
@@ -697,7 +691,7 @@ export class SkillFunnelViewComponent implements Focusable {
         r.conflict.kind === "report-only"
           ? theme.fg("warning", "REPORT-ONLY ⚠")
           : theme.fg("accent", "RESOLVABLE");
-      return ` ${theme.fg("toolTitle", trunc(r.conflict.name, 36))}   ${tag}`;
+      return ` ${theme.fg("toolTitle", truncate(r.conflict.name, 36))}   ${tag}`;
     }
     const cur = isCursor ? theme.fg("accent", "▸") : " ";
     const isWinner = r.copy.conflictRole === "winner";
@@ -718,12 +712,12 @@ export class SkillFunnelViewComponent implements Focusable {
         : r.conflict.kind === "report-only"
           ? theme.fg("dim", "default wins · r to move/delete")
           : theme.fg("muted", "w rewire · r file");
-    const cells = `${pad(cur, 2)}   ${dot} ${pad(trunc(r.copy.sourceLabel, 28), 28)} ${role}`;
-    return tint(theme, isCursor, ` ${cells}`);
+    const cells = ` ${padTo(cur, 2)}   ${dot} ${truncate(r.copy.sourceLabel, 28, "…", true)} ${role}`;
+    return isCursor ? theme.fg("accent", cells) : cells;
   }
 
   // ---- glyph helpers ----
-  private funnelGlyph(theme: Theme, r: CatalogSkill): string {
+  private funnelGlyph(theme: ExtensionTheme, r: CatalogSkill): string {
     if (r.conflictRole === "winner") return theme.fg("success", "✦winner");
     if (r.conflictRole === "loser" || r.conflictRole === "report-only-loser")
       return theme.fg("warning", "✦shadow");
@@ -732,7 +726,7 @@ export class SkillFunnelViewComponent implements Focusable {
     return theme.fg("muted", "○gated");
   }
 
-  private scopeFlag(theme: Theme, r: CatalogSkill): string {
+  private scopeFlag(theme: ExtensionTheme, r: CatalogSkill): string {
     if (r.autoDefault) return theme.fg("muted", "default");
     if (!r.seen) return theme.fg("dim", "—");
     if (r.enabledGlobal && r.enabledProject) return theme.fg("success", "G+P");
@@ -741,7 +735,7 @@ export class SkillFunnelViewComponent implements Focusable {
     return theme.fg("dim", "—");
   }
 
-  private skillState(theme: Theme, r: CatalogSkill, scope: Scope): string {
+  private skillState(theme: ExtensionTheme, r: CatalogSkill, scope: Scope): string {
     if (r.autoDefault) return theme.fg("dim", "default · locked");
     if (scope === "project" && r.enabledGlobal && !r.enabledProject)
       return theme.fg("dim", "on globally · locked");
@@ -764,26 +758,35 @@ export class SkillFunnelViewComponent implements Focusable {
   }
 
   // ---- status + hints ----
-  private renderStatusLine(theme: Theme, view: ViewportInfo): string {
-    if (this.addFocused) {
-      return ` ${theme.fg("muted", "Add custom path:")} ${theme.fg("accent", this.addText)}${theme.fg("accent", "█")}   ${theme.fg("dim", "enter stage · esc cancel")}`;
+  private renderStatusLine(theme: ExtensionTheme, width: number, view: ViewportInfo): string {
+    if (this.addField.focused) {
+      const prefix = ` ${theme.fg("muted", "Add custom path:")} `;
+      const fullHint = "   Enter stage · Esc cancel";
+      const available = Math.max(1, width - visibleWidth(prefix));
+      const hint = available > visibleWidth(fullHint) + 12 ? fullHint : "";
+      return `${prefix}${this.addField.render(available - visibleWidth(hint))[0] ?? ""}${theme.fg("dim", hint)}`;
+    }
+    if (this.filterField.focused) {
+      const prefix = ` ${theme.fg("muted", "Filter:")} `;
+      return prefix + (this.filterField.render(Math.max(1, width - visibleWidth(prefix)))[0] ?? "");
     }
     if (this.notice) return ` ${theme.fg("warning", this.notice)}`;
     const pending =
       this.staged.size > 0
         ? theme.fg("accent", describePending([...this.staged.values()]))
         : theme.fg("dim", "no pending changes");
-    const filter = this.filterText
-      ? `   ${theme.fg("muted", "filter:")} ${theme.fg("accent", this.filterText)}${this.filterFocused ? theme.fg("accent", "█") : ""}`
-      : "";
     const pos =
       view.total > 0
         ? theme.fg("muted", `${view.offsetDisplay}–${view.endDisplay}/${view.total}`)
         : theme.fg("muted", "0");
-    return ` ${pos}   pending: ${pending}${filter}`;
+    const status = ` ${pos}   pending: ${pending}`;
+    const value = this.filterField.getValue();
+    return value
+      ? `${status}   ${theme.fg("muted", "filter:")} ${theme.fg("accent", value)}`
+      : status;
   }
 
-  private renderHints(theme: Theme): string {
+  private renderHints(theme: ExtensionTheme): string {
     const base = "↑↓ move · ←→ tab · g global";
     const extra =
       this.tab === "sources"
@@ -799,13 +802,13 @@ export class SkillFunnelViewComponent implements Focusable {
   // -----------------------------------------------------------------------------------------------
 
   private catalogRowsFiltered(): CatalogSkill[] {
-    return filterSkills(this.props.catalog.skills, this.filterText);
+    return filterSkills(this.props.catalog.skills, this.filterField.getValue());
   }
   private skillRowsFiltered(): CatalogSkill[] {
-    return filterSkills(skillGateRows(this.props.catalog), this.filterText);
+    return filterSkills(skillGateRows(this.props.catalog), this.filterField.getValue());
   }
   private sourceRowsFiltered(): CatalogSource[] {
-    const f = this.filterText.trim().toLowerCase();
+    const f = this.filterField.getValue().trim().toLowerCase();
     const rows = sourceRows(this.props.catalog);
     return f ? rows.filter((s) => `${s.label} ${s.rootPath}`.toLowerCase().includes(f)) : rows;
   }
@@ -823,8 +826,8 @@ export class SkillFunnelViewComponent implements Focusable {
   // -----------------------------------------------------------------------------------------------
 
   private viewportInfo(): ViewportInfo {
-    const terminalRows = this.lastTerminalRows;
-    const viewport = viewportSize(terminalRows);
+    const terminalRows = this.ui.size().rows;
+    const viewport = Math.min(viewportSize(terminalRows), Math.max(1, terminalRows - 13));
     const total =
       this.tab === "sources"
         ? this.sourceRowsFiltered().length
@@ -842,7 +845,6 @@ export class SkillFunnelViewComponent implements Focusable {
       ...result,
       viewport,
       total,
-      terminalRows,
       offsetDisplay: total === 0 ? 0 : result.offset + 1,
       endDisplay: result.end,
     };
@@ -856,7 +858,6 @@ export class SkillFunnelViewComponent implements Focusable {
 interface ViewportInfo extends SliceResult {
   viewport: number;
   total: number;
-  terminalRows: number;
   offsetDisplay: number;
   endDisplay: number;
 }
@@ -867,19 +868,7 @@ function filterSkills(skills: CatalogSkill[], filterText: string): CatalogSkill[
   return skills.filter((s) => `${s.name} ${s.sourceLabel}`.toLowerCase().includes(f));
 }
 
-function pad(text: string, width: number): string {
-  return `${text}${" ".repeat(Math.max(0, width - visibleWidth(text)))}`;
-}
-
-function trunc(text: string, width: number): string {
-  return truncateToWidth(text, width, "…");
-}
-
-function tint(theme: Theme, isCursor: boolean, line: string): string {
-  return isCursor ? theme.fg("accent", line) : line;
-}
-
-function boxRow(theme: Theme, innerWidth: number, content: string): string {
-  const padded = pad(truncateToWidth(content, innerWidth, ""), innerWidth);
-  return `${theme.fg("border", "│")}${padded}${theme.fg("border", "│")}`;
+function boxRow(theme: ExtensionTheme, innerWidth: number, content: string): string {
+  const side = theme.fg("border", "│");
+  return `${side}${truncate(content, innerWidth, "", true)}${side}`;
 }

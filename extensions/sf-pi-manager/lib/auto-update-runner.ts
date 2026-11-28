@@ -1,8 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Bounded, abortable execution of independent first-party update targets. */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getInstalledPiVersion, isOmpRuntime } from "../../../lib/common/pi-compat.ts";
-import { globalAgentPath } from "../../../lib/common/pi-paths.ts";
 import { spawnCommand } from "../../../lib/common/windows-spawn.ts";
 import {
   markAutoUpdateResult,
@@ -12,11 +10,6 @@ import {
   type AutoUpdateTargetResult,
 } from "../../../lib/common/auto-update/store.ts";
 import {
-  planCompatiblePiPackageUpdates,
-  type PiPackageUpdatePlan,
-  type PiPackageUpdatePlanOptions,
-} from "./auto-update-package-plan.ts";
-import {
   applyCheckoutUpdate,
   planCheckoutUpdate,
   type CheckoutUpdatePlan,
@@ -24,26 +17,16 @@ import {
 
 const UPDATE_TIMEOUT_MS = 10 * 60 * 1000;
 
-export interface NativeAutoUpdatePlan {
-  offline: boolean;
-  packages: PiPackageUpdatePlan;
-  /** OMP host: the sf-omp checkout's position relative to its upstream. */
-  checkout?: CheckoutUpdatePlan;
-}
+/** Offline runs plan nothing; otherwise the sf-omp checkout's position relative to its upstream. */
+export type NativeAutoUpdatePlan =
+  { offline: true } | { offline: false; checkout: CheckoutUpdatePlan };
 
 export interface NativeAutoUpdateRunOptions {
   signal?: AbortSignal;
   canRunTarget?: (target: AutoUpdateTarget) => boolean;
   env?: NodeJS.ProcessEnv;
   onPlan?: (plan: NativeAutoUpdatePlan) => void;
-  planPackages?: (
-    pi: ExtensionAPI,
-    cwd: string,
-    options: PiPackageUpdatePlanOptions,
-  ) => Promise<PiPackageUpdatePlan>;
-  /** Host override; defaults to the running host. OMP updates the sf-omp checkout, never Pi packages. */
-  omp?: boolean;
-  /** Checkout root override for the OMP checkout target (tests/fixtures). */
+  /** Checkout root override for the sf-omp checkout target (tests/fixtures). */
   checkoutRoot?: string;
 }
 
@@ -53,18 +36,15 @@ export async function runNativeAutoUpdate(
   options: NativeAutoUpdateRunOptions = {},
 ): Promise<AutoUpdateStatus> {
   const env = options.env ?? process.env;
-  const omp = options.omp ?? isOmpRuntime();
   const results: AutoUpdateTargetResult[] = [
     {
       target: "pi-runtime",
       result: "skipped",
-      message: omp
-        ? "The OMP runtime is pinned by the sf-omp checkout's lockfile and changes only with the checkout."
-        : "Pi runtime updates remain user-managed; newer stable 0.x releases load in forward-compatibility mode.",
+      message: "The OMP runtime is the native omp on PATH; Auto Update leaves it to `omp update`.",
     },
   ];
   let interrupted = false;
-  let packageMutationSucceeded = false;
+  let checkoutChanged = false;
 
   const setStatus = (message: string | undefined) => {
     if (ctx.hasUI) ctx.ui.setStatus("sf-pi-auto-update", message);
@@ -73,101 +53,6 @@ export async function runNativeAutoUpdate(
   const mayRun = (target: AutoUpdateTarget): boolean => {
     if (options.signal?.aborted) return false;
     return options.canRunTarget?.(target) ?? true;
-  };
-
-  const runPackageTarget = async (): Promise<void> => {
-    if (!mayRun("pi-packages")) {
-      interrupted = true;
-      results.push({
-        target: "pi-packages",
-        result: "skipped",
-        message: "Skipped because Pi was no longer settled or consented.",
-      });
-      return;
-    }
-
-    setStatus("Auto Update: checking Pi package compatibility…");
-    const planPackages = options.planPackages ?? planCompatiblePiPackageUpdates;
-    let plan: PiPackageUpdatePlan;
-    let planFailed = false;
-    try {
-      plan = await planPackages(pi, ctx.cwd, {
-        piVersion: getInstalledPiVersion(),
-        signal: options.signal,
-      });
-    } catch {
-      planFailed = true;
-      plan = emptyPackagePlan();
-    }
-    if (!mayRun("pi-packages")) {
-      interrupted = true;
-      results.push({
-        target: "pi-packages",
-        result: "skipped",
-        message: "Compatibility check stopped because Pi was no longer settled or consented.",
-      });
-      return;
-    }
-    options.onPlan?.({ offline: false, packages: plan });
-    if (plan.sources.length === 0) {
-      results.push({
-        target: "pi-packages",
-        result: "skipped",
-        message: planFailed
-          ? "Skipped because package compatibility could not be established."
-          : `No compatible unpinned global npm package updates were available (${plan.configuredCount} configured).`,
-      });
-      return;
-    }
-
-    let succeeded = 0;
-    let failed = 0;
-    const deadline = Date.now() + UPDATE_TIMEOUT_MS;
-    for (const source of plan.sources) {
-      if (!mayRun("pi-packages") || Date.now() >= deadline) {
-        interrupted = true;
-        break;
-      }
-      markAutoUpdateRunning("pi-packages");
-      setStatus("Auto Update: updating one compatible Pi package…");
-      try {
-        const [piFile, piArgs] = spawnCommand("pi", [
-          "update",
-          "--extension",
-          source,
-          "--no-approve",
-        ]);
-        const result = await pi.exec(piFile, piArgs, {
-          cwd: globalAgentPath(),
-          timeout: Math.max(1, deadline - Date.now()),
-          signal: options.signal,
-        });
-        if (options.signal?.aborted || result.killed) {
-          interrupted = true;
-          break;
-        }
-        if (result.code === 0) {
-          succeeded += 1;
-          packageMutationSucceeded = true;
-        } else failed += 1;
-      } catch {
-        if (options.signal?.aborted) {
-          interrupted = true;
-          break;
-        }
-        failed += 1;
-      }
-    }
-
-    results.push({
-      target: "pi-packages",
-      result: interrupted ? "skipped" : failed > 0 ? "failed" : "success",
-      message: interrupted
-        ? `Pi package updates paused after ${succeeded} completed and ${failed} failed.`
-        : failed > 0
-          ? `Pi package updates completed with ${succeeded} succeeded and ${failed} failed.`
-          : `Pi updated ${succeeded} compatible unpinned global package(s); pins and unverifiable packages were untouched.`,
-    });
   };
 
   const runCheckoutTarget = async (): Promise<void> => {
@@ -185,7 +70,7 @@ export async function runNativeAutoUpdate(
       root: options.checkoutRoot,
       signal: options.signal,
     });
-    options.onPlan?.({ offline: false, packages: emptyPackagePlan(), checkout });
+    options.onPlan?.({ offline: false, checkout });
     if (checkout.state !== "behind") {
       results.push({
         target: "sf-omp-checkout",
@@ -210,7 +95,7 @@ export async function runNativeAutoUpdate(
       signal: options.signal,
     });
     if (options.signal?.aborted && !applied.changed) interrupted = true;
-    if (applied.changed) packageMutationSucceeded = true;
+    if (applied.changed) checkoutChanged = true;
     results.push({ target: "sf-omp-checkout", result: applied.result, message: applied.message });
   };
 
@@ -220,7 +105,7 @@ export async function runNativeAutoUpdate(
       results.push({
         target: "sf-cli",
         result: "skipped",
-        message: "Skipped because Pi was no longer settled or consented.",
+        message: "Skipped because the session was no longer settled or consented.",
       });
       return;
     }
@@ -268,10 +153,10 @@ export async function runNativeAutoUpdate(
 
   try {
     if (env.PI_OFFLINE) {
-      options.onPlan?.({ offline: true, packages: emptyPackagePlan() });
+      options.onPlan?.({ offline: true });
       results.push(
         {
-          target: omp ? "sf-omp-checkout" : "pi-packages",
+          target: "sf-omp-checkout",
           result: "skipped",
           message: "Skipped because PI_OFFLINE is active.",
         },
@@ -282,7 +167,7 @@ export async function runNativeAutoUpdate(
         },
       );
     } else {
-      await (omp ? runCheckoutTarget() : runPackageTarget());
+      await runCheckoutTarget();
       if (!interrupted) {
         await runSfCliTarget();
       } else {
@@ -308,26 +193,16 @@ export async function runNativeAutoUpdate(
       : failedCount > 0
         ? `Auto Update completed with ${failedCount} failed target(s).`
         : successCount > 0
-          ? "Eligible update targets completed; Pi runtime updates remain user-managed."
-          : "Auto Update skipped all network targets. Pi runtime updates remain user-managed.";
+          ? "Eligible update targets completed; the OMP runtime is updated separately with `omp update`."
+          : "Auto Update skipped all network targets. The OMP runtime is updated separately with `omp update`.";
 
     return markAutoUpdateResult({
       result,
       message,
       targets: results,
-      restartRecommended: packageMutationSucceeded,
+      restartRecommended: checkoutChanged,
     });
   } finally {
     setStatus(undefined);
   }
-}
-
-function emptyPackagePlan(): PiPackageUpdatePlan {
-  return {
-    sources: [],
-    configuredCount: 0,
-    eligibleCount: 0,
-    currentCount: 0,
-    skippedCount: 0,
-  };
 }

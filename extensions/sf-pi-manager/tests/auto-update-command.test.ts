@@ -9,11 +9,13 @@ import {
   runNativeAutoUpdate,
   parseAutoUpdateArgs,
 } from "../lib/auto-update-command.ts";
+import type * as WindowsSpawn from "../../../lib/common/windows-spawn.ts";
+import { CHECKOUT_UPDATE, fakeExec as fakeCheckoutExec, type ExecResult } from "./checkout-exec.ts";
 
 // Exec expectations below use bare command names; Windows command resolution
-// is covered by lib/common/tests/windows-spawn.test.ts and the real-Pi proof.
+// is covered by lib/common/tests/windows-spawn.test.ts and the native OMP proof.
 vi.mock("../../../lib/common/windows-spawn.ts", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../../lib/common/windows-spawn.ts")>()),
+  ...(await importOriginal<typeof WindowsSpawn>()),
   spawnCommand: (name: string, args: readonly string[]) => [name, [...args]],
 }));
 
@@ -22,13 +24,18 @@ const PI_AGENT_ENV = "PI_CODING_AGENT_DIR";
 let tmpDir: string;
 let prevAgent: string | undefined;
 
-const compatiblePackagePlan = async () => ({
-  sources: ["npm:@ogulcancelik/pi-herdr"],
-  configuredCount: 1,
-  eligibleCount: 1,
-  currentCount: 0,
-  skippedCount: 0,
-});
+function fakeExec(overrides?: Record<string, Partial<ExecResult>>) {
+  const { exec, calls } = fakeCheckoutExec(overrides);
+  return { pi: { exec } as unknown as ExtensionAPI, calls };
+}
+
+function runContext(hasUI = false) {
+  return {
+    cwd: tmpDir,
+    hasUI,
+    ui: { setStatus: vi.fn() },
+  } as unknown as Pick<ExtensionContext, "cwd" | "ui" | "hasUI">;
+}
 
 beforeEach(() => {
   tmpDir = mkdtempSync(path.join(os.tmpdir(), "sf-pi-auto-update-command-"));
@@ -71,191 +78,94 @@ describe("Native Auto Update command", () => {
     expect(notify).toHaveBeenLastCalledWith(expect.stringContaining("done"), "info");
   });
 
-  it("updates Pi packages without invoking an unbounded Pi self-update", async () => {
-    const calls: string[] = [];
-    const pi = {
-      exec: async (command: string, args: string[]) => {
-        calls.push([command, ...args].join(" "));
-        return { stdout: "ok", stderr: "", code: 0, killed: false };
-      },
-    } as unknown as ExtensionAPI;
-    const ctx = {
-      cwd: tmpDir,
-      hasUI: true,
-      ui: { setStatus: vi.fn() },
-    } as unknown as Pick<ExtensionContext, "cwd" | "ui" | "hasUI">;
+  it("fast-forwards the sf-omp checkout and updates Salesforce CLI, never the OMP runtime", async () => {
+    const { pi, calls } = fakeExec();
 
-    const status = await runNativeAutoUpdate(pi, ctx, {
-      planPackages: compatiblePackagePlan,
+    const status = await runNativeAutoUpdate(pi, runContext(true), {
+      checkoutRoot: tmpDir,
+      env: {},
     });
 
-    expect(calls).toEqual([
-      "pi update --extension npm:@ogulcancelik/pi-herdr --no-approve",
-      "sf update stable",
+    expect(calls).toEqual([...CHECKOUT_UPDATE, "sf update stable"]);
+    expect(calls.filter((call) => /^(?:omp|pi) /.test(call))).toEqual([]);
+    expect(status.targets?.map((target) => [target.target, target.result])).toEqual([
+      ["pi-runtime", "skipped"],
+      ["sf-omp-checkout", "success"],
+      ["sf-cli", "success"],
     ]);
-    expect(calls.join("\n")).not.toContain("--all");
-    expect(calls.join("\n")).not.toContain("--self");
     expect(status).toMatchObject({ lastResult: "success", restartRecommended: true });
-    expect(status.message).toContain("Pi runtime updates remain user-managed");
-  });
-
-  it("keeps package updates working when pi-updater suppresses the self-version check", async () => {
-    const calls: string[] = [];
-    const pi = {
-      exec: async (command: string, args: string[]) => {
-        calls.push([command, ...args].join(" "));
-        return { stdout: "ok", stderr: "", code: 0, killed: false };
-      },
-    } as unknown as ExtensionAPI;
-    const ctx = {
-      cwd: tmpDir,
-      hasUI: false,
-      ui: { setStatus: vi.fn() },
-    } as unknown as Pick<ExtensionContext, "cwd" | "ui" | "hasUI">;
-
-    const status = await runNativeAutoUpdate(pi, ctx, {
-      env: {
-        PI_SKIP_VERSION_CHECK: "1",
-        PI_UPDATER_SUPPRESSED_NATIVE_VERSION_CHECK: "1",
-      },
-      planPackages: compatiblePackagePlan,
-    });
-
-    expect(calls).toEqual([
-      "pi update --extension npm:@ogulcancelik/pi-herdr --no-approve",
-      "sf update stable",
-    ]);
-    expect(status.lastResult).toBe("success");
-    expect(status.targets).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          target: "pi-runtime",
-          message: expect.stringContaining("forward-compatibility mode"),
-        }),
-      ]),
-    );
+    expect(status.message).toContain("updated separately with `omp update`");
   });
 
   it("respects PI_OFFLINE without starting network update commands", async () => {
     const pi = { exec: vi.fn() } as unknown as ExtensionAPI;
-    const ctx = {
-      cwd: tmpDir,
-      hasUI: false,
-      ui: { setStatus: vi.fn() },
-    } as unknown as Pick<ExtensionContext, "cwd" | "ui" | "hasUI">;
 
-    const status = await runNativeAutoUpdate(pi, ctx, { env: { PI_OFFLINE: "1" } });
+    const status = await runNativeAutoUpdate(pi, runContext(), { env: { PI_OFFLINE: "1" } });
 
     expect(pi.exec).not.toHaveBeenCalled();
     expect(status).toMatchObject({ lastResult: "skipped", restartRecommended: false });
     expect(status.targets).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ target: "pi-packages", result: "skipped" }),
+        expect.objectContaining({ target: "sf-omp-checkout", result: "skipped" }),
         expect.objectContaining({ target: "sf-cli", result: "skipped" }),
       ]),
     );
   });
 
-  it("skips unverifiable package updates and still updates Salesforce CLI", async () => {
-    const calls: string[] = [];
-    const pi = {
-      exec: vi.fn(async (command: string, args: string[]) => {
-        calls.push([command, ...args].join(" "));
-        return { stdout: "ok", stderr: "", code: 0, killed: false };
-      }),
-    } as unknown as ExtensionAPI;
-    const ctx = {
-      cwd: tmpDir,
-      hasUI: false,
-      ui: { setStatus: vi.fn() },
-    } as unknown as Pick<ExtensionContext, "cwd" | "ui" | "hasUI">;
-
-    const status = await runNativeAutoUpdate(pi, ctx, {
-      planPackages: async () => {
-        throw new Error("private metadata failure");
-      },
+  it("leaves a dirty checkout untouched and still updates Salesforce CLI", async () => {
+    const { pi, calls } = fakeExec({
+      "git status --porcelain --untracked-files=no": { stdout: " M README.md" },
     });
 
-    expect(calls).toEqual(["sf update stable"]);
+    const status = await runNativeAutoUpdate(pi, runContext(), { checkoutRoot: tmpDir, env: {} });
+
+    expect(calls).toEqual([...CHECKOUT_UPDATE.slice(0, 6), "sf update stable"]);
     expect(status.targets).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ target: "pi-packages", result: "skipped" }),
+        expect.objectContaining({
+          target: "sf-omp-checkout",
+          result: "skipped",
+          message: expect.stringContaining("local changes"),
+        }),
         expect.objectContaining({ target: "sf-cli", result: "success" }),
       ]),
     );
-    expect(JSON.stringify(status)).not.toContain("private metadata failure");
+    expect(status).toMatchObject({ lastResult: "success", restartRecommended: false });
   });
 
-  it("recommends restart when one compatible package updates before another fails", async () => {
-    let packageCall = 0;
-    const pi = {
-      exec: vi.fn(async (command: string) => {
-        if (command === "pi") {
-          packageCall += 1;
-          return {
-            stdout: "",
-            stderr: "",
-            code: packageCall === 1 ? 0 : 1,
-            killed: false,
-          };
-        }
-        return { stdout: "ok", stderr: "", code: 0, killed: false };
-      }),
-    } as unknown as ExtensionAPI;
-    const ctx = {
-      cwd: tmpDir,
-      hasUI: false,
-      ui: { setStatus: vi.fn() },
-    } as unknown as Pick<ExtensionContext, "cwd" | "ui" | "hasUI">;
+  it("recommends restart when the checkout moved but npm ci failed", async () => {
+    const { pi, calls } = fakeExec({ "npm ci": { code: 1 } });
 
-    const status = await runNativeAutoUpdate(pi, ctx, {
-      planPackages: async () => ({
-        sources: ["npm:package-one", "npm:package-two"],
-        configuredCount: 2,
-        eligibleCount: 2,
-        currentCount: 0,
-        skippedCount: 0,
-      }),
-    });
+    const status = await runNativeAutoUpdate(pi, runContext(), { checkoutRoot: tmpDir, env: {} });
 
+    expect(calls).toEqual([...CHECKOUT_UPDATE, "sf update stable"]);
     expect(status).toMatchObject({ lastResult: "failed", restartRecommended: true });
+    expect(status.targets).toContainEqual(
+      expect.objectContaining({
+        target: "sf-omp-checkout",
+        result: "failed",
+        message: expect.stringContaining("npm ci failed"),
+      }),
+    );
   });
 
-  it("continues to Salesforce CLI when a package update fails and persists no raw output", async () => {
-    const calls: string[] = [];
-    const pi = {
-      exec: async (command: string, args: string[]) => {
-        calls.push([command, ...args].join(" "));
-        return command === "pi"
-          ? {
-              stdout: "",
-              stderr: "api_key=secret-value https://private.example.test /Users/private/home",
-              code: 1,
-              killed: false,
-            }
-          : { stdout: "ok", stderr: "", code: 0, killed: false };
+  it("continues to Salesforce CLI when the fetch fails and persists no raw output", async () => {
+    const { pi, calls } = fakeExec({
+      "git fetch --quiet origin": {
+        code: 1,
+        stderr: "api_key=secret-value https://private.example.test /Users/private/home",
       },
-    } as unknown as ExtensionAPI;
-    const ctx = {
-      cwd: tmpDir,
-      hasUI: false,
-      ui: { setStatus: vi.fn() },
-    } as unknown as Pick<ExtensionContext, "cwd" | "ui" | "hasUI">;
-
-    const status = await runNativeAutoUpdate(pi, ctx, {
-      planPackages: compatiblePackagePlan,
     });
 
-    expect(calls).toEqual([
-      "pi update --extension npm:@ogulcancelik/pi-herdr --no-approve",
-      "sf update stable",
-    ]);
+    const status = await runNativeAutoUpdate(pi, runContext(), { checkoutRoot: tmpDir, env: {} });
+
+    expect(calls).toEqual([...CHECKOUT_UPDATE.slice(0, 4), "sf update stable"]);
     expect(status.lastResult).toBe("failed");
     expect(status.targets).toContainEqual(
       expect.objectContaining({
-        target: "pi-packages",
+        target: "sf-omp-checkout",
         result: "failed",
-        message: expect.stringContaining("1 failed"),
+        message: "Could not fetch origin; the checkout was left unchanged.",
       }),
     );
     expect(JSON.stringify(status)).not.toContain("secret-value");

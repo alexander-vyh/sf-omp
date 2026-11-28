@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/** Behavior tests for authentication-only Pi providers and their OMP adapter. */
+/** Behavior tests for authentication-only providers and their OMP adapter. */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryCredentialStore, createModels } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -15,12 +15,19 @@ import {
   loginWithSecureCredentialPrompt,
 } from "../secure-credential-prompt.ts";
 
+// OMP's compatibility shim returns a provider's first active credential row.
+const ompRows = vi.hoisted(() => new Map<string, unknown>());
+vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  readStoredCredential: (provider: string) => ompRows.get(provider),
+}));
+
 const apiKeyAuth = {
   name: "Fixture token",
   login: async () => ({ type: "api_key" as const, key: "fixture-private" }),
   resolve: async ({ credential }: { credential?: { key?: string } }) =>
     credential?.key
-      ? { auth: { apiKey: credential.key }, source: "Pi saved credential" }
+      ? { auth: { apiKey: credential.key }, source: "OMP saved credential" }
       : undefined,
 };
 
@@ -50,7 +57,7 @@ describe("createAuthOnlyProvider", () => {
     ).resolves.toMatchObject({ type: "api_key", key: "fixture-private" });
     await expect(models.getAuth("fixture-auth")).resolves.toMatchObject({
       auth: { apiKey: "fixture-private" },
-      source: "Pi saved credential",
+      source: "OMP saved credential",
     });
 
     await models.logout("fixture-auth");
@@ -59,23 +66,92 @@ describe("createAuthOnlyProvider", () => {
 });
 
 describe("registerAuthOnlyProvider", () => {
-  it("registers the Pi Provider object on the Pi host", () => {
-    const registerProvider = vi.fn();
-    const provider = createAuthOnlyProvider({
+  it("registers one OMP OAuth login through the host-bound registerProvider", () => {
+    const calls: Array<{ host: unknown; name: string; config: unknown }> = [];
+    const pi = {
+      registerProvider(this: unknown, name: string, config: unknown) {
+        calls.push({ host: this, name, config });
+      },
+    };
+
+    registerAuthOnlyProvider(pi as unknown as ExtensionAPI, {
       id: "fixture-auth",
       name: "Fixture Auth",
       auth: { apiKey: apiKeyAuth },
     });
-    registerAuthOnlyProvider({ registerProvider } as unknown as ExtensionAPI, provider);
-    expect(registerProvider).toHaveBeenCalledWith(provider);
+
+    expect(calls).toEqual([
+      {
+        host: pi,
+        name: "fixture-auth",
+        config: { oauth: expect.objectContaining({ name: "Fixture Auth" }) },
+      },
+    ]);
+  });
+});
+
+describe("resolveAuthOnlyProviderAuth", () => {
+  it("resolves request auth from the credential OMP stored at login", async () => {
+    const registerProvider = vi.fn();
+    registerAuthOnlyProvider({ registerProvider } as unknown as ExtensionAPI, {
+      id: "fixture-resolve",
+      name: "Fixture Resolve",
+      auth: { apiKey: apiKeyAuth },
+    });
+    const ctx = { modelRegistry: { getApiKeyForProvider: vi.fn() } } as never;
+
+    await expect(resolveAuthOnlyProviderAuth(ctx, "fixture-unregistered")).resolves.toBeUndefined();
+    await expect(resolveAuthOnlyProviderAuth(ctx, "fixture-resolve")).resolves.toBeUndefined();
+
+    const oauth = createOmpAuthOnlyOAuth({
+      id: "fixture-resolve",
+      name: "Fixture Resolve",
+      auth: { apiKey: apiKeyAuth },
+    });
+    ompRows.set("fixture-resolve", { type: "oauth", ...(await oauth.login(ompCallbacks([]))) });
+
+    await expect(resolveAuthOnlyProviderAuth(ctx, "fixture-resolve")).resolves.toEqual({
+      auth: { apiKey: "fixture-private" },
+      source: "OMP saved credential",
+    });
+    expect(registerProvider).toHaveBeenCalledOnce();
   });
 
-  it("delegates request-auth resolution to Pi's provider registry", async () => {
-    const getProviderAuth = vi.fn(async () => ({ auth: { apiKey: "k" }, source: "s" }));
+  it("refreshes an expiring OAuth credential through OMP before toAuth()", async () => {
+    const toAuth = vi.fn(async (credential: { access: string }) => ({ apiKey: credential.access }));
+    registerAuthOnlyProvider({ registerProvider: vi.fn() } as unknown as ExtensionAPI, {
+      id: "fixture-refresh",
+      name: "Fixture Refresh",
+      auth: { oauth: { name: "Fixture OAuth", login: vi.fn(), refresh: vi.fn(), toAuth } },
+    });
+    const stored = {
+      type: "oauth",
+      access: "fixture-access",
+      refresh: "fixture-refresh",
+      accountId: "fixture-refresh",
+      sfPiCredential: "oauth",
+    };
+    ompRows.set("fixture-refresh", { ...stored, expires: Date.now() - 1 });
+    // OMP's locked refresh rewrites the stored row before returning the key.
+    const getApiKeyForProvider = vi.fn(async (provider: string) => {
+      ompRows.set(provider, {
+        ...stored,
+        access: "fixture-access-2",
+        expires: Date.now() + 3_600_000,
+      });
+      return "fixture-access-2";
+    });
+
     await expect(
-      resolveAuthOnlyProviderAuth({ modelRegistry: { getProviderAuth } } as never, "fixture"),
-    ).resolves.toEqual({ auth: { apiKey: "k" }, source: "s" });
-    expect(getProviderAuth).toHaveBeenCalledWith("fixture");
+      resolveAuthOnlyProviderAuth(
+        { modelRegistry: { getApiKeyForProvider } } as never,
+        "fixture-refresh",
+      ),
+    ).resolves.toEqual({ auth: { apiKey: "fixture-access-2" }, source: "OAuth" });
+    expect(getApiKeyForProvider).toHaveBeenCalledWith("fixture-refresh");
+    expect(toAuth).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "oauth", access: "fixture-access-2" }),
+    );
   });
 });
 

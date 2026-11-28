@@ -110,7 +110,7 @@ async function resolveCredential(
   credential: ApiKeyCredential | undefined,
 ): Promise<ResolvedCredential | undefined> {
   const native = nonEmpty(credential?.key);
-  if (native) return { apiKey: native, source: "Pi saved credential" };
+  if (native) return { apiKey: native, source: "OMP saved credential" };
 
   const primaryEnv = nonEmpty(await ctx.env(API_KEY_ENV));
   return primaryEnv ? { apiKey: primaryEnv, source: API_KEY_ENV } : undefined;

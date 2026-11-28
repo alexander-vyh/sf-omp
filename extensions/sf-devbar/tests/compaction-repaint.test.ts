@@ -6,6 +6,10 @@ import {
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionRows,
+  ExtensionUiHost,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { SfEnvironment } from "../../../lib/common/sf-environment/types.ts";
 
 let cachedEnvironment: SfEnvironment | null = null;
@@ -38,30 +42,22 @@ function createHarness() {
     string,
     Array<(event: unknown, ctx: ExtensionContext) => Promise<unknown> | unknown>
   >();
-  const tui = { requestRender: vi.fn() };
+  const host = {
+    requestRender: vi.fn(),
+    size: () => ({ rows: 40, columns: 160 }),
+    suspend: (run) => run(),
+  } satisfies ExtensionUiHost;
   const theme = {
     fg: (_color: string, text: string) => text,
     bold: (text: string) => text,
   };
-  let footer: { render(width: number): string[] } | undefined;
-  let widget:
-    { render(width: number): string[]; invalidate(): void; dispose?: () => void } | undefined;
+  const widgets = new Map<string, ExtensionRows>();
 
   const ui = {
-    setWidget: vi.fn((_key: string, value: unknown) => {
-      if (typeof value === "function") {
-        widget = value(tui, theme);
-      } else if (value === undefined) {
-        widget = undefined;
-      }
-    }),
-    setFooter: vi.fn((value: unknown) => {
-      if (typeof value !== "function") return;
-      footer = value(tui, theme, {
-        onBranchChange: () => () => undefined,
-        getGitBranch: () => null,
-        getExtensionStatuses: () => [],
-      });
+    setWidget: vi.fn((key: string, value: unknown) => {
+      widgets.get(key)?.dispose?.();
+      widgets.delete(key);
+      if (typeof value === "function") widgets.set(key, value(host, theme));
     }),
     setTitle: vi.fn(),
     notify: vi.fn(),
@@ -117,10 +113,10 @@ function createHarness() {
   return {
     pi,
     ctx,
-    tui,
+    host,
     emit,
-    getWidget: () => widget,
-    getFooter: () => footer,
+    getWidget: () => widgets.get("sf-devbar"),
+    getFooter: () => widgets.get("sf-devbar-footer"),
     setContextUsage(value: typeof contextUsage) {
       contextUsage = value;
     },
@@ -137,11 +133,11 @@ describe("sf-devbar compaction repaint", () => {
       await harness.emit("session_start");
       expect(harness.getWidget()?.render(160).join("\n")).toContain("90.0%");
 
-      harness.tui.requestRender.mockClear();
+      harness.host.requestRender.mockClear();
       harness.setContextUsage({ tokens: null, contextWindow: 1_000_000, percent: null });
       await harness.emit("session_compact");
 
-      expect(harness.tui.requestRender).toHaveBeenCalled();
+      expect(harness.host.requestRender).toHaveBeenCalled();
       expect(harness.getWidget()?.render(160).join("\n")).toContain("Context Window unknown");
     } finally {
       await harness.emit("session_shutdown", { type: "session_shutdown", reason: "quit" });

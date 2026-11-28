@@ -35,14 +35,17 @@ Use native provider login:
 ```text
 /login sf-llm-gateway
   → review or enter the compatible gateway root URL
-  → enter the API key in SF Pi's fixed-mask component
-  → Pi persists the credential and performs a bounded refresh
+  → enter the API key in OMP's masked provider prompt
+  → OMP persists the credential and performs a bounded refresh
 ```
 
 The Manager also offers non-secret endpoint setup, token-page opening,
 configuration import, diagnostics, model refresh, and supported onboarding
 helpers. Imports may detect credential presence but never copy a secret; login
 remains the credential boundary.
+
+On a short terminal, `/sf-llm-gateway setup` follows the active field; PageUp
+and PageDown scroll the form without editing it.
 
 ## Commands
 

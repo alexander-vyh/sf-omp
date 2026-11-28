@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Manager Settings panel for SF Agent Script defaults and global quality rules. */
-import { type Focusable, matchesKey } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent";
 import type { ConfigPanelFactory, ConfigPanelResult } from "../../../catalog/registry.ts";
+import { decodeRowKey, type RowsPanel } from "../../../lib/common/ui-rows.ts";
 import {
   EVAL_CONCURRENCY_VALUES,
   EVAL_TRACE_MODES,
@@ -24,7 +24,7 @@ type PanelPage =
   | { kind: "rules"; filter: string; filtering: boolean }
   | { kind: "rule-detail"; ruleId: AgentScriptQualityRuleId };
 
-class AgentScriptConfigPanel implements Focusable {
+class AgentScriptConfigPanel implements RowsPanel {
   focused = false;
   private cursor = 0;
   private ruleCursor = 0;
@@ -39,7 +39,7 @@ class AgentScriptConfigPanel implements Focusable {
   private message = "";
 
   constructor(
-    private readonly theme: Theme,
+    private readonly theme: ExtensionTheme,
     private readonly cwd: string,
     private readonly scope: AgentScriptSettingsScope,
     private readonly done: (result: ConfigPanelResult | undefined) => void,
@@ -57,7 +57,10 @@ class AgentScriptConfigPanel implements Focusable {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
+    const key = decodeRowKey(data);
+    if (key?.kind === "release") return;
+    const id = key?.id;
+    if (id === "escape" || key?.text === "q") {
       if (this.page.kind === "rule-detail") {
         this.page = { kind: "rules", filter: "", filtering: false };
         this.message = "";
@@ -77,19 +80,19 @@ class AgentScriptConfigPanel implements Focusable {
     }
 
     if (this.page.kind === "rules" && this.page.filtering) {
-      this.handleFilterInput(data);
+      this.handleFilterInput(id, key?.text);
       return;
     }
 
     if (this.page.kind === "rules") {
-      this.handleRulesInput(data);
+      this.handleRulesInput(id);
       return;
     }
     if (this.page.kind === "rule-detail") {
-      this.handleRuleDetailInput(data);
+      this.handleRuleDetailInput(id);
       return;
     }
-    this.handleHomeInput(data);
+    this.handleHomeInput(id);
   }
 
   renderContent(width = 100): string[] {
@@ -101,16 +104,15 @@ class AgentScriptConfigPanel implements Focusable {
   render(width = 100): string[] {
     return this.renderContent(width);
   }
-  invalidate(): void {}
 
-  private handleHomeInput(data: string): void {
+  private handleHomeInput(key: string | undefined): void {
     const count = this.scope === "global" ? 5 : 3;
-    if (matchesKey(data, "up") || matchesKey(data, "down")) {
-      this.cursor = (this.cursor + (matchesKey(data, "up") ? count - 1 : 1)) % count;
+    if (key === "up" || key === "down") {
+      this.cursor = (this.cursor + (key === "up" ? count - 1 : 1)) % count;
       this.message = "";
       return;
     }
-    if (matchesKey(data, "return") || matchesKey(data, "enter")) {
+    if (key === "enter") {
       if (this.scope === "global" && this.cursor === 4) {
         this.page = { kind: "rules", filter: "", filtering: false };
         this.ruleCursor = 0;
@@ -120,65 +122,64 @@ class AgentScriptConfigPanel implements Focusable {
       }
       return;
     }
-    if (matchesKey(data, "left") || matchesKey(data, "right") || matchesKey(data, "space")) {
-      this.toggleHomeCurrent(matchesKey(data, "left") ? -1 : 1);
+    if (key === "left" || key === "right" || key === "space") {
+      this.toggleHomeCurrent(key === "left" ? -1 : 1);
       return;
     }
-    if (data === "s") this.save();
+    if (key === "s") this.save();
   }
 
-  private handleRulesInput(data: string): void {
+  private handleRulesInput(key: string | undefined): void {
     const rows = this.filteredRules();
-    if (matchesKey(data, "up") || matchesKey(data, "down")) {
+    if (key === "up" || key === "down") {
       if (rows.length > 0) {
-        this.ruleCursor =
-          (this.ruleCursor + (matchesKey(data, "up") ? rows.length - 1 : 1)) % rows.length;
+        this.ruleCursor = (this.ruleCursor + (key === "up" ? rows.length - 1 : 1)) % rows.length;
       }
       this.message = "";
       return;
     }
-    if (matchesKey(data, "left") || matchesKey(data, "right") || matchesKey(data, "space")) {
+    if (key === "left" || key === "right" || key === "space") {
       const rule = rows[this.ruleCursor];
       if (rule) this.qualityRules[rule.id] = !this.qualityRules[rule.id];
       this.message = "";
       return;
     }
-    if (matchesKey(data, "return") || matchesKey(data, "enter")) {
+    if (key === "enter") {
       const rule = rows[this.ruleCursor];
       if (rule) this.page = { kind: "rule-detail", ruleId: rule.id };
       return;
     }
-    if (data === "/") {
+    if (key === "/") {
       if (this.page.kind === "rules") this.page = { ...this.page, filtering: true };
       return;
     }
-    if (data === "s") this.save();
+    if (key === "s") this.save();
   }
 
-  private handleRuleDetailInput(data: string): void {
-    if (matchesKey(data, "left") || matchesKey(data, "right") || matchesKey(data, "space")) {
+  private handleRuleDetailInput(key: string | undefined): void {
+    if (key === "left" || key === "right" || key === "space") {
       const rule = AGENT_SCRIPT_QUALITY_RULES.find((item) => item.id === this.pageRuleId());
       if (rule) this.qualityRules[rule.id] = !this.qualityRules[rule.id];
       this.message = "";
       return;
     }
-    if (data === "s") this.save();
+    if (key === "s") this.save();
   }
 
-  private handleFilterInput(data: string): void {
+  private handleFilterInput(key: string | undefined, text: string | undefined): void {
     if (this.page.kind !== "rules") return;
-    if (matchesKey(data, "return") || matchesKey(data, "enter")) {
+    if (key === "enter") {
       this.page = { ...this.page, filtering: false };
       this.ruleCursor = 0;
       return;
     }
-    if (matchesKey(data, "backspace")) {
+    if (key === "backspace") {
       this.page = { ...this.page, filter: this.page.filter.slice(0, -1) };
       this.ruleCursor = 0;
       return;
     }
-    if (isPrintable(data)) {
-      this.page = { ...this.page, filter: this.page.filter + data };
+    if (text?.length === 1) {
+      this.page = { ...this.page, filter: this.page.filter + text };
       this.ruleCursor = 0;
     }
   }
@@ -390,10 +391,6 @@ class AgentScriptConfigPanel implements Focusable {
 function cycle<T>(values: readonly T[], current: T, direction: -1 | 1): T {
   const index = Math.max(0, values.indexOf(current));
   return values[(index + direction + values.length) % values.length] ?? current;
-}
-
-function isPrintable(data: string): boolean {
-  return data.length === 1 && data >= " " && data !== "\x7f";
 }
 
 export const createConfigPanel: ConfigPanelFactory = (theme, cwd, scope, done) =>

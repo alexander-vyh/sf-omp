@@ -2,7 +2,7 @@
 /** Compile/check + compile/format actions for agentscript_authoring. */
 
 import { readFile, writeFile } from "node:fs/promises";
-import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue } from "@oh-my-pi/pi-coding-agent/tools/file-mutation-queue";
 import { connForAgentApi } from "../../agent-api-auth.ts";
 import { getAgentScriptAnalysis, invalidateAgentScriptAnalysis } from "../../analysis-snapshot.ts";
 import { isAgentScriptCompileValid } from "../../diagnostics.ts";

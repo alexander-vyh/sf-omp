@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "ompVersion": "18.22.0",
+  "ompVersion": "19.2.1",
   "extensions": {
     "sf-agentscript": {
       "status": "pass",
@@ -87,13 +87,6 @@
       "unsupportedEvents": []
     },
     "sf-guardrail": {
-      "status": "pass",
-      "missingCommands": [],
-      "missingTools": [],
-      "missingProviders": [],
-      "unsupportedEvents": []
-    },
-    "sf-herdr": {
       "status": "pass",
       "missingCommands": [],
       "missingTools": [],

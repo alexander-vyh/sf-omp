@@ -6,7 +6,7 @@ description: First commands to verify SF Pi and discover the bundled Salesforce 
 # SF Pi Quickstart
 
 After installing SF Pi, use these commands to confirm the package is loaded and
-to discover the surfaces available in your current pi session.
+to discover the surfaces available in your current OMP session.
 
 ## 1. Open the manager
 
@@ -15,7 +15,8 @@ to discover the surfaces available in your current pi session.
 ```
 
 Use the manager to list bundled extensions, enable or disable optional surfaces,
-open configuration panels, inspect recommendations, and run doctor checks.
+open configuration panels, review recommended-package coverage, and run doctor
+checks.
 
 ## 2. Check Salesforce context
 
@@ -25,7 +26,7 @@ open configuration panels, inspect recommendations, and run doctor checks.
 
 This shows the Salesforce CLI target org information that SF Pi will use for
 org-aware workflows. If no org is connected, authenticate with the Salesforce
-CLI outside pi, then reload the session.
+CLI outside OMP, then restart OMP.
 
 ## 3. Inspect the dev status surfaces
 
@@ -46,36 +47,28 @@ Choose the surface that matches your task:
 | Build or test `.agent` files              | `/sf-agentscript`   |
 | Work with Data Cloud / Data 360           | `/sf-data360`       |
 | Use Salesforce UI as a last-mile fallback | `/sf-browser`       |
-| Search Slack from pi                      | `/sf-slack`         |
+| Search Slack from OMP                     | `/sf-slack`         |
 | Explore Salesforce data read-only         | `/sf-data-explorer` |
 | Review safety gates                       | `/sf-guardrail`     |
 | Manage Salesforce skills                  | `/sf-skills`        |
 
-## 5. Start a focused non-MCP session
+## 5. Start a focused session
 
-Pi 1.2.0 accepts `*` patterns in `--tools`, so a session can expose only the
-Salesforce family needed for the current task. These profiles use Pi's native
+OMP's `--tools` takes a comma-separated list of exact built-in or extension
+tool names, so a session can expose only the Salesforce tools needed for the
+current task. It does not accept `*` patterns. These profiles use OMP's native
 tool selection and do not create SF Pi settings or a second exposure model.
-Quote each pattern so the shell does not expand it.
 
 ```bash
-# Salesforce Browser
-pi --no-mcp --tools read,bash,edit,write,'sf_browser_*'
-
 # Agent Script
-pi --no-mcp --tools read,bash,edit,write,'agentscript_*'
+/path/to/sf-omp/tools/bin/omp --tools read,bash,edit,write,agentscript_authoring,agentscript_preview,agentscript_eval,agentscript_lifecycle
 
 # Data 360
-pi --no-mcp --tools read,bash,edit,write,sf_data360
+/path/to/sf-omp/tools/bin/omp --tools read,bash,edit,write,sf_data360
 ```
 
-`--no-mcp` makes these examples fully independent of configured MCP servers.
-Remove it when the task requires MCP. `--tools` by itself keeps MCP tools
-available unless the selection explicitly filters MCP names.
-
-Pi 1.2.0 also accepts exact-name modifiers such as `pi --tools +codemode,-write`
-for one-run adjustments to the default tool set. Modifiers do not accept `*`
-patterns, so the focused family profiles above remain explicit allowlists.
+Each extension page in [Bundled Extensions](./extensions.md) lists its exact
+tool names.
 
 ## 6. Use generated references
 
@@ -90,7 +83,7 @@ patterns, so the focused family profiles above remain explicit allowlists.
 /sf-org
 /sf-devbar
 /sf-guardrail
-/sf-pi recommended
+/sf-pi doctor
 ```
 
 Then pick the extension that matches the work in front of you.

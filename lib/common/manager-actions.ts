@@ -1,25 +1,30 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Shared Manager Surface action discovery for extension-owned detail actions. */
-import type { ExtensionAPI, ExtensionCommandContext, Theme } from "@earendil-works/pi-coding-agent";
-import type { Component, Focusable, TUI } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionTheme,
+  ExtensionUiHost,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
 import type { ConfigPanelResult } from "../../catalog/registry.ts";
+import type { RowsPanel } from "./ui-rows.ts";
 
 export const SF_PI_MANAGER_ACTIONS_EVENT = "sf-pi-manager:actions";
 
 export type ManagerScope = "global" | "project";
 
-export type ManagerDetailActionPanel = Component &
-  Focusable & {
-    renderContent?: (width: number) => string[];
-  };
+export type ManagerDetailActionPanel = RowsPanel & {
+  renderContent?: (width: number) => string[];
+  /** Whether a focused input should receive the Manager's navigation keys. */
+  capturesNavigation?(): boolean;
+};
 
 export type ManagerDetailActionPanelFactory = (
-  theme: Theme,
+  theme: ExtensionTheme,
   cwd: string,
   scope: ManagerScope,
   done: (result: ConfigPanelResult | undefined) => void,
   ctx: ExtensionCommandContext,
-  tui: TUI,
+  ui: ExtensionUiHost,
 ) => ManagerDetailActionPanel;
 
 export interface ManagerDetailAction {

@@ -5,7 +5,8 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { DEFAULT_AGENT_BROWSER_TIMEOUT_MS } from "./constants.ts";
 import { runAgentBrowser } from "./agent-browser.ts";
-import { renderBrowserToolCall, renderBrowserToolResult } from "./browser-render.ts";
+import { registerNativeUiTool } from "../../../lib/common/native-ui-tool.ts";
+import { browserToolRenderers } from "./browser-render.ts";
 import { checkpointEvidenceLabel } from "./evidence-policy.ts";
 import {
   defaultCheckpointEvidenceTarget,
@@ -108,7 +109,7 @@ export function classifyWaitStatus(
 }
 
 export function registerSfBrowserWaitTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+  registerNativeUiTool(pi, {
     name: SF_BROWSER_WAIT_TOOL_NAME,
     label: "SF Browser Wait",
     description:
@@ -119,9 +120,7 @@ export function registerSfBrowserWaitTool(pi: ExtensionAPI): void {
       "save-result classifies an outcome and is never itself a success assertion.",
       "After ambiguous or timed-out waits, snapshot or verify through API; use the installed Browser guide path declared in <sf_engineering_constitution> for the full interaction loop.",
     ],
-    renderCall: (args, theme) => renderBrowserToolCall(SF_BROWSER_WAIT_TOOL_NAME, args, theme),
-    renderResult: (result, options, theme, context) =>
-      renderBrowserToolResult(SF_BROWSER_WAIT_TOOL_NAME, result, options, theme, context),
+    ...browserToolRenderers(SF_BROWSER_WAIT_TOOL_NAME),
     parameters: Type.Object({
       condition: WaitConditionSchema,
       checkpointEvidence: Type.Optional(

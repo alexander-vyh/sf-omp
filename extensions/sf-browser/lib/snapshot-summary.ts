@@ -7,7 +7,7 @@
  * module keeps the default result decision-oriented while preserving the raw
  * snapshot as an artifact.
  */
-import { truncateLine } from "@earendil-works/pi-coding-agent";
+import { truncate } from "@oh-my-pi/pi-tui/text/width";
 import { deriveLightningState, formatLightningState } from "./lightning-state.ts";
 import { redactUrl } from "./redaction.ts";
 import {
@@ -24,7 +24,7 @@ export interface SnapshotSummaryInput {
   url?: string;
 }
 
-const MAX_LINE_BYTES = 260;
+const MAX_LINE_COLUMNS = 260;
 const MAX_FOCUS_LINES = 24;
 const MAX_ALERT_LINES = 12;
 const MAX_ACTION_LINES = 28;
@@ -603,7 +603,9 @@ function extractQuotedName(line: string): string {
 }
 
 function formatLine(line: string): string {
-  return truncateLine(redactSnapshotText(line).replace(/\s+/g, " "), MAX_LINE_BYTES).text;
+  const text = redactSnapshotText(line).replace(/\s+/g, " ");
+  const clipped = truncate(text, MAX_LINE_COLUMNS, "");
+  return clipped === text ? text : `${clipped}... [truncated]`;
 }
 
 function redactSnapshotText(text: string): string {

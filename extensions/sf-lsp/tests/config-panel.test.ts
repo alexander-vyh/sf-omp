@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import type { Focusable } from "@earendil-works/pi-tui";
+import type { ExtensionTheme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import type { RowsPanel } from "../../../lib/common/ui-rows.ts";
 import { createConfigPanel } from "../lib/config-panel.ts";
 import { readEffectiveSfLspSettings } from "../lib/settings-io.ts";
 
@@ -15,9 +15,9 @@ const theme = {
   fg: (_color: string, text: string) => text,
   bg: (_color: string, text: string) => text,
   bold: (text: string) => text,
-} as Theme;
+} as ExtensionTheme;
 
-type TestPanel = Focusable & {
+type TestPanel = RowsPanel & {
   handleInput(data: string): void;
   renderContent(width: number): string[];
 };

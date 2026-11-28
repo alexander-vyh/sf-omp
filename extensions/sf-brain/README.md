@@ -64,7 +64,9 @@ re-injected on the next turn. Addendum changes still require a new session.
 - **Display capabilities** — effective Mermaid mode, icon mode, terminal, width,
   supported families, and the Mermaid-versus-tldraw boundary.
 - **Instruction surface** — model-visible context size and public-safe
-  contributors without displaying or persisting their content.
+  contributors without displaying or persisting their content. OMP exposes no
+  skill list or tool prompt guidance to extensions, so those sections read
+  "unavailable" rather than zero.
 - **Visual response audit** — bounded aggregate-only counts for diagram
   families, widths, warnings, renderability, and icon usage across recent
   sessions for the current project.
@@ -115,7 +117,9 @@ nested, warned, or over-width Mermaid remains a source fence in Pi today. Use a
 supported top-level form, shorten it, or use tldraw for the detailed artifact.
 
 **An Instruction Surface baseline is not comparable:** Compare only reports
-with the same measurement schema and audited Pi Runtime version.
+with the same measurement schema and host runtime version. The bundled
+baseline was measured on an upstream Pi runtime, so OMP reports are never
+comparable with it.
 
 ## File Structure
 

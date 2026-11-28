@@ -1,15 +1,13 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /** Invocation toggle overlay — split list + preview inside the SF Pi bordered pane. */
-import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import {
-  Container,
-  type Focusable,
-  matchesKey,
-  Text,
-  truncateToWidth,
-  visibleWidth,
-} from "@earendil-works/pi-tui";
+import type {
+  ExtensionRows,
+  ExtensionTheme,
+  ExtensionUiHost,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { truncate, visibleWidth } from "@oh-my-pi/pi-tui/text/width";
+import { RowsTextField } from "../../../lib/common/ui-field.ts";
+import { decodeRowKey } from "../../../lib/common/ui-rows.ts";
 import { fitColumns, renderColumns, type ColumnSpec } from "./funnel-view/layout.ts";
 import { modeForToggleSkill, packLabelFor, type ToggleSkill } from "./invocation/inventory.ts";
 import {
@@ -120,19 +118,24 @@ export function buildToggleRows(
   return rows;
 }
 
-export class SkillToggleViewComponent implements Focusable {
-  focused = true;
-  private search = "";
+export class SkillToggleViewComponent implements ExtensionRows {
+  private readonly search: RowsTextField;
   private cursor = 0;
   private policy: SkillInvocationPolicy;
   private expanded = new Set<string>();
 
   constructor(
-    private readonly theme: Theme,
+    private readonly ui: ExtensionUiHost,
+    private readonly theme: ExtensionTheme,
     private readonly skills: ToggleSkill[],
     initial: SkillInvocationPolicy,
     private readonly done: (result: ToggleViewResult) => void,
   ) {
+    this.search = new RowsTextField({
+      placeholder: "(type to filter)",
+      placeholderStyle: (text) => theme.fg("muted", text),
+    });
+    this.search.focused = true;
     this.policy = {
       default: initial.default,
       packs: { ...initial.packs },
@@ -141,59 +144,53 @@ export class SkillToggleViewComponent implements Focusable {
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c")) {
-      this.done({ action: "cancel", policy: this.policy });
-      return;
+    const key = decodeRowKey(data);
+    if (key?.kind === "release") return;
+    switch (key?.id) {
+      case "escape":
+      case "ctrl+c":
+        this.done({ action: "cancel", policy: this.policy });
+        return;
+      case "ctrl+s":
+        this.done({ action: "apply", policy: this.policy });
+        return;
+      case "up":
+        this.cursor = Math.max(0, this.cursor - 1);
+        return;
+      case "down":
+        this.cursor = Math.min(Math.max(0, this.rows().length - 1), this.cursor + 1);
+        return;
+      case "left":
+        this.setExpanded(false);
+        return;
+      case "right":
+        this.setExpanded(true);
+        return;
+      case "space":
+        this.toggleSelected();
+        return;
     }
-    if (matchesKey(data, "ctrl+s")) {
-      this.done({ action: "apply", policy: this.policy });
-      return;
-    }
-    if (matchesKey(data, "up")) {
-      this.cursor = Math.max(0, this.cursor - 1);
-      return;
-    }
-    if (matchesKey(data, "down")) {
-      this.cursor = Math.min(Math.max(0, this.rows().length - 1), this.cursor + 1);
-      return;
-    }
-    if (matchesKey(data, "left")) {
-      this.setExpanded(false);
-      return;
-    }
-    if (matchesKey(data, "right")) {
-      this.setExpanded(true);
-      return;
-    }
-    if (matchesKey(data, "space")) {
-      this.toggleSelected();
-      return;
-    }
-    if (matchesKey(data, "backspace")) {
-      this.search = [...this.search].slice(0, -1).join("");
-      this.cursor = 0;
-      return;
-    }
-    if (data.length === 1 && data >= " " && data !== "\u007f") {
-      this.search += data;
-      this.cursor = 0;
-    }
+    const before = this.search.getValue();
+    this.search.handleInput(data);
+    if (this.search.getValue() !== before) this.cursor = 0;
   }
 
   render(width: number): string[] {
     const t = this.theme;
-    const inner = Math.max(70, width - TOGGLE_CHROME);
-    const pane = splitTogglePane(inner);
+    if (width < 3) return [];
+    const inner = Math.max(1, width - TOGGLE_CHROME);
+    const terminalRows = this.ui.size().rows;
+    const split = inner >= 69;
+    const pane = split ? splitTogglePane(inner) : { left: inner, right: inner };
+    const previewRows = split ? 0 : Math.min(6, Math.max(0, terminalRows - 14));
+    const bodyLines = Math.min(TOGGLE_BODY_LINES, Math.max(1, terminalRows - 8 - previewRows));
     const rows = this.rows();
     const selected = rows[this.cursor];
     const start = Math.max(
       0,
-      Math.min(
-        this.cursor - Math.floor(TOGGLE_BODY_LINES / 2),
-        Math.max(0, rows.length - TOGGLE_BODY_LINES),
-      ),
+      Math.min(this.cursor - Math.floor(bodyLines / 2), Math.max(0, rows.length - bodyLines)),
     );
-    const slice = rows.slice(start, start + TOGGLE_BODY_LINES);
+    const slice = rows.slice(start, start + bodyLines);
     const widths = fitColumns(pane.left, COLUMNS, LAYOUT);
     const agentCount = this.skills.filter(
       (skill) => modeForToggleSkill(skill, this.policy) === "agent-invocable",
@@ -206,13 +203,14 @@ export class SkillToggleViewComponent implements Focusable {
         .reduce((sum, skill) => sum + skill.description.length, 0) / 4,
     );
 
+    const searchLabel = t.fg("muted", "Search: ");
+    const scopeCounts = t.fg("muted", `   SF ${salesforce}  ·  Community ${community}`);
+    const searchWidth = inner - visibleWidth(searchLabel) - visibleWidth(scopeCounts);
+    const searchLine = `${searchLabel}${this.search.render(Math.max(1, searchWidth))[0] ?? ""}${scopeCounts}`;
     const header = [
       t.fg("accent", t.bold("SF Skills Toggle")) +
         t.fg("dim", `   ${agentCount}/${this.skills.length} on  ·  ~${approx} tok`),
-      t.fg(
-        "muted",
-        `Search: ${this.search || "(type to filter)"}   SF ${salesforce}  ·  Community ${community}`,
-      ),
+      searchLine,
       "",
     ];
 
@@ -227,7 +225,7 @@ export class SkillToggleViewComponent implements Focusable {
     const leftBody = [tableHeader];
     if (slice.length === 0) leftBody.push(t.fg("dim", "No skills found."));
     for (const row of slice) leftBody.push(this.renderListRow(row, row === selected, widths));
-    while (leftBody.length < TOGGLE_BODY_LINES + 1) leftBody.push("");
+    while (leftBody.length < bodyLines + 1) leftBody.push("");
 
     const preview = [
       t.fg("toolTitle", t.bold("Preview")),
@@ -238,29 +236,31 @@ export class SkillToggleViewComponent implements Focusable {
       }).map((line, index) => this.colorPreviewLine(line, index, selected)),
     ];
 
-    const divider = t.fg("borderMuted", "│");
-    const combined: string[] = [];
-    for (let i = 0; i < TOGGLE_BODY_LINES + 1; i++) {
-      const left = fitPane(leftBody[i] ?? "", pane.left);
-      const right = fitPane(preview[i] ?? "", pane.right);
-      combined.push(`${left} ${divider} ${right}`);
+    let body: string[];
+    if (split) {
+      const divider = t.fg("borderMuted", "│");
+      body = leftBody.map(
+        (line, i) =>
+          `${truncate(line, pane.left, "…", true)} ${divider} ${truncate(preview[i] ?? "", pane.right, "…", true)}`,
+      );
+    } else {
+      body = leftBody.concat(preview.slice(0, previewRows));
     }
 
-    const footer = ["", formatHints(t)];
-
-    const container = new Container();
-    container.addChild(new DynamicBorder((s: string) => t.fg("borderAccent", s)));
-    for (const line of [...header, ...combined, ...footer]) {
-      container.addChild(new Text(line, 1, 0));
-    }
-    container.addChild(new DynamicBorder((s: string) => t.fg("borderAccent", s)));
-    return container.render(width);
+    const rule = t.fg("borderAccent", "─".repeat(width));
+    return [
+      rule,
+      ...[...header, ...body, "", formatHints(t)].map((line) => ` ${truncate(line, width - 2)} `),
+      rule,
+    ];
   }
 
-  invalidate(): void {}
+  dispose(): void {
+    this.search.dispose();
+  }
 
   private rows(): ToggleRow[] {
-    return buildToggleRows(this.skills, this.policy, this.expanded, this.search);
+    return buildToggleRows(this.skills, this.policy, this.expanded, this.search.getValue());
   }
 
   private renderListRow(row: ToggleRow, active: boolean, widths: number[]): string {
@@ -401,7 +401,7 @@ function singleMode(modes: Set<SkillInvocationMode>): SkillInvocationMode | "mix
   return "mixed";
 }
 
-function formatHints(theme: Theme): string {
+function formatHints(theme: ExtensionTheme): string {
   const key = (value: string) => theme.fg("accent", theme.bold(value));
   const label = (value: string) => theme.fg("dim", value);
   const sep = theme.fg("borderMuted", " · ");
@@ -412,12 +412,6 @@ function formatHints(theme: Theme): string {
     `${key("ctrl+s")} ${label("apply")}`,
     `${key("esc")} ${label("cancel")}`,
   ].join(sep);
-}
-
-function fitPane(text: string, width: number): string {
-  const clipped = truncateToWidth(text, width, "…");
-  const pad = Math.max(0, width - visibleWidth(clipped));
-  return clipped + " ".repeat(pad);
 }
 
 function toPreviewSelection(row: ToggleRow): TogglePreviewSelection {

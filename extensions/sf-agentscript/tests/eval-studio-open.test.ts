@@ -11,22 +11,22 @@ afterEach(async () => {
 });
 
 describe("Eval Studio public open seam", () => {
-  it("mounts the native custom overlay with top-center responsive options", async () => {
+  it("mounts the native fullscreen custom overlay and gets its terminal size from the host", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "eval-studio-open-"));
     dirs.push(cwd);
     await writeFile(path.join(cwd, "sfdx-project.json"), "{}");
-    let overlayOptions: unknown;
-    const custom = vi.fn(async (factory, options) => {
-      overlayOptions = options.overlayOptions();
+    const signal = new AbortController().signal;
+    const size = vi.fn(() => ({ columns: 100, rows: 40 }));
+    const custom = vi.fn(async (factory, _options) => {
       return await new Promise((resolve) => {
         const component = factory(
-          { terminal: { rows: 30 }, requestRender: vi.fn() },
+          { size, requestRender: vi.fn() },
           { fg: (_name: string, value: string) => value, bold: (value: string) => value },
           {},
           resolve,
         );
-        component.focused = true;
         expect(component.render(100).join("\n")).toContain("Agent Script Eval Studio");
+        expect(size).toHaveBeenCalled();
         component.handleInput("q");
       });
     });
@@ -36,14 +36,14 @@ describe("Eval Studio public open seam", () => {
         cwd,
         mode: "tui",
         hasUI: true,
+        signal,
         ui: { custom },
       } as never,
     );
-    expect(overlayOptions).toEqual({
-      anchor: "top-center",
-      width: "96%",
-      minWidth: 64,
-      maxHeight: "92%",
+    expect(custom).toHaveBeenCalledWith(expect.any(Function), {
+      overlay: true,
+      fullscreen: true,
+      signal,
     });
   });
 
@@ -63,6 +63,29 @@ describe("Eval Studio public open seam", () => {
         } as never,
       ),
     ).rejects.toBe(error);
+  });
+
+  it("treats native signal cancellation as closing the Studio", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "eval-studio-open-"));
+    dirs.push(cwd);
+    await writeFile(path.join(cwd, "sfdx-project.json"), "{}");
+    const controller = new AbortController();
+    const custom = vi.fn(async () => {
+      controller.abort();
+      throw controller.signal.reason;
+    });
+    await expect(
+      openEvalStudio(
+        { appendEntry: vi.fn() } as never,
+        {
+          cwd,
+          mode: "tui",
+          hasUI: true,
+          signal: controller.signal,
+          ui: { custom },
+        } as never,
+      ),
+    ).resolves.toBeUndefined();
   });
 
   it("returns a bounded local inventory in non-TUI mode without mounting custom UI", async () => {

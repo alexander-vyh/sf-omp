@@ -3,7 +3,6 @@
 import { createHash } from "node:crypto";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { isOmpHost } from "../../../lib/common/pi-compat.ts";
 import { Type } from "typebox";
 import {
   hostedConnectionName,
@@ -12,7 +11,7 @@ import {
   type HostedOrgBindingResolver,
 } from "./hosted-org-binding.ts";
 import { fingerprintConfig } from "./managed-state.ts";
-import { canonicalMcpServerName, mcpConfigPath, type McpServerConfig } from "./mcp-config.ts";
+import { mcpConfigPath, type McpServerConfig } from "./mcp-config.ts";
 import {
   installPreset,
   inspectPresetInstances,
@@ -156,7 +155,7 @@ const Params = Type.Object({
   connection_name: Type.Optional(
     Type.String({
       description:
-        "Exact Pi MCP server name. Automatically derived from the target org alias when omitted.",
+        "Exact native MCP server name. Automatically derived from the target org alias when omitted.",
     }),
   ),
   resolution: Type.Optional(
@@ -219,7 +218,6 @@ export function registerSfMcpTool(
 ): void {
   const plans = new Map<string, SfMcpPlan>();
   const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
-  const omp = isOmpHost(pi);
   /** OMP mints `mcp__<server>_<tool>`; its tool metadata is the only exact mapping. */
   const registeredMcpTool = (serverName: string, toolName: string): string | undefined =>
     pi
@@ -236,9 +234,9 @@ export function registerSfMcpTool(
     name: "sf_mcp",
     label: "SF MCP",
     description:
-      "Inspect, plan, apply, disable, and hand off Salesforce MCP presets to Pi's native MCP runtime. Connection/authentication and tool access can be planned independently; durable configuration is source-bound, diff-reviewed, and Guardrail-mediated.",
+      "Inspect, plan, apply, disable, and hand off Salesforce MCP presets to OMP's native MCP runtime. Connection/authentication and tool access can be planned independently; durable configuration is source-bound, diff-reviewed, and Guardrail-mediated.",
     promptSnippet:
-      "Configure reviewed Salesforce MCP connections and tool access in Pi without directly editing mcp.json.",
+      "Configure reviewed Salesforce MCP connections and tool access in OMP without directly editing mcp.json.",
     promptGuidelines: [
       "Use status first. Prefer connection.plan/apply for URL and authentication, then tools.plan/apply for reviewed exposure; configure.plan/apply remains the combined compatibility path.",
       "Use sf_integrate for Salesforce-side External Client App setup. Pass the public consumer key as oauth_client_id and the same explicit target_org so SF MCP can prove an org-pinned endpoint.",
@@ -246,8 +244,8 @@ export function registerSfMcpTool(
       "If org-pinned discovery reports no trusted My Domain or an issuer mismatch, use sf_browser_open_org with the my-domain Setup destination to inspect readiness; never rename an existing domain automatically.",
       "Mutating applies require an explicit global or trusted-project scope plus allow_mutation=true and remain SF Guardrail-mediated.",
       "Use the recommended tool profile unless the user explicitly requests another reviewed exposure profile.",
-      "Use login.handoff after apply. OAuth login and browser consent remain human-controlled through Pi's native /mcp runtime.",
-      "After login and recommended tool exposure, run identity.verify to compare the Headless 360 userinfo organization id with the planned org binding.",
+      "Use login.handoff after apply. OAuth login and browser consent remain human-controlled through OMP's native /mcp runtime.",
+      "After login and recommended tool exposure, run identity.verify for the exact Headless 360 userinfo call, then compare its organization id with the planned org binding.",
     ],
     parameters: Params,
     async execute(_id, rawParams, signal, _onUpdate, ctx) {
@@ -307,23 +305,9 @@ export function registerSfMcpTool(
             return applyDisablePlan(plans, plan);
           }
           case "login.handoff":
-            return loginHandoffResult(ctx.cwd, scope, params, omp);
-          case "identity.verify": {
-            // OMP has no cross-tool execution API; Pi delegates through ctx.executeTool.
-            const hostContext: { executeTool?: unknown } = ctx;
-            const executeTool =
-              typeof hostContext.executeTool === "function"
-                ? (name: string, args: Record<string, unknown>) =>
-                    ctx.executeTool(name, args, { signal })
-                : undefined;
-            return await identityVerifyResult(
-              ctx.cwd,
-              scope,
-              params,
-              executeTool,
-              registeredMcpTool,
-            );
-          }
+            return loginHandoffResult(ctx.cwd, scope, params);
+          case "identity.verify":
+            return identityVerifyResult(ctx.cwd, scope, params, registeredMcpTool);
           default:
             throw new Error(`Unsupported sf_mcp action: ${String(params.action)}`);
         }
@@ -787,7 +771,7 @@ function configurationPlanResult(
     ...(state.scopeConflict ? [`Warning: ${state.scopeConflict.message}`] : []),
     ...(state.managed.status === "project-override"
       ? [
-          "Warning: This replaces the Pi-native project override with a complete project server entry.",
+          "Warning: This replaces the host-native project override with a complete project server entry.",
         ]
       : []),
     "Changes:",
@@ -973,7 +957,7 @@ function applyDisablePlan(plans: Map<string, SfMcpPlan>, plan: DisablePlan) {
   });
 }
 
-function loginHandoffResult(cwd: string, scope: SfMcpScope, params: SfMcpParams, omp: boolean) {
+function loginHandoffResult(cwd: string, scope: SfMcpScope, params: SfMcpParams) {
   const preset = requiredPreset(params);
   const connectionName = resolveExistingConnectionName(cwd, scope, preset, params.connection_name);
   const state = inspectPresetRuntime(cwd, scope, preset, connectionName);
@@ -983,20 +967,18 @@ function loginHandoffResult(cwd: string, scope: SfMcpScope, params: SfMcpParams,
     );
   }
   if (preset.transport !== "http") {
-    throw new Error(`${preset.label} doesn't use OAuth login through Pi's native MCP runtime.`);
+    throw new Error(`${preset.label} doesn't use OAuth login through OMP's native MCP runtime.`);
   }
   const name = state.managed.configuredName;
   // OMP's /mcp has no `login`: `reauth` runs the OAuth flow and `reload` rediscovers config.
-  const command = omp ? `/mcp reauth ${name}` : `/mcp login ${name}`;
+  const command = `/mcp reauth ${name}`;
   const exposedTools = exposedToolCount(state.managed.config);
   const quarantined = zeroExposure(state.managed.status, exposedTools);
   return successResult(
     [
       `READY: ${preset.label} native MCP login handoff.`,
-      omp
-        ? `Run /mcp reload if configuration changed, then run: ${command}`
-        : `Reload Pi if configuration changed, then run: ${command}`,
-      `${omp ? "OMP" : "Pi"} owns token storage and refresh. Browser approval remains human OAuth consent.`,
+      `Run /mcp reload if configuration changed, then run: ${command}`,
+      "OMP owns token storage and refresh. Browser approval remains human OAuth consent.",
       ...(quarantined
         ? [
             `⚠ 0 tools are exposed. Signing in alone makes no tool callable; run tools.plan then tools.apply for ${preset.id} (recommended profile).`,
@@ -1016,13 +998,13 @@ function loginHandoffResult(cwd: string, scope: SfMcpScope, params: SfMcpParams,
   );
 }
 
-async function identityVerifyResult(
+/** OMP extensions cannot delegate tool calls, so verification is handed back with the exact call. */
+function identityVerifyResult(
   cwd: string,
   scope: SfMcpScope,
   params: SfMcpParams,
-  executeTool: ((name: string, args: Record<string, unknown>) => Promise<unknown>) | undefined,
   registeredMcpTool: (serverName: string, toolName: string) => string | undefined,
-) {
+): never {
   const preset = requiredPreset(params);
   if (preset.id !== "headless-360") {
     throw new Error("identity.verify currently supports only preset_id=headless-360.");
@@ -1045,42 +1027,15 @@ async function identityVerifyResult(
     method: "GET",
     headers: { Accept: "application/json" },
   };
-  if (!executeTool) {
-    const nativeTool = registeredMcpTool(connectionName, "dispatch_readonly");
-    throw new Error(
-      [
-        "identity.verify cannot call MCP tools in this runtime (no host tool delegation); the identity is NOT verified.",
-        nativeTool
-          ? `Verify it yourself: call ${nativeTool} with ${JSON.stringify(request)}`
-          : `Connect ${connectionName} first (/mcp reauth ${connectionName}), then call its dispatch_readonly tool with ${JSON.stringify(request)}`,
-        `and confirm the returned organization id equals ${binding.orgId} for ${binding.alias ?? binding.targetOrg}.`,
-      ].join(" "),
-    );
-  }
-  const toolName = `mcp__${canonicalMcpServerName(connectionName)}__dispatch_readonly`;
-  const result = await executeTool(toolName, request);
-  const evidence = JSON.stringify(result);
-  if (!evidence.includes(binding.orgId)) {
-    throw new Error(
-      `${connectionName} responded, but its authenticated organization did not match the planned org binding.`,
-    );
-  }
-  return successResult(
+  const nativeTool = registeredMcpTool(connectionName, "dispatch_readonly");
+  throw new Error(
     [
-      `PASS: ${preset.label} identity verified for ${connectionName}.`,
-      `Target org: ${binding.alias ?? binding.targetOrg}`,
-      "The authenticated organization id matched the source-bound connection instance.",
-    ].join("\n"),
-    {
-      ok: true,
-      action: "identity.verify",
-      scope,
-      presetId: preset.id,
-      connectionName,
-      targetOrg: binding.targetOrg,
-      orgType: binding.orgType,
-      verified: true,
-    },
+      "identity.verify cannot call MCP tools from an OMP extension (no host tool delegation); the identity is NOT verified.",
+      nativeTool
+        ? `Verify it yourself: call ${nativeTool} with ${JSON.stringify(request)}`
+        : `Connect ${connectionName} first (/mcp reauth ${connectionName}), then call its dispatch_readonly tool with ${JSON.stringify(request)}`,
+      `and confirm the returned organization id equals ${binding.orgId} for ${binding.alias ?? binding.targetOrg}.`,
+    ].join(" "),
   );
 }
 
@@ -1303,7 +1258,7 @@ function resolveScope(params: SfMcpParams): SfMcpScope {
 
 function requireTrustedScope(scope: SfMcpScope, projectTrusted: boolean): void {
   if (scope === "project" && !projectTrusted) {
-    throw new Error("Project MCP configuration is unavailable until Pi trusts this project.");
+    throw new Error("Project MCP configuration is unavailable until OMP trusts this project.");
   }
 }
 

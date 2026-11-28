@@ -3,7 +3,7 @@
  * Shared rendering helpers for sf-agentscript tool results.
  *
  * Two surfaces share these helpers:
- *   - `renderResult` (TUI Ink) emits theme-colored Text via `theme.fg(token, ...)`.
+ *   - `renderResult` emits styled terminal rows via `theme.fg(token, ...)`.
  *   - Markdown emitters (slash-command panels, headless reports) consume
  *     the same extractor output but format with Markdown.
  *
@@ -11,7 +11,8 @@
  * identically across tools (preview, eval, eval get_failure, eval trace).
  */
 
-import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
+import type { ThemeColor } from "@earendil-works/pi-coding-agent";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent";
 import type { DigestRow } from "../preview/trace-digest.ts";
 
 // ─── Step-type → glyph + theme color ─────────────────────────────────────────

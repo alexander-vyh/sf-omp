@@ -37,8 +37,13 @@
  *     backtick code, `<#CID>` channel refs, `<@UID>` user refs, and links.
  *   - All hex colors come from the active theme via `theme.fg(token, ...)`.
  */
-import { Text } from "@earendil-works/pi-tui";
-import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ThemeColor, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionTheme,
+  ToolRenderResultOptions,
+} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { UiNode } from "@oh-my-pi/pi-tui";
+import type { Static, TSchema } from "typebox";
 import type { SlackReaction, StructuredMatch, StructuredMessage } from "./types.ts";
 import { getPreferences } from "./preferences.ts";
 import {
@@ -48,6 +53,34 @@ import {
 } from "./api.ts";
 import { shortcodeToGlyph } from "./emoji.ts";
 import { parseSlackMessageUrl } from "./message-url.ts";
+
+type SlackUiTool<TParams extends TSchema> = Omit<
+  ToolDefinition<TParams>,
+  "renderCall" | "renderResult"
+> & {
+  renderCall(
+    args: Static<TParams>,
+    options: ToolRenderResultOptions,
+    theme: ExtensionTheme,
+  ): UiNode<"ansi">;
+  renderResult(
+    result: { content?: readonly unknown[]; details?: unknown },
+    options: ToolRenderResultOptions,
+    theme: ExtensionTheme,
+  ): UiNode<"ansi">;
+};
+
+/** Business hooks keep the SF Pi SDK types; only the display hooks use the native OMP contract. */
+export function registerSlackUiTool<TParams extends TSchema>(
+  pi: ExtensionAPI,
+  definition: SlackUiTool<TParams>,
+): void {
+  pi.registerTool(definition as unknown as ToolDefinition<TParams>);
+}
+
+export function slackText(text: string): UiNode<"ansi"> {
+  return new UiNode("ansi", { text });
+}
 
 interface SlackToolCallArgs {
   action?: string;
@@ -145,7 +178,7 @@ function authorInitials(name: string): string {
 
 /** Render a single line of Slack mrkdwn with theme emphasis. No blockquote or
  *  code-fence handling — that's the caller's job so we preserve layout. */
-function renderMrkdwnInline(text: string, theme: Theme): string {
+function renderMrkdwnInline(text: string, theme: ExtensionTheme): string {
   if (!text) return "";
   let out = text;
   out = out.replace(/\*([^*\n]+)\*/g, (_match, value) => theme.bold(value));
@@ -182,7 +215,7 @@ function renderMrkdwnInline(text: string, theme: Theme): string {
 }
 
 /** Public export retained so existing tests and external callers still work. */
-export function renderMrkdwn(text: string, theme: Theme): string {
+export function renderMrkdwn(text: string, theme: ExtensionTheme): string {
   return renderMrkdwnInline(text, theme);
 }
 
@@ -190,7 +223,7 @@ export function renderMrkdwn(text: string, theme: Theme): string {
  *   - ```fenced code blocks``` → mdCodeBlock
  *   - > blockquotes             → mdQuote with mdQuoteBorder bar
  *   - normal lines              → inline mrkdwn via renderMrkdwnInline */
-function renderBodyLines(body: string, theme: Theme): string[] {
+function renderBodyLines(body: string, theme: ExtensionTheme): string[] {
   if (!body) return [theme.fg("dim", "(empty)")];
 
   const source = String(body).replace(/\r\n?/g, "\n");
@@ -228,7 +261,7 @@ function renderBodyLines(body: string, theme: Theme): string[] {
  *       truly workspace-custom reactions (`:company-logo:`) still read
  *       clearly without pretending to be something they're not.
  */
-function renderReactions(reactions: SlackReaction[] | undefined, theme: Theme): string {
+function renderReactions(reactions: SlackReaction[] | undefined, theme: ExtensionTheme): string {
   if (!reactions || !reactions.length) return "";
   return reactions
     .map((reaction) => {
@@ -303,7 +336,7 @@ function osc8Link(url: string, label: string): string {
   return `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
 }
 
-function formatPermalink(url: string | undefined, theme: Theme): string {
+function formatPermalink(url: string | undefined, theme: ExtensionTheme): string {
   if (!url) return "";
   const { compactPermalinks } = getPreferences();
   if (compactPermalinks === "off") return theme.fg("mdLink", url);
@@ -313,7 +346,7 @@ function formatPermalink(url: string | undefined, theme: Theme): string {
 
 /** Inline "[↗ open]" chip — used on each message row so the user can
  *  Cmd/Ctrl-click straight into Slack. */
-function permalinkChip(url: string | undefined, theme: Theme): string {
+function permalinkChip(url: string | undefined, theme: ExtensionTheme): string {
   if (!url) return "";
   const { compactPermalinks } = getPreferences();
   const label = "↗";
@@ -324,7 +357,7 @@ function permalinkChip(url: string | undefined, theme: Theme): string {
 // ─── Author / channel formatting ─────────────────────────────────────────────
 
 /** Render a two-letter initials badge in the author's stable color. */
-function authorBadge(author: string, theme: Theme): string {
+function authorBadge(author: string, theme: ExtensionTheme): string {
   const resolved = resolveUserNameFromCache(author) || author || "?";
   const color = authorColor(resolved);
   return theme.fg(color, theme.bold(authorInitials(resolved)));
@@ -337,7 +370,7 @@ function renderAuthorHeader(
   ts: string | undefined,
   relativeTimeLabel: string | undefined,
   permalink: string | undefined,
-  theme: Theme,
+  theme: ExtensionTheme,
 ): string {
   const resolved = resolveUserNameFromCache(authorId) || authorId || "?";
   const color = authorColor(resolved);
@@ -365,12 +398,15 @@ function formatChannelLabel(channelIdOrName: string | undefined): string {
 
 // ─── Compact call label ─────────────────────────────────────────────────────
 
-function callLabel(toolLabel: string, summary: string, theme: Theme): Text {
-  const text = theme.fg("toolTitle", theme.bold(toolLabel + " ")) + theme.fg("muted", summary);
-  return new Text(text, 0, 0);
+export function callLabel(
+  toolLabel: string,
+  summary: string,
+  theme: ExtensionTheme,
+): UiNode<"ansi"> {
+  return slackText(theme.fg("toolTitle", theme.bold(toolLabel + " ")) + theme.fg("muted", summary));
 }
 
-export function renderCall(args: SlackToolCallArgs, theme: Theme): Text {
+export function renderCall(args: SlackToolCallArgs, theme: ExtensionTheme): UiNode<"ansi"> {
   const action = args.action || "search";
   switch (action) {
     case "search":
@@ -425,18 +461,16 @@ export function renderCall(args: SlackToolCallArgs, theme: Theme): Text {
 
 // ─── Rate-limit friendly error line ────────────────────────────────────────────
 
-function renderErrorLine(result: SlackToolRenderResult, theme: Theme): Text {
+function renderErrorLine(result: SlackToolRenderResult, theme: ExtensionTheme): UiNode<"ansi"> {
   const reason = result.details?.reason || "";
   const text = getFirstText(result.content) || "Slack call failed";
   if (reason === "rate_limited" || reason === "http_429" || /rate.?limit/i.test(text)) {
-    return new Text(
+    return slackText(
       theme.fg("warning", "⏳ Slack rate limited") +
         theme.fg("dim", " · retried once, still throttled. Try again in a few seconds."),
-      0,
-      0,
     );
   }
-  return new Text(theme.fg("error", "✗ " + text), 0, 0);
+  return slackText(theme.fg("error", "✗ " + text));
 }
 
 // ─── Header builders for thread / history / search ────────────────────────────
@@ -448,7 +482,7 @@ function buildRichHeader(
   primary: string,
   chips: string[],
   permalink: string | undefined,
-  theme: Theme,
+  theme: ExtensionTheme,
 ): string {
   const rendered = [theme.fg("success", `${icon} ${primary}`)];
   for (const chip of chips.filter(Boolean)) {
@@ -482,14 +516,14 @@ function countTotalReactions(messages: StructuredMessage[]): number {
 
 export function renderResult(
   result: SlackToolRenderResult,
-  opts: { expanded: boolean; isPartial: boolean },
-  theme: Theme,
-): Text {
+  opts: ToolRenderResultOptions,
+  theme: ExtensionTheme,
+): UiNode<"ansi"> {
   const details = result.details || {};
   const action = details.action || "search";
 
   if (opts.isPartial) {
-    return new Text(theme.fg("warning", `Slack ${action} running…`), 0, 0);
+    return slackText(theme.fg("warning", `Slack ${action} running…`));
   }
 
   if (!details.ok && details.action !== "auth") {
@@ -502,14 +536,14 @@ export function renderResult(
     const icon = isActive
       ? theme.fg("success", "✓ Connected")
       : theme.fg("error", "✗ Not configured");
-    return new Text(icon, 0, 0);
+    return slackText(icon);
   }
 
   if (action === "permalink") {
     if (!details.ok) {
       return renderErrorLine(result, theme);
     }
-    return new Text(theme.fg("success", "✓ ") + formatPermalink(details.permalink, theme), 0, 0);
+    return slackText(theme.fg("success", "✓ ") + formatPermalink(details.permalink, theme));
   }
 
   if (action === "search") {
@@ -518,7 +552,7 @@ export function renderResult(
     const query = details.query || "";
 
     if (count === 0) {
-      return new Text(theme.fg("warning", `${ICON_SEARCH} No results for "${query}"`), 0, 0);
+      return slackText(theme.fg("warning", `${ICON_SEARCH} No results for "${query}"`));
     }
 
     const chips: string[] = [];
@@ -535,10 +569,10 @@ export function renderResult(
     );
 
     if (!opts.expanded) {
-      return new Text(renderMatchesCollapsed(header, matches, theme), 0, 0);
+      return slackText(renderMatchesCollapsed(header, matches, theme));
     }
 
-    return new Text(renderMatchesExpanded(header, matches, theme), 0, 0);
+    return slackText(renderMatchesExpanded(header, matches, theme));
   }
 
   if (action === "thread") {
@@ -546,7 +580,7 @@ export function renderResult(
     const count = messages.length;
 
     if (count === 0) {
-      return new Text(theme.fg("warning", `${ICON_THREAD} No messages in thread`), 0, 0);
+      return slackText(theme.fg("warning", `${ICON_THREAD} No messages in thread`));
     }
 
     const channelLabel = details.channel_label || formatChannelLabel(details.channel);
@@ -566,9 +600,9 @@ export function renderResult(
     const header = buildRichHeader(ICON_THREAD, "Thread", chips, undefined, theme);
 
     if (!opts.expanded) {
-      return new Text(renderThreadLadder(header, messages, theme, /* collapsed */ true), 0, 0);
+      return slackText(renderThreadLadder(header, messages, theme, /* collapsed */ true));
     }
-    return new Text(renderThreadLadder(header, messages, theme, /* collapsed */ false), 0, 0);
+    return slackText(renderThreadLadder(header, messages, theme, /* collapsed */ false));
   }
 
   if (action === "history") {
@@ -576,7 +610,7 @@ export function renderResult(
     const count = messages.length;
 
     if (count === 0) {
-      return new Text(theme.fg("warning", `${ICON_HISTORY} No messages in this range`), 0, 0);
+      return slackText(theme.fg("warning", `${ICON_HISTORY} No messages in this range`));
     }
 
     const channelLabel = details.channel_label || formatChannelLabel(details.channel);
@@ -601,12 +635,12 @@ export function renderResult(
     );
 
     if (!opts.expanded) {
-      return new Text(renderHistoryLadder(header, messages, theme, /* collapsed */ true), 0, 0);
+      return slackText(renderHistoryLadder(header, messages, theme, /* collapsed */ true));
     }
-    return new Text(renderHistoryLadder(header, messages, theme, /* collapsed */ false), 0, 0);
+    return slackText(renderHistoryLadder(header, messages, theme, /* collapsed */ false));
   }
 
-  return new Text(theme.fg("dim", getFirstText(result.content)), 0, 0);
+  return slackText(theme.fg("dim", getFirstText(result.content)));
 }
 
 // ─── Collapsed / expanded renderers ───────────────────────────────────────────
@@ -619,7 +653,11 @@ function clipLine(raw: string, max: number): string {
   return normalized.length <= max ? normalized : normalized.slice(0, max - 1).trimEnd() + "…";
 }
 
-function renderMatchesCollapsed(header: string, matches: StructuredMatch[], theme: Theme): string {
+function renderMatchesCollapsed(
+  header: string,
+  matches: StructuredMatch[],
+  theme: ExtensionTheme,
+): string {
   const lines = [header, ""];
   for (const match of matches) {
     const preview = clipLine(match.text || "", COLLAPSED_PREVIEW_CHARS);
@@ -643,7 +681,7 @@ function renderMatchesCollapsed(header: string, matches: StructuredMatch[], them
 function renderThreadLadder(
   header: string,
   messages: StructuredMessage[],
-  theme: Theme,
+  theme: ExtensionTheme,
   collapsed: boolean,
 ): string {
   const out: string[] = [header, ""];
@@ -711,7 +749,7 @@ function renderThreadLadder(
 function renderHistoryLadder(
   header: string,
   messages: StructuredMessage[],
-  theme: Theme,
+  theme: ExtensionTheme,
   collapsed: boolean,
 ): string {
   const out: string[] = [header];
@@ -757,7 +795,11 @@ function renderHistoryLadder(
 }
 
 /** Search results in expanded mode: rich card per match with permalink chip. */
-function renderMatchesExpanded(header: string, matches: StructuredMatch[], theme: Theme): string {
+function renderMatchesExpanded(
+  header: string,
+  matches: StructuredMatch[],
+  theme: ExtensionTheme,
+): string {
   let text = header;
   for (const match of matches) {
     text += "\n\n";

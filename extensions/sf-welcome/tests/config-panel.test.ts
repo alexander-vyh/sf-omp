@@ -4,8 +4,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import type { Focusable } from "@earendil-works/pi-tui";
+import type { ExtensionTheme as Theme } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import type { RowsPanel } from "../../../lib/common/ui-rows.ts";
 import { resolveConfiguredWelcomeMode } from "../../../lib/common/doctor/diagnostics.ts";
 import { createConfigPanel } from "../lib/config-panel.ts";
 import { readEffectiveWelcomeSettings } from "../lib/welcome-settings.ts";
@@ -17,7 +17,7 @@ const theme = {
   bold: (text: string) => text,
 } as Theme;
 
-type TestPanel = Focusable & {
+type TestPanel = RowsPanel & {
   handleInput(data: string): void;
   renderContent(width: number): string[];
 };

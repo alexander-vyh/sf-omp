@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,11 +9,13 @@ import {
   readAutoUpdateStatus,
   writeAutoUpdateEnabled,
 } from "../../../lib/common/auto-update/store.ts";
+import type * as WindowsSpawn from "../../../lib/common/windows-spawn.ts";
+import { CHECKOUT_UPDATE, fakeExec } from "./checkout-exec.ts";
 
 // Exec expectations below use bare command names; Windows command resolution
 // is covered by lib/common/tests/windows-spawn.test.ts.
 vi.mock("../../../lib/common/windows-spawn.ts", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../../lib/common/windows-spawn.ts")>()),
+  ...(await importOriginal<typeof WindowsSpawn>()),
   spawnCommand: (name: string, args: readonly string[]) => [name, [...args]],
 }));
 
@@ -22,34 +24,24 @@ type Handler = (event: Record<string, unknown>, ctx: ExtensionContext) => Promis
 
 let tmpDir: string;
 let previousAgentDir: string | undefined;
+let previousOffline: string | undefined;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(path.join(os.tmpdir(), "sf-pi-update-runtime-"));
   previousAgentDir = process.env[PI_AGENT_ENV];
   process.env[PI_AGENT_ENV] = tmpDir;
+  // The manager runs Auto Update with the process env; keep a developer's offline mode out.
+  previousOffline = process.env.PI_OFFLINE;
+  delete process.env.PI_OFFLINE;
   writeAutoUpdateEnabled(true);
-  const packageDir = path.join(tmpDir, "npm", "node_modules", "@ogulcancelik", "pi-herdr");
-  mkdirSync(packageDir, { recursive: true });
-  writeFileSync(
-    path.join(packageDir, "package.json"),
-    JSON.stringify({ name: "@ogulcancelik/pi-herdr", version: "0.3.0" }),
-  );
-  const settings = JSON.parse(writeSettingsSource()) as Record<string, unknown>;
-  writeFileSync(path.join(tmpDir, "settings.json"), JSON.stringify(settings));
 });
 
 afterEach(() => {
   if (previousAgentDir === undefined) delete process.env[PI_AGENT_ENV];
   else process.env[PI_AGENT_ENV] = previousAgentDir;
+  if (previousOffline !== undefined) process.env.PI_OFFLINE = previousOffline;
   rmSync(tmpDir, { recursive: true, force: true });
 });
-
-function writeSettingsSource(): string {
-  return JSON.stringify({
-    sfPi: { autoUpdate: true },
-    packages: ["npm:@ogulcancelik/pi-herdr"],
-  });
-}
 
 function context(): ExtensionContext {
   return {
@@ -61,43 +53,34 @@ function context(): ExtensionContext {
     ui: {
       setStatus: vi.fn(),
       notify: vi.fn(),
-      setWorkingVisible: vi.fn(),
     },
   } as unknown as ExtensionContext;
 }
 
+/** Load the real manager factory against a fake exec for a behind sf-omp checkout. */
+function loadManager() {
+  const handlers = new Map<string, Handler>();
+  const appendEntry = vi.fn();
+  const { exec, calls } = fakeExec();
+  const pi = {
+    events: { on: vi.fn(), emit: vi.fn() },
+    on: vi.fn((event: string, handler: Handler) => handlers.set(event, handler)),
+    registerCommand: vi.fn(),
+    registerEntryRenderer: vi.fn(),
+    appendEntry,
+    exec,
+  };
+  sfPiManagerExtension(pi as never);
+  return { handlers, appendEntry, exec, calls };
+}
+
 describe("Auto Update through the real SF Pi Manager factory", () => {
-  it("waits for a terminal agent_end, emits the plan, and then runs compatible targets", async () => {
-    const handlers = new Map<string, Handler>();
-    const calls: string[] = [];
-    const appendEntry = vi.fn();
-    const exec = vi.fn(async (command: string, args: string[]) => {
-      calls.push([command, ...args].join(" "));
-      if (command === "npm") {
-        return {
-          stdout: JSON.stringify({
-            version: "0.4.0",
-            peerDependencies: { "@earendil-works/pi-coding-agent": "*" },
-          }),
-          stderr: "",
-          code: 0,
-          killed: false,
-        };
-      }
-      return { stdout: "ok", stderr: "", code: 0, killed: false };
-    });
-    const pi = {
-      events: { on: vi.fn(), emit: vi.fn() },
-      on: vi.fn((event: string, handler: Handler) => handlers.set(event, handler)),
-      registerCommand: vi.fn(),
-      registerEntryRenderer: vi.fn(),
-      appendEntry,
-      exec,
-    };
-    sfPiManagerExtension(pi as never);
+  it("waits for a terminal agent_end, emits the plan, and then updates the checkout and Salesforce CLI", async () => {
+    const { handlers, appendEntry, exec, calls } = loadManager();
     const ctx = context();
 
-    await handlers.get("session_start")?.({ reason: "startup" }, ctx);
+    // OMP 19 emits session_start without a reason, once per runtime start.
+    await handlers.get("session_start")?.({ type: "session_start" }, ctx);
     expect(calls).toEqual([]);
 
     // OMP marks non-terminal ends (retry, compaction, follow-up) with willContinue.
@@ -109,11 +92,7 @@ describe("Auto Update through the real SF Pi Manager factory", () => {
       ctx,
     );
 
-    expect(calls).toEqual([
-      "npm view @ogulcancelik/pi-herdr@latest version peerDependencies engines --json",
-      "pi update --extension npm:@ogulcancelik/pi-herdr --no-approve",
-      "sf update stable",
-    ]);
+    expect(calls).toEqual([...CHECKOUT_UPDATE, "sf update stable"]);
     const plannedCall = appendEntry.mock.calls.findIndex(
       ([type, data]) => type === "sf-pi-auto-update" && data.title === "Auto Update planned",
     );
@@ -122,43 +101,19 @@ describe("Auto Update through the real SF Pi Manager factory", () => {
     );
     expect(plannedCall).toBeGreaterThanOrEqual(0);
     expect(completedCall).toBeGreaterThan(plannedCall);
+    // The plan is persisted before the first mutation, the fast-forward pull.
     expect(appendEntry.mock.invocationCallOrder[plannedCall]).toBeLessThan(
-      exec.mock.invocationCallOrder[1],
+      exec.mock.invocationCallOrder[calls.indexOf("git pull --ff-only --quiet")],
     );
 
     await handlers.get("session_shutdown")?.({ reason: "quit" }, ctx);
   });
 
   it("defers pending updates when agent_end ends on an aborted assistant message", async () => {
-    const handlers = new Map<string, Handler>();
-    const calls: string[] = [];
-    const exec = vi.fn(async (command: string, args: string[]) => {
-      calls.push([command, ...args].join(" "));
-      if (command === "npm") {
-        return {
-          stdout: JSON.stringify({
-            version: "0.4.0",
-            peerDependencies: { "@earendil-works/pi-coding-agent": "*" },
-          }),
-          stderr: "",
-          code: 0,
-          killed: false,
-        };
-      }
-      return { stdout: "ok", stderr: "", code: 0, killed: false };
-    });
-    const pi = {
-      events: { on: vi.fn(), emit: vi.fn() },
-      on: vi.fn((event: string, handler: Handler) => handlers.set(event, handler)),
-      registerCommand: vi.fn(),
-      registerEntryRenderer: vi.fn(),
-      appendEntry: vi.fn(),
-      exec,
-    };
-    sfPiManagerExtension(pi as never);
+    const { handlers, calls } = loadManager();
     const ctx = context();
 
-    await handlers.get("session_start")?.({ reason: "startup" }, ctx);
+    await handlers.get("session_start")?.({ type: "session_start" }, ctx);
     await handlers.get("agent_end")?.(
       {
         type: "agent_end",
@@ -177,10 +132,6 @@ describe("Auto Update through the real SF Pi Manager factory", () => {
       { type: "agent_end", messages: [{ role: "assistant", stopReason: "stop" }] },
       ctx,
     );
-    expect(calls).toEqual([
-      "npm view @ogulcancelik/pi-herdr@latest version peerDependencies engines --json",
-      "pi update --extension npm:@ogulcancelik/pi-herdr --no-approve",
-      "sf update stable",
-    ]);
+    expect(calls).toEqual([...CHECKOUT_UPDATE, "sf update stable"]);
   });
 });

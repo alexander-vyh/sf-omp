@@ -140,12 +140,6 @@ Each extension owns one focused Salesforce workflow. Pick an outcome, then open 
   <span>Salesforce-aware safety hooks — file protection policies, dangerous-command gating, org-aware confirmation, and native high-value mutation mediation</span>
   <span class="sfpi-card-meta"><code class="sfpi-code-chip">/sf-guardrail</code></span>
 </a>
-<a class="sfpi-extension-card" href="./extensions/sf-herdr">
-  <span class="sfpi-card-kicker">Agent Tool · on</span>
-  <strong>SF Herdr</strong>
-  <span>Non-mutating Salesforce workflow plans for the current split Herdr tools.</span>
-  <span class="sfpi-card-meta"><code class="sfpi-code-chip">/sf-herdr</code></span>
-</a>
 <a class="sfpi-extension-card" href="./extensions/sf-planreview">
   <span class="sfpi-card-kicker">UI · on</span>
   <strong>SF Plannotator</strong>
@@ -183,7 +177,7 @@ Each extension owns one focused Salesforce workflow. Pick an outcome, then open 
 <a class="sfpi-extension-card" href="./extensions/sf-mcp">
   <span class="sfpi-card-kicker">Agent Tool · on</span>
   <strong>SF MCP</strong>
-  <span>Conflict-aware Salesforce MCP preset catalog and org-bound connection-instance configuration for Pi's native MCP runtime</span>
+  <span>Conflict-aware Salesforce MCP preset catalog and org-bound connection-instance configuration for OMP's native MCP runtime</span>
   <span class="sfpi-card-meta"><code class="sfpi-code-chip">/sf-mcp</code></span>
 </a>
 <a class="sfpi-extension-card" href="./extensions/sf-ohana-spinner">

@@ -257,9 +257,11 @@ describe("evalRunMarkdown", () => {
       { content: [{ type: "text", text: "Running 18 tests across 4 batch(es)" }] },
       { isPartial: true },
       plainTheme,
-    ) as unknown as { text: string };
+    )
+      .render(200)
+      .join("\n");
 
-    expect(rendered.text).toContain("Running 18 tests across 4 batch(es)");
+    expect(rendered).toContain("Running 18 tests across 4 batch(es)");
   });
 
   it("collapses passing tests into a count when none failed", () => {
